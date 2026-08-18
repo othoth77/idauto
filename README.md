@@ -188,6 +188,11 @@ IDauto was developed inside the Mythos OS monorepo (`othoth77/mythos-prod`,
 restarted. The full record is in
 [`docs/MIGRATION_FROM_MYTHOS_PROD.md`](docs/MIGRATION_FROM_MYTHOS_PROD.md).
 
+**This repository is canonical as of 2026-08-18.** The migration was verified from a clean
+clone of this repository — 13 suites, 601 assertions, 0 failures, against a freshly created
+PostgreSQL 16 database. Evidence:
+[`docs/STANDALONE_MIGRATION_AUDIT.md`](docs/STANDALONE_MIGRATION_AUDIT.md) §11.
+
 IDauto remains compatible with Mythos ecosystem services, but does not require any of them.
 
 ## Licence

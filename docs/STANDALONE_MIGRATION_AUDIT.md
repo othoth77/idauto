@@ -4,8 +4,8 @@
 **Subject:** extraction of ID Auto from `othoth77/mythos-prod` (`projects/idauto/` and all
 ID Auto-specific files outside it) into `othoth77/idauto`
 **Origin baseline:** `5e2011b` on `main`
-**Verdict:** the migrated tree is **complete and validated**. It is **not yet canonical** —
-see §11.
+**Verdict:** the migrated tree is **complete and validated**, **published**, and
+**clean-clone verified**. `othoth77/idauto` is canonical — see §11.
 
 Everything below was executed and observed in this working environment. Nothing is inferred.
 Where revision 1 of this audit was wrong, §10 says so.
@@ -325,20 +325,56 @@ including one previously undocumented external dependency.
 
 ---
 
-## 11. Verdict
+## 11. Verdict — CANONICAL, CLEAN-CLONE VERIFIED (2026-08-18)
 
-The migrated tree is **complete and validated**. It is **not canonical**, and IDauto is
-**not "fully migrated"**, because three of the four conditions for that are unmet:
+`othoth77/idauto` was created by the owner and the audited tree published to it verbatim.
+All four conditions are now met.
 
 | Condition | Status |
 |---|---|
-| `othoth77/idauto` exists | ⛔ **NO** — `POST /user/repos` → `403 Resource not accessible by integration` |
-| The complete tree exists there | ⛔ **NO** — blocked by the above |
-| Tests run against the standalone checkout | ⚠️ **Run against the prepared tree, not a clean clone of the published repository.** 601/601 |
+| `othoth77/idauto` exists | ✅ **YES** |
+| The complete tree exists there | ✅ **YES** — `main` = `bdfec2ce247f479155e920fd8156e8c94d5a6d49`, tree `26b93fb8`, 91 files. Pushed as the repository's initial commit, unmodified |
+| Tests run against a clean clone of the published repository | ✅ **YES** — 13 suites, **601 assertions, 0 failures** |
 | Migration audit complete | ✅ **YES** — this document |
 
-`othoth77/mythos-prod` therefore **remains canonical**. Nothing has been removed from it.
+**`othoth77/idauto` is now the canonical home of IDauto.**
 
-To publish: create an **empty** `othoth77/idauto` — no README, no `.gitignore`, no licence,
-so the migrated tree is authoritative — and grant the session access. The tree is committed
-and ready; publishing requires no redesign and no repeat of the migration.
+### Clean-clone validation — what was actually done
+
+A fresh `git clone` of the published repository into an empty directory, then `npm install`
+from the published `package-lock.json`, a **newly created** PostgreSQL 16 database and role
+(not the one the pre-publication audit used), and `database/schema.sql` +
+`database/migrations/ida-3a-ingestion-schema.sql` + `database/seed-synthetic-test-data.sql`
+applied to it. The database-backed suites ran live against that database.
+
+| Check | Result |
+|---|---|
+| Clone commit | `bdfec2ce247f479155e920fd8156e8c94d5a6d49` — **matches** |
+| Clone tree hash | `26b93fb80acf6bfbe09f925fb95862b947dac035` — **matches** |
+| Tracked files | **91** |
+| Byte-identity against the audited tree | **all 91 files identical** |
+| Working tree | clean, 0 uncommitted changes |
+| Test suites | **13 / 13** |
+| Assertions | **601 passed · 0 failed** |
+| Schema on a brand-new database | 24 tables, all `idauto_`-prefixed; 0 outside the prefix |
+| `access_scope` | present on `idauto_observation_media` and `idauto_vehicle_facts` |
+| IDA-3A migration over the schema | idempotent |
+| Origin file pairs present | **45 / 45**, 0 missing (the 44 of revision 1 plus `OFF_HOST_BACKUP_GATE.md`, recovered in revision 2) |
+| `projects/idauto` in code | **0** |
+| `mythos-prod` in code | **0** (2 provenance lines remain in two Markdown files, by design) |
+| External imports | **0** beyond Node built-ins and `pg` |
+| Secrets | none — the two credential-shaped matches are AWS's published SigV4 example key and per-run generated test tokens |
+| `.env` committed | no; only `.env.example` |
+| Owner-PII columns on vehicle/plate/observation/fact/evidence/movement tables | **0** |
+| Owner-PII name-matches repository-wide | 3, all inspected: a control flag and two business-contact fields |
+| Protocol / docs | 18 protocol files, 20 docs — match the audited tree; 14/14 JSON schemas valid, 26/26 JS files parse |
+
+### What being canonical does *not* mean
+
+The repository is canonical; the **product** is not finished, and nothing in this document
+says otherwise. Real authentication is still blocked, 15 legal-review items are still open,
+there is still no backup schedule, and no public endpoint exists. See
+[`ROADMAP.md`](ROADMAP.md).
+
+`othoth77/mythos-prod` still holds the duplicated source at the time of writing. Removing it
+is a separate, draft pull request there, deliberately not merged automatically.

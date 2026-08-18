@@ -8,6 +8,17 @@ The protocol is versioned separately from the implementation; see
 
 ## [Unreleased]
 
+### Published — 2026-08-18
+
+`othoth77/idauto` created; the audited tree published to `main` verbatim as the repository's
+initial commit (`bdfec2c`, tree `26b93fb8`, 91 files). Verified from a **clean clone**:
+commit and tree hashes match, all 91 files byte-identical to the audited tree, `npm install`
+from the published lockfile, a freshly created PostgreSQL 16 database, and **13 suites /
+601 assertions / 0 failures**.
+
+This repository is now the canonical home of IDauto. The duplicated source in
+`othoth77/mythos-prod` is removed by a separate draft pull request there.
+
 ### Added — standalone repository and Open Vehicle Identity Protocol (2026-08-18)
 
 Extracted from `othoth77/mythos-prod` (`projects/idauto/`) into `othoth77/idauto` and
