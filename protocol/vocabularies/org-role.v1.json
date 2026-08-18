@@ -1,0 +1,32 @@
+{
+  "protocol": "OVIP",
+  "vocabulary": "org_role",
+  "scope": "organization",
+  "version": 1,
+  "revision": 1,
+  "canonical_id": "https://idauto.org/protocol/vocabularies/org-role.v1.json",
+  "status": "stable",
+  "published_at": "2026-08-18",
+  "description": "The closed set of membership roles inside an IDauto professional organisation. Adopted verbatim by the Mythos OS platform organisation-role contract.",
+  "source_of_truth": {
+    "repository": "othoth77/idauto",
+    "file": "database/schema.sql",
+    "constraints": ["chk_user_role"],
+    "storage": "VARCHAR(30)"
+  },
+  "compatibility": {
+    "policy": "closed-set",
+    "value_order": "declaration order of the SQL CHECK; non-normative — comparisons are set equality",
+    "additive": "new value -> same major file, revision + 1",
+    "deprecation": "value stays present with status 'deprecated' for >= 1 major version",
+    "breaking": "removal, rename, or semantic change -> new file org-role.v2.json; v1 retained with status 'superseded'",
+    "supersedes": null,
+    "superseded_by": null
+  },
+  "values": [
+    { "value": "owner", "status": "active", "description": "Full control of the organisation's membership and subscription within IDauto. Not a Mythos platform-wide role — scoped to this organisation only." },
+    { "value": "admin", "status": "active", "description": "Manages the organisation's members and settings within IDauto, without the owner's exclusive standing." },
+    { "value": "member", "status": "active", "description": "Standard professional-subscriber access to IDauto on behalf of the organisation." },
+    { "value": "readonly", "status": "active", "description": "View-only professional access; cannot submit or annotate on the organisation's behalf." }
+  ]
+}

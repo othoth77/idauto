@@ -170,3 +170,25 @@ All four are breaking migrations, scheduled together and deliberately, not oppor
 | Real authentication (users, credentials, sessions, MFA) | **BLOCKED** → IDA-7 |
 | Authorisation beyond a role comparison | **NOT STARTED** |
 | DID resolution, VC issuance | **SPECIFIED** → IDA-7 |
+
+---
+
+## 9. Published vocabularies (2026-08-18, `IDA-DECOUPLE-3`)
+
+The `actor_type`, `org_role` and `actor_identifier` vocabularies described in §3–§4 above are
+now published as machine-readable artifacts under
+[`../protocol/vocabularies/`](../protocol/vocabularies/): `actor-type.v1.json`,
+`org-role.v1.json`, `actor-identifier.v1.json`. They are data documents describing the
+deployed `CHECK` constraints and column widths, not a new design.
+
+Conformance between these artifacts and the live `database/schema.sql` — both named
+`actor_type` CHECK sites, `chk_user_role`, and the four `VARCHAR(64)` actor-reference columns
+— is enforced offline by
+[`../tests/identity-conformance-test.js`](../tests/identity-conformance-test.js) on every run.
+The publication is an **additive** change per [`GOVERNANCE.md`](../GOVERNANCE.md) §3; the
+reasoning is recorded per §7 in `docs/AI_HANDOVER.md`.
+
+Mythos OS consumes pinned copies of these three files (version + SHA-256 of the raw bytes),
+so `mythos-prod`'s identity-core contract test no longer reads `database/schema.sql` or
+`reference/identity.js` directly. No schema change, no API change, no runtime change resulted
+from this stage.
