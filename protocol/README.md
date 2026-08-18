@@ -69,8 +69,8 @@ protocol because it describes something already deployed, not something being de
 
 **Consumer rule.** A consumer pins both the version *and* the SHA-256 digest of the raw file
 bytes — not just the version number, since a revision bump changes the bytes without changing
-the major version. This is exactly why the LF-only, UTF-8, no-BOM, exactly-one-trailing-
-newline requirement above and the [`vocabularies/.gitattributes`](vocabularies/.gitattributes)
+the major version. This is exactly why the artifacts are required to be LF-only, UTF-8,
+BOM-free, with exactly one trailing newline, and why the [`vocabularies/.gitattributes`](vocabularies/.gitattributes)
 `text eol=lf` rule exist: a digest is computed over raw bytes, and any line-ending or encoding
 drift between systems would silently change the hash without changing a single value.
 

@@ -77,7 +77,7 @@ done
 
 `tests/identity-conformance-test.js` (`IDA-DECOUPLE-3`) is **not** part of this live-suite
 total — it is offline and environment-free like IDA-2A, and is reported separately with its
-own count: `node tests/identity-conformance-test.js` → **77 passed, 0 failed**. Do not fold
+own count: `node tests/identity-conformance-test.js` → **81 passed, 0 failed**. Do not fold
 its count into the 195 above; the two totals cover different suite sets and mixing them makes
 a partial run look complete.
 

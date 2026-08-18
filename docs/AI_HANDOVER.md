@@ -54,7 +54,7 @@ files.
 renamed, or given new semantics. Reasoning recorded per `GOVERNANCE.md` §7.
 
 **No schema change. No API change. No runtime change.** `main` is untouched — this work is
-entirely on branch `protocol-identity-vocabularies`, committed locally, not pushed.
+entirely on branch `protocol-identity-vocabularies`, pushed to origin; `main` advances only by pull request.
 
 ---
 

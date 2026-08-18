@@ -230,6 +230,18 @@ console.log('\n4. ACTOR IDENTIFIER COLUMNS — driven from actor-identifier.v1.j
 (function () {
   var actorIdDoc = JSON.parse(fs.readFileSync(path.join(VOCAB_DIR, ACTOR_ID_FILE), 'utf8'));
 
+  // Non-emptiness preconditions: every list this section iterates must be a
+  // non-empty array, or an emptied artifact would yield zero assertions and a
+  // green run — the vacuity failure mode this whole stage exists to prevent.
+  ok(Array.isArray(actorIdDoc.columns) && actorIdDoc.columns.length >= 4,
+    'artifact columns is a non-empty array (>= 4 federation columns)');
+  ok(Array.isArray(actorIdDoc.forms) && actorIdDoc.forms.length >= 2,
+    'artifact forms is a non-empty array (user and service at minimum)');
+  ok(Array.isArray(actorIdDoc.examples.valid) && actorIdDoc.examples.valid.length >= 2,
+    'artifact examples.valid is a non-empty array');
+  ok(Array.isArray(actorIdDoc.examples.invalid) && actorIdDoc.examples.invalid.length >= 2,
+    'artifact examples.invalid is a non-empty array');
+
   actorIdDoc.columns.forEach(function (col) {
     var t = columnType(schemaSrc, col.table, col.column);
     ok(t !== null, col.table + '.' + col.column + ' column found in schema.sql (a null lookup is a failure)');
