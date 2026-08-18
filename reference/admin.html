@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ID Auto — Manual entry</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Mythos OS · ID Auto</p>
+      <h1>Admin manual entry</h1>
+      <p>Create one vehicle observation using the existing audited ID Auto APIs.</p>
+    </header>
+
+    <form id="entry-form">
+      <section>
+        <h2>Admin identity</h2>
+        <label>Bearer token <input id="admin-token" type="password" autocomplete="off" required></label>
+        <p class="hint">Held in this page only; never saved in browser storage.</p>
+      </section>
+
+      <section>
+        <h2>1 · Vehicle</h2>
+        <div class="grid">
+          <label>Make <input name="make" required></label>
+          <label>Model <input name="model" required></label>
+          <label>Variant <input name="variant"></label>
+          <label>Year <input name="year" type="number" min="1886" max="2100"></label>
+          <label>Body type <input name="body_type"></label>
+          <label>Fuel type <input name="fuel_type"></label>
+          <label>Colour <input name="colour"></label>
+          <label>Seats <input name="seats" type="number" min="1"></label>
+          <label>Gross weight (kg) <input name="gross_weight_kg" type="number" min="1"></label>
+          <label>Engine (cc) <input name="engine_cc" type="number" min="1"></label>
+          <label>Category code <input name="category_code"></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>2 · Plate <span>(optional)</span></h2>
+        <div class="grid">
+          <label>Plate number <input name="plate_number"></label>
+          <label>Format code <input name="format_code"></label>
+          <label>Governorate code <input name="governorate_code"></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>3 · Observation</h2>
+        <label>Status
+          <select name="status">
+            <option value="received">Received</option>
+            <option value="pending_confirmation">Pending confirmation</option>
+            <option value="pending_review">Pending review</option>
+            <option value="accepted">Accepted</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+        <p class="hint">Capture method is fixed by the API to <code>manual_admin</code>.</p>
+      </section>
+
+      <section>
+        <h2>4 · Fact <span>(optional)</span></h2>
+        <div class="grid">
+          <label>Fact key <input name="fact_key"></label>
+          <label>Fact value <input name="fact_value"></label>
+          <label>Confidence <input name="confidence_score" type="number" min="0" max="1" step="0.01" value="0.5"></label>
+          <label>Access scope
+            <select name="access_scope">
+              <option value="public">Public</option>
+              <option value="professional">Professional</option>
+              <option value="mythos_private">Mythos private</option>
+            </select>
+          </label>
+          <label>Evidence type
+            <select name="evidence_type">
+              <option value="">None</option>
+              <option value="admin_validation">Admin validation</option>
+              <option value="document_scan">Document scan</option>
+              <option value="professional_assertion">Professional assertion</option>
+              <option value="user_confirmation">User confirmation</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <h2>5 · Observation image <span>(optional)</span></h2>
+        <div class="grid">
+          <label>Image <input name="media" type="file" accept="image/jpeg,image/png,image/webp,image/heic"></label>
+          <label>Media type
+            <select name="media_type">
+              <option value="original_image">Original image</option>
+              <option value="plate_crop">Plate crop</option>
+              <option value="vehicle_crop">Vehicle crop</option>
+              <option value="processed_derivative">Processed derivative</option>
+            </select>
+          </label>
+          <label>Media access
+            <select name="media_access_scope">
+              <option value="mythos_private">Mythos private</option>
+              <option value="professional">Professional</option>
+              <option value="public">Public</option>
+            </select>
+          </label>
+          <label class="check"><input name="blurred" type="checkbox"> Blurred</label>
+        </div>
+      </section>
+
+      <button id="submit-button" type="submit">Create audited entry</button>
+      <div id="result" role="status" aria-live="polite"></div>
+    </form>
+  </main>
+  <script src="/admin/admin-ui.js"></script>
+</body>
+</html>

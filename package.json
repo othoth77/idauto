@@ -1,0 +1,16 @@
+{
+  "name": "idauto",
+  "version": "0.2.0",
+  "description": "IDauto — an open vehicle identity and history protocol. Reference implementation.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/othoth77/idauto.git"
+  },
+  "scripts": {
+    "test:offline": "node tests/ida-2a-schema-and-plate-validation-test.js && node tests/ida-3a-ingestion-schema-test.js && node tests/ida-3f-offhost-backup-test.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

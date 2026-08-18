@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/anomaly.schema.json",
+  "title": "Anomaly",
+  "description": "A machine-detected signal about a claim or a set of records. An Anomaly describes an OBSERVATION about records; it never states a CONCLUSION about people. AI may produce anomalies; AI MUST NOT declare fraud, assert legal guilt, raise a trust level, or be the sole basis for an adverse decision about a person.",
+  "type": "object",
+  "required": ["type", "severity", "detected_at", "detector"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "chronology_conflict",
+        "mileage_regression",
+        "mileage_implausible_rate",
+        "duplicate_evidence",
+        "reused_evidence_across_subjects",
+        "document_layout_inconsistency",
+        "document_arithmetic_inconsistency",
+        "geographic_impossibility",
+        "issuer_out_of_scope",
+        "identity_contradiction"
+      ]
+    },
+    "severity": { "type": "string", "enum": ["info", "low", "medium", "high"] },
+    "statement": {
+      "description": "Neutral, observational wording. REQUIRED to describe what was observed, not what it means. 'Recorded mileage decreases between two records' — not 'odometer fraud'.",
+      "type": "string"
+    },
+    "examined_refs": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "detected_at": { "type": "string", "format": "date-time" },
+    "detector": {
+      "type": "object",
+      "required": ["kind", "name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["rule", "model", "human"] },
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "routed_to_review": { "type": "boolean", "default": true },
+    "review_outcome": { "type": ["string", "null"], "enum": ["upheld", "dismissed", "inconclusive", null] }
+  }
+}

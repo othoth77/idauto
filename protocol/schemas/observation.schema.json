@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/observation.schema.json",
+  "title": "Observation",
+  "description": "One act of perceiving a vehicle. Observation-first is a hard rule: every capture creates an Observation BEFORE any vehicle lookup or fact extraction, so the raw perception survives independently of what was inferred from it. Immutable once written.",
+  "type": "object",
+  "required": ["protocol_version", "id", "capture_method", "recorded_at", "access_scope"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "subject_ivid": { "type": ["string", "null"], "description": "Null until the observation is resolved to a vehicle; resolution never rewrites the observation." },
+    "capture_method": {
+      "type": "string",
+      "enum": ["manual_admin", "plate_scan", "vehicle_scan", "document_scan", "import", "gate_detection"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending_review", "accepted", "rejected", "duplicate", "superseded"]
+    },
+    "recorded_at": { "type": "string", "format": "date-time", "description": "When the system recorded it. Coarse; safe to expose." },
+    "capture_time": {
+      "description": "Exact capture instant. ALWAYS restricted scope — never in a public response.",
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-accessScope": "restricted"
+    },
+    "location_ref": {
+      "description": "Reference to a separate, entirely-restricted location record. Precise location is never a column on the observation and is never joined in a public query.",
+      "type": ["string", "null"],
+      "x-accessScope": "restricted"
+    },
+    "media_refs": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "extracted_fact_refs": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "access_scope": { "type": "string", "enum": ["public", "professional", "restricted"], "default": "restricted" },
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+  },
+  "$comment": "Fields documented as always-restricted in the live implementation and omitted from every public response: capture_time, plate_candidate, ocr_confidence, ip_hash, camera_source_id, contributor_id, capture_session_id."
+}

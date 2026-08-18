@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/fact.schema.json",
+  "title": "Fact",
+  "description": "A claim about one attribute of a vehicle at a point in time. Append-only with supersession: a correction is a NEW Fact carrying `supersedes`, never an edit. The superseded Fact stays retrievable with is_active=false.",
+  "type": "object",
+  "required": ["protocol_version", "id", "subject_ivid", "fact_key", "fact_value", "provenance", "is_active"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "subject_ivid": { "type": "string" },
+    "fact_key": {
+      "type": "string",
+      "description": "Open vocabulary; these are the keys the reference implementation uses today.",
+      "examples": ["colour", "make", "model", "variant", "year", "body_type", "fuel_type", "seats", "engine_cc", "category_code", "vin", "gross_weight_kg", "plate_number", "mileage_km"]
+    },
+    "fact_value": { "type": "string" },
+    "fact_value_normalized": { "type": ["string", "null"], "description": "Canonical/lowercased form for matching." },
+    "valid_from": { "type": ["string", "null"], "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time" },
+    "is_active": {
+      "description": "false when superseded by a newer Fact for the same key. Supersession never deletes.",
+      "type": "boolean"
+    },
+    "supersedes": { "type": ["string", "null"], "description": "Fact id this one corrects." },
+    "superseded_by": { "type": ["string", "null"] },
+    "superseded_reason": { "type": ["string", "null"] },
+    "conflicts_with": {
+      "description": "Fact ids asserting an incompatible value for the same key. Conflicts are surfaced, never resolved by last-write-wins or highest-confidence-wins.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "anomalies": {
+      "description": "Machine-detected signals attached to this claim. An anomaly routes the claim to review; it NEVER mutates the claim, and NEVER asserts fraud or legal guilt.",
+      "type": "array",
+      "items": { "$ref": "https://idauto.org/protocol/0.1.0/anomaly.schema.json" },
+      "default": []
+    },
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+  }
+}

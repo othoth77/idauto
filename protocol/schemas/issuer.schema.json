@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/issuer.schema.json",
+  "title": "Issuer",
+  "description": "A party able to sign claims about vehicles it has directly handled. Every Issuer has a verifiable identity (a DID) tied to a real, identifiable legal entity by a documented onboarding check. An Issuer's past signatures stay verifiable after its status changes — suspension affects new issuance, not the checkability of history.",
+  "type": "object",
+  "required": ["protocol_version", "did", "issuer_type", "trust_class", "status", "onboarded_at"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "did": { "type": "string", "pattern": "^did:[a-z0-9]+:.+$" },
+    "issuer_type": {
+      "type": "string",
+      "enum": ["garage", "insurer", "fleet_operator", "inspector", "dealer", "authorised_institution", "manufacturer"]
+    },
+    "trust_class": {
+      "description": "T2 for a verified professional; T3 for an authorised institution. A property of the ONBOARDING EVIDENCE, recorded and re-assessable — not of the issuer_type alone.",
+      "type": "string",
+      "enum": ["T2", "T3"]
+    },
+    "legal_entity": {
+      "description": "Business identity only. This is a company, not a person: no natural-person data belongs here.",
+      "type": "object",
+      "required": ["registered_name", "jurisdiction"],
+      "additionalProperties": false,
+      "properties": {
+        "registered_name": { "type": "string" },
+        "registration_number": { "type": ["string", "null"] },
+        "jurisdiction": { "type": "string" }
+      }
+    },
+    "authority_scope": {
+      "description": "What this issuer is authorised to attest. A claim outside scope raises an issuer_out_of_scope anomaly rather than being silently accepted.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "status": { "type": "string", "enum": ["active", "suspended", "revoked", "withdrawn"] },
+    "status_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["status", "changed_at"],
+        "additionalProperties": false,
+        "properties": {
+          "status": { "type": "string" },
+          "changed_at": { "type": "string", "format": "date-time" },
+          "reason": { "type": ["string", "null"] }
+        }
+      },
+      "default": []
+    },
+    "onboarding_evidence_refs": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "onboarded_at": { "type": "string", "format": "date-time" },
+    "last_reassessed_at": { "type": ["string", "null"], "format": "date-time" }
+  }
+}

@@ -1,0 +1,458 @@
+{
+  "_comment": "ID Auto — example configuration (IDA-1 draft). Copy to idauto.json and set real values. Never commit idauto.json.",
+  "_version": "0.2.0-ida1-draft",
+  "_stage": "IDA-1 Product Vision, Capture, Access and Data Governance Specification",
+  "_note": "Plate formats and governorate codes are UNVERIFIED DRAFTS unless marked verified. Do not treat these as authoritative official sources.",
+
+  "product": {
+    "name": "ID Auto",
+    "domain": "idauto.tn",
+    "platform": "Mythos ecosystem",
+    "locale": "ar-TN",
+    "fallback_locale": "fr-TN",
+    "support_email": "support@idauto.tn"
+  },
+
+  "database": {
+    "target_dbms": "PostgreSQL",
+    "target_dbms_status": "selected — not yet installed or deployed",
+    "logical_schemas": ["mythos_core", "idauto", "atelier_network", "fixpert"],
+    "_schema_note": "atelier_network schema is governed by projects/atelier-network/. fixpert is an external system — not created by this repository. Fixpert is first workshop pilot on Atelier Network.",
+    "implementation_stage": "IDA-2"
+  },
+
+  "access_scopes": {
+    "public": {
+      "description": "Any caller within rate limits. No authentication required.",
+      "rate_limited": true,
+      "requires_auth": false
+    },
+    "professional": {
+      "description": "Verified professional subscriber organisation.",
+      "rate_limited": true,
+      "requires_auth": true,
+      "requires_subscription": true
+    },
+    "mythos_private": {
+      "description": "Mythos Super Admin only. All access audit-logged.",
+      "rate_limited": false,
+      "requires_auth": true,
+      "requires_role": "MYTHOS_SUPER_ADMIN",
+      "audit_required": true
+    }
+  },
+
+  "scanner_modes": {
+    "enabled_modes": [],
+    "_note": "No scanner modes are active in IDA-1. Implementation begins IDA-3.",
+    "defined_modes": [
+      { "code": "plate_scan",       "label_fr": "Scanner une plaque",    "available_from": "IDA-3" },
+      { "code": "vehicle_scan",     "label_fr": "Scanner une voiture",   "available_from": "IDA-3" },
+      { "code": "carte_grise_scan", "label_fr": "Scanner une carte grise", "available_from": "IDA-3" },
+      { "code": "photo_import",     "label_fr": "Importer une photo",    "available_from": "IDA-3" },
+      { "code": "vin_scan",         "label_fr": "Scanner un VIN",        "available_from": "future" },
+      { "code": "odometer_scan",    "label_fr": "Scanner le compteur",   "available_from": "future" },
+      { "code": "technical_doc",    "label_fr": "Document technique",    "available_from": "future" },
+      { "code": "invoice_scan",     "label_fr": "Facture d'entretien",   "available_from": "future" }
+    ]
+  },
+
+  "capture_sources": {
+    "active_sources": ["TEST_ONLY", "MANUAL_ADMIN"],
+    "_note": "All public capture sources disabled until legal review and IDA-2+ implementation.",
+    "sources": [
+      { "code": "TEST_ONLY",         "type": "test",              "trust_level": 1, "active": false },
+      { "code": "PUBLIC_UPLOAD",     "type": "public_upload",     "trust_level": 1, "active": false, "legal_status": "LEGAL-REVIEW-REQUIRED" },
+      { "code": "CONTRIBUTOR_UPLOAD","type": "contributor_upload", "trust_level": 2, "active": false, "legal_status": "LEGAL-REVIEW-REQUIRED" },
+      { "code": "SMART_GATE",        "type": "smart_gate",        "trust_level": 3, "active": false, "legal_status": "LEGAL-REVIEW-REQUIRED — ANPR regulatory approval required" },
+      { "code": "PROFESSIONAL_SCAN", "type": "professional_scan", "trust_level": 4, "active": false, "legal_status": "LEGAL-REVIEW-REQUIRED" },
+      { "code": "MANUAL_ADMIN",      "type": "manual_admin",      "trust_level": 5, "active": false },
+      { "code": "OFFICIAL_IMPORT",   "type": "official_import",   "trust_level": 5, "active": false, "legal_status": "LEGAL-REVIEW-REQUIRED — data-source agreement required" }
+    ]
+  },
+
+  "observation_statuses": [
+    "received",
+    "processing",
+    "pending_confirmation",
+    "pending_review",
+    "accepted",
+    "rejected",
+    "duplicate",
+    "conflict",
+    "blocked"
+  ],
+
+  "confidence_thresholds": {
+    "public_display_minimum": 0.70,
+    "make_model_display_minimum": 0.80,
+    "auto_accept_minimum": 0.90,
+    "high_trust_contributor_auto_accept": 0.80,
+    "review_queue_trigger_maximum": 0.69,
+    "_note": "Thresholds are placeholders. Tune after pilot data is available in IDA-2."
+  },
+
+  "public_field_policy": {
+    "always_returnable": [
+      "plate_number",
+      "format_code",
+      "governorate_name",
+      "fiche_status",
+      "data_confidence_band"
+    ],
+    "returnable_when_verified": [
+      "vehicle_colour",
+      "vehicle_body_type",
+      "vehicle_make",
+      "vehicle_model",
+      "vehicle_year",
+      "vehicle_fuel_type"
+    ],
+    "never_public": [
+      "owner_name",
+      "owner_address",
+      "owner_cin",
+      "owner_passport",
+      "owner_phone",
+      "owner_email",
+      "insurance_policy_number",
+      "insurance_company",
+      "observation_timestamp_exact",
+      "observation_location_exact",
+      "original_image",
+      "plate_crop_image",
+      "movement_history",
+      "contributor_identity",
+      "ocr_raw_output",
+      "vin",
+      "carte_grise_image",
+      "legal_proceedings"
+    ]
+  },
+
+  "professional_field_policy": {
+    "additional_vs_public": [
+      "verified_technical_attributes",
+      "own_org_service_events",
+      "public_cross_org_service_events"
+    ],
+    "not_accessible_cross_org": [
+      "private_service_events_other_org",
+      "other_org_customer_data"
+    ],
+    "_note": "An organisation does not automatically see another organisation's private service events."
+  },
+
+  "mythos_private_policy": {
+    "accessible_to": "MYTHOS_SUPER_ADMIN only",
+    "audit_required": true,
+    "includes": [
+      "raw_captures",
+      "original_images",
+      "exact_capture_time",
+      "exact_capture_location",
+      "ocr_output_raw",
+      "confidence_scores",
+      "source_and_contributor",
+      "camera_source_id",
+      "review_and_correction_history",
+      "duplicate_detection_records",
+      "audit_and_security_events",
+      "fixpert_module_access_audited",
+      "vin"
+    ]
+  },
+
+  "plate_formats": {
+    "_note": "UNVERIFIED DRAFT. Patterns are best-effort and have not been confirmed against official Tunisian traffic authority sources. Do not treat as authoritative.",
+    "formats": [
+      {
+        "code": "TUN_STD",
+        "name_fr": "Plaque standard (série courante)",
+        "name_ar": "لوحة قياسية",
+        "pattern": "^(\\d{1,3})\\s?TUN\\s?(\\d{1,4})$",
+        "example": "123 TUN 4567",
+        "introduced_year": 2002,
+        "active": true,
+        "verified": false,
+        "captures": { "left": "sequence_prefix", "right": "sequence_suffix" }
+      },
+      {
+        "code": "TUN_OLD",
+        "name_fr": "Plaque ancienne (avant 2002)",
+        "name_ar": "لوحة قديمة",
+        "pattern": "^(\\d{1,4})\\s?TUN\\s?(\\d{1,2})$",
+        "example": "1234 TUN 56",
+        "introduced_year": null,
+        "active": false,
+        "verified": false,
+        "captures": { "left": "sequence", "right": "governorate_code_legacy" }
+      },
+      {
+        "code": "TUN_GVT",
+        "name_fr": "Véhicule gouvernemental",
+        "name_ar": "مركبة حكومية",
+        "pattern": "^GN\\s?(\\d{1,3})\\s?(\\d{1,3})$",
+        "example": "GN 123 456",
+        "active": true,
+        "verified": false,
+        "captures": { "group1": "ministry_code", "group2": "vehicle_sequence" }
+      },
+      {
+        "code": "TUN_DIP",
+        "name_fr": "Corps diplomatique",
+        "name_ar": "سلك دبلوماسي",
+        "pattern": "^CD\\s?(\\d{1,2})\\s?(\\d{1,3})$",
+        "example": "CD 12 345",
+        "active": true,
+        "verified": false,
+        "captures": { "group1": "mission_code", "group2": "sequence" }
+      },
+      {
+        "code": "TUN_MIL",
+        "name_fr": "Forces armées",
+        "name_ar": "القوات المسلحة",
+        "pattern": "^ARN\\s?(\\d{1,6})$",
+        "example": "ARN 123456",
+        "active": true,
+        "verified": false,
+        "captures": { "group1": "internal_sequence" }
+      },
+      {
+        "code": "TUN_TMP",
+        "name_fr": "Immatriculation temporaire / transit",
+        "name_ar": "ترخيص مؤقت",
+        "pattern": "^TT\\s?(\\d{1,5})\\s?([A-Z])$",
+        "example": "TT 12345 A",
+        "active": true,
+        "verified": false,
+        "captures": { "group1": "sequence", "group2": "suffix_letter" }
+      },
+      {
+        "code": "TUN_ECO",
+        "name_fr": "Zone économique / spéciale",
+        "name_ar": "منطقة اقتصادية",
+        "pattern": "^ZE\\s?(\\d{1,4})\\s?(\\d{1,3})$",
+        "example": "ZE 1234 567",
+        "active": true,
+        "verified": false,
+        "captures": { "group1": "zone_code", "group2": "sequence" }
+      }
+    ]
+  },
+
+  "governorate_codes": {
+    "_note": "UNVERIFIED DRAFT. Not confirmed against official Tunisian administrative sources.",
+    "01": "Tunis",
+    "02": "Ariana",
+    "03": "Ben Arous",
+    "04": "Manouba",
+    "11": "Bizerte",
+    "12": "Nabeul",
+    "13": "Zaghouan",
+    "21": "Béja",
+    "22": "Jendouba",
+    "23": "Kef",
+    "24": "Siliana",
+    "31": "Sousse",
+    "32": "Monastir",
+    "33": "Mahdia",
+    "34": "Sfax",
+    "41": "Kairouan",
+    "42": "Kasserine",
+    "43": "Sidi Bouzid",
+    "51": "Gabès",
+    "52": "Médenine",
+    "53": "Tataouine",
+    "61": "Gafsa",
+    "62": "Tozeur",
+    "63": "Kébili"
+  },
+
+  "media_processing": {
+    "store_original": true,
+    "original_scope": "mythos_private",
+    "create_plate_crop": true,
+    "create_vehicle_crop": true,
+    "apply_face_blur": true,
+    "apply_unrelated_plate_blur": true,
+    "generate_image_hash": true,
+    "max_upload_size_mb": 20,
+    "allowed_mime_types": ["image/jpeg", "image/png", "image/webp", "image/heic"],
+    "retention_policy": "LEGAL-REVIEW-REQUIRED — no retention periods set in IDA-1"
+  },
+
+  "location_policy": {
+    "allow_gps": true,
+    "allow_exif": true,
+    "allow_manual_map": true,
+    "require_location": false,
+    "exact_location_scope": "mythos_private",
+    "governorate_only_scope": "public",
+    "individual_movement_map_public": false,
+    "individual_movement_map_professional": false,
+    "aggregate_spatial_analytics": true
+  },
+
+  "review_queue": {
+    "auto_queue_triggers": {
+      "confidence_below": 0.69,
+      "unknown_format": true,
+      "fact_conflict": true,
+      "duplicate_image": true,
+      "new_contributor": true,
+      "trust_score_below": 30,
+      "carte_grise_uncertainty": true,
+      "abuse_report": true
+    },
+    "priorities": {
+      "urgent": 1,
+      "high": 2,
+      "medium": 3,
+      "low": 4
+    }
+  },
+
+  "contributor_trust": {
+    "initial_score": 10,
+    "score_range": [0, 100],
+    "auto_accept_threshold": 70,
+    "anonymous_daily_limit": 5,
+    "authenticated_daily_limit": 50,
+    "high_trust_daily_limit": 200,
+    "block_threshold": 0,
+    "score_deltas": {
+      "accepted": 2,
+      "rejected_quality": -1,
+      "rejected_false_data": -10,
+      "abuse_confirmed": -50
+    }
+  },
+
+  "carte_grise_scan": {
+    "enabled": false,
+    "available_from": "IDA-3",
+    "legal_status": "LEGAL-REVIEW-REQUIRED",
+    "require_ownership_declaration": true,
+    "require_consent_declaration": true,
+    "owner_pii_fields": [
+      "owner_name",
+      "owner_cin",
+      "owner_address",
+      "owner_dob"
+    ],
+    "pii_routing": "workshop_organisation_customers_with_consent_or_discard",
+    "pii_routing_note": "Carte grise owner PII routed to the workshop org's own customer table with explicit consent (e.g. fixpert.clients for Fixpert). Never stored in idauto_ or atelier_network platform tables.",
+    "pii_never_stored_in_idauto": true,
+    "technical_fields_public": [
+      "plate_number",
+      "vin",
+      "make",
+      "model",
+      "year",
+      "body_type",
+      "fuel_type",
+      "engine_cc",
+      "seats",
+      "gross_weight_kg",
+      "category_code"
+    ]
+  },
+
+  "smart_gate": {
+    "_note": "Smart Gate generalises to any participating Atelier Network workshop. Fixpert is the first pilot. IDA-4 scope is Fixpert-specific. Each workshop owns its own device and consent obligation; ID Auto owns the observation.",
+    "enabled": false,
+    "available_from": "IDA-4 (Fixpert pilot); future workshops via Atelier Network ATN-1+",
+    "legal_status": "LEGAL-REVIEW-REQUIRED — per-workshop ANPR regulatory approval (INPDP notification) required",
+    "camera_count_total": 5,
+    "cameras_in_scope": 1,
+    "camera_scope_description": "Single designated entrance/exit door camera only (Fixpert pilot)",
+    "cameras_out_of_scope": 4,
+    "stream_type": "rtsp",
+    "dedup_window_seconds": 60,
+    "direction_modes": ["single_zone", "dual_zone", "manual_review"],
+    "default_direction_mode": "single_zone",
+    "movement_visibility": "mythos_private",
+    "publish_movements_publicly": false,
+    "publish_movements_professionally": false,
+    "link_to_atelier_network_work_order": true,
+    "link_optional": true
+  },
+
+  "retention_placeholders": {
+    "_status": "LEGAL-REVIEW-REQUIRED — all periods below are placeholders only",
+    "verification_logs_days": null,
+    "audit_log_years": null,
+    "media_original_days": null,
+    "media_derivatives_days": null,
+    "carte_grise_original_days": null,
+    "movement_events_days": null,
+    "service_events_years": null,
+    "contributor_sessions_days": null
+  },
+
+  "public_search": {
+    "enabled": false,
+    "rate_limit": {
+      "anonymous_per_hour": 10,
+      "anonymous_per_day": 50,
+      "authenticated_per_hour": 100,
+      "professional_per_hour": 1000
+    }
+  },
+
+  "professional_subscription": {
+    "tiers": [
+      {
+        "code": "GARAGE",
+        "name_fr": "Garage / Atelier",
+        "api_rate_multiplier": 10,
+        "can_write_service_events": true,
+        "can_read_own_service_events": true,
+        "can_read_cross_org_service_events": false
+      },
+      {
+        "code": "INSURER",
+        "name_fr": "Compagnie d'assurance",
+        "api_rate_multiplier": 20,
+        "can_write_service_events": false,
+        "can_read_own_service_events": true,
+        "can_read_cross_org_service_events": false
+      },
+      {
+        "code": "FLEET",
+        "name_fr": "Gestionnaire de flotte",
+        "api_rate_multiplier": 50,
+        "can_write_service_events": false,
+        "can_read_own_service_events": true,
+        "can_read_cross_org_service_events": false
+      }
+    ]
+  },
+
+  "integrations": {
+    "mythos_auth":          { "enabled": false, "endpoint": null, "available_from": "IDA-2" },
+    "mythos_billing":       { "enabled": false, "endpoint": null, "available_from": "IDA-3" },
+    "mythos_audit":         { "enabled": false, "endpoint": null, "available_from": "IDA-2" },
+    "mythos_notifications": { "enabled": false, "endpoint": null, "available_from": "IDA-3" },
+    "mythos_documents":     { "enabled": false, "endpoint": null, "available_from": "IDA-4" },
+    "mythos_search":        { "enabled": false, "endpoint": null, "available_from": "IDA-4" }
+  },
+
+  "feature_flags": {
+    "public_search":            false,
+    "professional_api":         false,
+    "service_event_write":      false,
+    "bulk_lookup":              false,
+    "webhook_alerts":           false,
+    "public_scanner":           false,
+    "carte_grise_ocr":          false,
+    "contributor_accounts":     false,
+    "smart_gate_anpr":          false,
+    "atelier_network_work_order_link": false,
+    "official_data_import":     false,
+    "movement_tracking":        false,
+    "aggregate_analytics":      false,
+    "_note": "All real-data, public upload, camera and OCR feature flags remain false in IDA-1."
+  }
+}

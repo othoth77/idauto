@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json",
+  "title": "ProvenanceEnvelope",
+  "description": "The envelope every claim-bearing record in OVIP must carry. A claim without provenance is not expressible in this protocol. Fields marked serverDerived are computed by the implementation; an instance submitted by a client containing one MUST be rejected with 400 naming the offending field, never silently sanitised.",
+  "type": "object",
+  "required": ["source", "asserted_at", "confidence", "verification_status", "trust_level"],
+  "additionalProperties": true,
+  "properties": {
+    "source": {
+      "description": "The channel that produced this claim. Server-derived.",
+      "type": "string",
+      "enum": ["manual_admin", "public_upload", "contributor_upload", "professional_scan", "smart_gate", "official_import", "issuer_credential"],
+      "x-serverDerived": true
+    },
+    "evidence_refs": {
+      "description": "Evidence backing this claim. An empty array is legal and forces trust_level T0.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "observation_id": {
+      "description": "The Observation this claim was extracted from, where one exists.",
+      "type": ["string", "null"]
+    },
+    "confidence": {
+      "description": "Extraction fidelity, NOT trust. How reliably the value was read or parsed. An OCR engine can be 0.99 confident about a value read perfectly off a forged document. Server-derived.",
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "x-serverDerived": true
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": ["unverified", "pending_review", "verified", "conflict", "rejected"],
+      "x-serverDerived": true
+    },
+    "trust_level": {
+      "description": "Computed corroboration level. Never author-supplied; recomputable from the record and its evidence. See docs/TRUST_MODEL.md.",
+      "type": "string",
+      "enum": ["T0", "T1", "T2", "T3"],
+      "x-serverDerived": true
+    },
+    "anchoring": {
+      "description": "Tamper-evidence state, ORTHOGONAL to trust_level. T4 in prose. An anchored T0 claim is a self-declaration that provably has not been edited — it is still a self-declaration. Implementations MUST display this separately from trust_level and MUST NOT render it as verification.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string", "enum": ["not_anchored", "pending", "anchored", "failed"] },
+        "anchor_ref": { "type": ["string", "null"], "description": "BlockchainAnchor id, when anchored." }
+      },
+      "required": ["status"],
+      "default": { "status": "not_anchored" }
+    },
+    "asserted_at": {
+      "description": "When the claim was made.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "observed_at": {
+      "description": "When the underlying fact was observed, if different from asserted_at.",
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "issuer": {
+      "description": "DID of the Issuer, when the claim is issuer-signed. Server-derived from the verified signature, never from the payload.",
+      "type": ["string", "null"],
+      "pattern": "^did:[a-z0-9]+:.+$",
+      "x-serverDerived": true
+    },
+    "access_scope": {
+      "description": "public | professional | restricted. The live implementation persists 'restricted' as the string 'mythos_private'; see docs/PRIVACY_ARCHITECTURE.md section 3.",
+      "type": "string",
+      "enum": ["public", "professional", "restricted"],
+      "default": "public"
+    }
+  }
+}

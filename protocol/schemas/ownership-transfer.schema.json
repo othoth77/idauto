@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/ownership-transfer.schema.json",
+  "title": "OwnershipTransfer",
+  "description": "A change of holder. Vehicle identity and history survive the transfer intact: the new holder gains access to the vehicle-level record, gains NO access to the previous holder's personal data, and can never delete, hide, edit or reset prior history. Holders are referenced pseudonymously — no personal data is embedded here, which is what makes a holder erasure possible without destroying the vehicle's history.",
+  "type": "object",
+  "required": ["protocol_version", "id", "subject_ivid", "effective_at", "recorded_at"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "subject_ivid": { "type": "string" },
+    "from_holder_ref": {
+      "description": "Opaque, non-resolving pseudonymous reference. Becomes a dangling non-resolving reference after a holder erasure — the transfer record itself survives.",
+      "type": ["string", "null"]
+    },
+    "to_holder_ref": { "type": ["string", "null"] },
+    "transfer_type": { "type": "string", "enum": ["sale", "inheritance", "gift", "fleet_reassignment", "export", "import", "repossession", "unknown"] },
+    "effective_at": { "type": "string", "format": "date-time" },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "evidence_refs": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+  }
+}

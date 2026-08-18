@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/vehicle.schema.json",
+  "title": "Vehicle",
+  "description": "A vehicle as a protocol subject. Carries the IVID and derived summary attributes only. Authored claims live in Fact records, never here — every summary attribute below is derived from the active Fact set and MUST NOT be written directly. NO OWNER FIELD EXISTS, BY CONSTRUCTION.",
+  "type": "object",
+  "required": ["protocol_version", "ivid", "status", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "ivid": {
+      "description": "IDauto Vehicle ID. Independent of VIN, plate and owner identity; not derived from any of them. >=80 bits of entropy plus a check symbol. Survives re-plating, resale, re-registration, export and import. Never reused.",
+      "type": "string",
+      "pattern": "^ivid:[0-9]+:[0-9A-HJKMNP-TV-Z]{16,}:[0-9A-HJKMNP-TV-Z]{2}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["initial", "pending_review", "verified", "conflict", "merged", "archived", "closed"]
+    },
+    "merged_into": {
+      "description": "Set when this record was merged into another. Both records are retained; a merge is itself an Event and MUST be reversible.",
+      "type": ["string", "null"]
+    },
+    "summary": {
+      "description": "DERIVED from the active Fact set. Present for convenience only. Never authored, never authoritative — read the Facts for provenance.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "make": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "variant": { "type": ["string", "null"] },
+        "year": { "type": ["integer", "null"] },
+        "body_type": { "type": ["string", "null"] },
+        "fuel_type": { "type": ["string", "null"] },
+        "colour": { "type": ["string", "null"] },
+        "category_code": { "type": ["string", "null"], "description": "EU vehicle category: M1, N1, L3, ..." }
+      }
+    },
+    "current_plate_ref": { "type": ["string", "null"], "description": "Plate record with an open interval, if any. A plate is an attribute, never the identity." },
+    "observation_count": { "type": "integer", "minimum": 0 },
+    "first_seen_at": { "type": "string", "format": "date-time" },
+    "last_seen_at": { "type": "string", "format": "date-time" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "not": {
+    "description": "Structural prohibition, stated for readers rather than validators: no owner, holder, contact or personal-identifier property may be added to this schema. Holder association is a separate, access-controlled record.",
+    "anyOf": [
+      { "required": ["owner"] }, { "required": ["owner_name"] }, { "required": ["owner_id"] },
+      { "required": ["holder"] }, { "required": ["address"] }, { "required": ["phone"] },
+      { "required": ["national_id"] }, { "required": ["email"] }
+    ]
+  }
+}

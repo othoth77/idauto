@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/passport.schema.json",
+  "title": "DigitalVehiclePassport",
+  "description": "The lifecycle record of one vehicle: what it is, what has happened to it, and what backs each statement. An AGGREGATE VIEW, not a stored document — it is assembled per request and filtered to the caller's access scope, so two callers legitimately see two different passports for the same vehicle. Modelled as a W3C credential SUBJECT, never as a credential: a passport aggregates many claims from many issuers over time, whereas a VC is one issuer's signed statement at one time.",
+  "type": "object",
+  "required": ["protocol_version", "ivid", "generated_at", "scope", "facts"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "ivid": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "scope": {
+      "description": "Which access scope this rendering was filtered to. Present so a consumer knows the view is partial.",
+      "type": "string",
+      "enum": ["public", "professional", "restricted"]
+    },
+    "vehicle": { "$ref": "https://idauto.org/protocol/0.1.0/vehicle.schema.json" },
+    "plates": { "type": "array", "items": { "$ref": "https://idauto.org/protocol/0.1.0/plate.schema.json" }, "default": [] },
+    "facts": { "type": "array", "items": { "$ref": "https://idauto.org/protocol/0.1.0/fact.schema.json" } },
+    "events": { "type": "array", "items": { "$ref": "https://idauto.org/protocol/0.1.0/event.schema.json" }, "default": [] },
+    "credentials": { "type": "array", "items": { "type": "object" }, "default": [], "description": "W3C Verifiable Credentials issued about this vehicle. See protocol/credentials/." },
+    "trust_summary": {
+      "description": "Counts per level. Deliberately NOT a single overall score: a score compresses away exactly the provenance detail a buyer needs, and invites optimising against the score rather than against reality.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "T0": { "type": "integer", "minimum": 0 },
+        "T1": { "type": "integer", "minimum": 0 },
+        "T2": { "type": "integer", "minimum": 0 },
+        "T3": { "type": "integer", "minimum": 0 },
+        "anchored": { "type": "integer", "minimum": 0 },
+        "conflicts": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "completeness_note": {
+      "description": "REQUIRED interpretive guard. Absence of evidence is not evidence of absence: a vehicle with no recorded damage has no recorded damage, which is not the same as an undamaged vehicle. Consumers MUST NOT present a passport as a certificate of condition.",
+      "type": "string"
+    },
+    "qr": {
+      "description": "Every passport has an IDauto QR representation. The QR encodes a resolvable IVID reference ONLY — never personal data, and never a bearer token that would grant access to a restricted view.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "payload": { "type": "string" },
+        "resolves_to_scope": { "type": "string", "enum": ["public"] }
+      }
+    }
+  }
+}

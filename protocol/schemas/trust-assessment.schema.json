@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/trust-assessment.schema.json",
+  "title": "TrustAssessment",
+  "description": "The computed trust state of one claim at one point in time. DERIVED, never author-supplied, and recomputable from the record and its evidence — a stored value that disagrees with recomputation is a defect, not a fact. A level may be reduced retroactively (for example when an issuer is found fraudulent); reassessment supersedes, and the prior assessment stays visible.",
+  "type": "object",
+  "required": ["protocol_version", "subject_ref", "level", "anchoring_state", "assessed_at", "rationale"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "subject_ref": { "type": "string", "description": "The Fact, Event or Credential this assesses." },
+    "level": {
+      "description": "Substantive corroboration. T0 self-declared, T1 documented, T2 professionally verified, T3 institutional.",
+      "type": "string",
+      "enum": ["T0", "T1", "T2", "T3"]
+    },
+    "anchoring_state": {
+      "description": "ORTHOGONAL to level — 'T4' in prose. Answers a DIFFERENT question: has this record been altered since it was written? It does not answer whether the claim is true. An anchored T0 claim remains a self-declaration. Implementations MUST expose level and anchoring_state as two separate values, and MUST NOT render an anchor as a verification badge, checkmark or 'verified' label.",
+      "type": "string",
+      "enum": ["not_anchored", "pending", "anchored", "failed"]
+    },
+    "rationale": {
+      "description": "Why this level was computed. Must be sufficient to reproduce the computation.",
+      "type": "object",
+      "required": ["basis"],
+      "additionalProperties": false,
+      "properties": {
+        "basis": { "type": "string", "enum": ["no_evidence", "evidence_attached", "professional_issuer_direct_handling", "institutional_source"] },
+        "issuer_did": { "type": ["string", "null"] },
+        "evidence_count": { "type": "integer", "minimum": 0 },
+        "rules_version": { "type": "string" }
+      }
+    },
+    "assessed_at": { "type": "string", "format": "date-time" },
+    "supersedes": { "type": ["string", "null"], "description": "A prior assessment this one replaces. The prior assessment is retained and remains visible." },
+    "reduction_reason": { "type": ["string", "null"], "description": "Set when this assessment lowers a previously higher level." }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/event.schema.json",
+  "title": "Event",
+  "description": "Something that happened to a vehicle. Immutable once written; a correction is a new Event carrying `supersedes`. Events are what make a passport a history rather than a snapshot.",
+  "type": "object",
+  "required": ["protocol_version", "id", "subject_ivid", "event_type", "occurred_at", "recorded_at", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "subject_ivid": { "type": "string" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "registration_created",
+        "service_performed",
+        "inspection_performed",
+        "damage_recorded",
+        "repair_performed",
+        "mileage_recorded",
+        "part_installed",
+        "part_removed",
+        "plate_changed",
+        "ownership_transferred",
+        "insurance_event_recorded",
+        "import_recorded",
+        "export_recorded",
+        "written_off",
+        "scrapped",
+        "records_merged",
+        "merge_reversed",
+        "erasure_applied"
+      ]
+    },
+    "occurred_at": { "type": "string", "format": "date-time", "description": "When the thing happened." },
+    "recorded_at": { "type": "string", "format": "date-time", "description": "When IDauto learned of it. A large gap between the two is itself informative." },
+    "mileage_km": { "type": ["integer", "null"], "minimum": 0, "description": "Append-only. A regression against an earlier record is surfaced as an anomaly, never overwritten." },
+    "detail": {
+      "description": "Event-type-specific payload. MUST NOT contain personal data of any natural person.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "supersedes": { "type": ["string", "null"] },
+    "superseded_by": { "type": ["string", "null"] },
+    "superseded_reason": { "type": ["string", "null"] },
+    "anomalies": { "type": "array", "items": { "$ref": "https://idauto.org/protocol/0.1.0/anomaly.schema.json" }, "default": [] },
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+  }
+}

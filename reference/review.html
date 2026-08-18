@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ID Auto — Review queue</title>
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Mythos OS · ID Auto</p>
+      <h1>Review queue</h1>
+      <p>Review pending observations through the existing audited ID Auto workflow.</p>
+    </header>
+    <section class="review-auth">
+      <label>Bearer token <input id="review-token" type="password" autocomplete="off"></label>
+      <button id="load-queue" type="button">Load queue</button>
+      <p class="hint">Held in this page only; never saved in browser storage.</p>
+    </section>
+    <div id="queue-status" role="status" aria-live="polite">Enter an admin token to load the queue.</div>
+    <div class="review-layout">
+      <section>
+        <h2>Pending observations</h2>
+        <div id="queue-list"></div>
+      </section>
+      <section>
+        <h2>Observation detail</h2>
+        <div id="review-detail" class="empty">Select an observation.</div>
+      </section>
+    </div>
+  </main>
+  <script src="/admin/review-ui.js"></script>
+</body>
+</html>

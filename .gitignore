@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment — never commit real values
+.env
+.env.*
+!.env.example
+.testenv
+
+# Runtime data — never in git
+media/
+uploads/
+backups/
+*.dump
+*.sql.gz
+
+# Logs and OS noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp

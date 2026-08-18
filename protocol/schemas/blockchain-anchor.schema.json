@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/blockchain-anchor.schema.json",
+  "title": "BlockchainAnchor",
+  "description": "A Merkle root over a batch of salted record hashes, committed to an external ledger. SPECIFIED, NOT IMPLEMENTED — no chain integration exists in this repository. An anchor proves existence-before-a-time and non-alteration-since. It proves NOTHING about whether the anchored record was accurate. Chain-neutral and optional: a deployment that anchors nothing is fully conforming. NO PERSONAL DATA EVER ENTERS AN ANCHOR — no payload, no person-resolving identifier, and no hash of a low-entropy personal value (which would be a lookup table, not a pseudonym).",
+  "type": "object",
+  "required": ["protocol_version", "id", "merkle_root", "hash_algorithm", "batch_size", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "merkle_root": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "hash_algorithm": { "type": "string", "enum": ["sha256"] },
+    "serialisation_version": {
+      "description": "Canonical serialisation version. Versioned independently, because changing it invalidates prior proofs — old proofs MUST remain verifiable under the old version.",
+      "type": "string"
+    },
+    "batch_size": { "type": "integer", "minimum": 1, "description": "Records in the batch. One transaction per event is NOT the model: it makes cost scale with citizen activity and turns the ledger into a timing side-channel." },
+    "batch_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "format": "date-time" },
+        "to": { "type": "string", "format": "date-time" }
+      }
+    },
+    "status": { "type": "string", "enum": ["pending", "submitted", "confirmed", "failed"] },
+    "chain": {
+      "description": "Chain-neutral. No chain is named by the protocol; this records which ledger a given deployment used. Multi-chain anchoring of the same root is supported and recommended as a hedge.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "network": { "type": "string" },
+        "transaction_ref": { "type": "string" },
+        "block_ref": { "type": ["string", "null"] },
+        "confirmed_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    }
+  },
+  "$defs": {
+    "InclusionProof": {
+      "title": "InclusionProof",
+      "description": "What a verifier needs to check one record against an anchor WITHOUT trusting IDauto: recompute the leaf hash from the canonical bytes and salt, walk the path, compare to the on-chain root. The salt is per-record and never published — without it, a low-entropy record is brute-forceable from its hash.",
+      "type": "object",
+      "required": ["record_canonical_bytes_b64", "salt_b64", "merkle_path", "anchor_ref"],
+      "additionalProperties": false,
+      "properties": {
+        "record_canonical_bytes_b64": { "type": "string" },
+        "salt_b64": { "type": "string" },
+        "merkle_path": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["sibling", "position"],
+            "additionalProperties": false,
+            "properties": {
+              "sibling": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "position": { "type": "string", "enum": ["left", "right"] }
+            }
+          }
+        },
+        "anchor_ref": { "type": "string" }
+      }
+    }
+  }
+}

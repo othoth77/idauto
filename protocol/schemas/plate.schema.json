@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/plate.schema.json",
+  "title": "Plate",
+  "description": "A registration assignment over a time interval. A plate is ONE MUTABLE ATTRIBUTE of a vehicle, never its identity: re-plating opens a new interval on the same IVID, which is why adverse history cannot be shed by changing plates. Intervals are closed, never deleted. NO OWNER FIELD EXISTS, BY CONSTRUCTION.",
+  "type": "object",
+  "required": ["protocol_version", "id", "subject_ivid", "plate_number", "valid_from"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "subject_ivid": { "type": "string" },
+    "plate_number": { "type": "string", "description": "Normalised form." },
+    "plate_raw": { "type": ["string", "null"], "description": "As captured, before normalisation." },
+    "format_code": { "type": ["string", "null"], "description": "Which configured plate format matched. Formats are configuration, never hardcoded." },
+    "region_code": { "type": ["string", "null"], "description": "Coarse region only. Never a precise location." },
+    "valid_from": { "type": "string", "format": "date-time" },
+    "valid_to": { "type": ["string", "null"], "format": "date-time", "description": "Null while the interval is open. Closing an interval never deletes it." },
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+  }
+}

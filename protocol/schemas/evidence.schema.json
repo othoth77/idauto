@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/evidence.schema.json",
+  "title": "Evidence",
+  "description": "The artefact a claim rests on. Content-addressed and immutable. Byte-identical re-use across subjects is therefore detectable by construction, which is how evidence recycling is caught.",
+  "type": "object",
+  "required": ["protocol_version", "id", "evidence_type", "content_hash", "access_scope", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "evidence_type": {
+      "type": "string",
+      "enum": ["photograph", "document_scan", "inspection_report", "invoice", "sensor_reading", "issuer_credential", "external_reference"]
+    },
+    "document_kind": {
+      "description": "Set when evidence_type is document_scan. Registration certificates and other identity documents are ALWAYS restricted scope.",
+      "type": ["string", "null"],
+      "enum": ["registration_certificate", "service_invoice", "inspection_certificate", "insurance_document", "customs_document", "other", null]
+    },
+    "content_hash": {
+      "description": "SHA-256 of the artefact bytes. The storage key is derived from this; identical bytes produce identical keys and are not duplicated.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "perceptual_hash": { "type": ["string", "null"], "description": "For near-duplicate detection, where the artefact is an image." },
+    "storage_ref": {
+      "description": "An opaque storage reference. NEVER a fetchable URL, and never returned to a caller that is not authorised for the artefact itself.",
+      "type": ["string", "null"]
+    },
+    "mime_type": { "type": ["string", "null"] },
+    "byte_size": { "type": ["integer", "null"], "minimum": 0 },
+    "redaction": {
+      "description": "Personal data encountered on an artefact is routed to its legitimate controller or discarded — never stored in the IDauto record. This field records that a redaction was applied.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "applied": { "type": "boolean", "default": false },
+        "method": { "type": ["string", "null"], "enum": ["blur", "crop", "field_omission", null] }
+      }
+    },
+    "erased": {
+      "description": "Tombstone. Set when the artefact was erased under a data-protection obligation. The Evidence record survives so history has no silent gap.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "is_erased": { "type": "boolean", "default": false },
+        "erased_at": { "type": ["string", "null"], "format": "date-time" },
+        "legal_basis": { "type": ["string", "null"] }
+      }
+    },
+    "access_scope": { "type": "string", "enum": ["public", "professional", "restricted"], "default": "restricted" },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}
