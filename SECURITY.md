@@ -96,12 +96,18 @@ Stated so you know what to test against — and what is honestly not there yet.
 - Restore tooling refuses protected system paths, any user's home root, the live media
   store, and any path inside the repository
 - Backup retention is report-only; there is no deletion path, and `--destructive` is refused
+- **Off-host backup exists and was restore-verified** (2026-08-14): dump → SHA-256 → upload →
+  fresh download → checksum match → isolated restore, 24 tables / 2,551 rows source-identical
 
 **Not present — do not assume otherwise:**
 
 - **No real authentication.** The only mechanism is an operator-provisioned map of admin
   bearer tokens to identity strings. It is not an auth service and is not described as one.
-- **No off-host backup exists.** The tooling is implemented; no off-host copy has been made.
+- **No backup *schedule*.** One verified off-host batch exists; a single batch is not a
+  backup regime. Recurring scheduling and retention automation do not exist, so treat the
+  backup gate as stale once the newest verified batch ages beyond tolerance.
+- **No verified off-host copy of the *media store*.** The verified batch covered the
+  database. Media backup and restore are implemented locally and untested off-host.
 - **No public deployment.** No IDauto API, UI or endpoint is publicly reachable.
 - **No anchoring.** No chain integration exists.
 - **No audit-on-read.** Which is why restricted reads are closed rather than logged.

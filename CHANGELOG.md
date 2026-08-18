@@ -37,7 +37,7 @@ repositioned as an open vehicle identity and history protocol.
 **Migration record**
 
 - `docs/MIGRATION_FROM_MYTHOS_PROD.md` — inventory, path mapping, dependency classification
-- `docs/MIGRATION_AUDIT_REPORT.md` — validation evidence
+- `docs/STANDALONE_MIGRATION_AUDIT.md` — validation evidence
 - `docs/AI_HANDOVER.md` — 25 implementation-record sections extracted verbatim
 
 ### Changed
@@ -61,9 +61,22 @@ scopes, the API with atomic audit logging, content-addressed media, the ingestio
 rate limiting, the review queue, off-host backup tooling, and all 13 test suites
 (601 assertions, 0 failures in the new layout).
 
-Blockers moved with the code and were not dropped: **IDA-2E** (real authentication) and
-**IDA-3F** (off-host backup) remain blocked, and every LEGAL-REVIEW-REQUIRED item remains
-open.
+Blockers moved with the code and were not dropped: **IDA-2E** (real authentication) remains
+blocked, and every LEGAL-REVIEW-REQUIRED item remains open.
+
+### Corrected on 2026-08-18, after the completeness audit
+
+The first pass of this migration reported **IDA-3F (off-host backup) as BLOCKED with no
+off-host copy in existence.** That was wrong. It relied on the IDA-3F stage entries of
+2026-08-12 without scanning forward for later entries that superseded them: on **2026-08-14**
+the object-store destination was provisioned, a transport defect in the S3 adapter was found
+and fixed, and a verified off-host backup of the database was created and restore-tested.
+The gate closed the same day. Corrected throughout, and the five superseding handover entries
+have been added to `docs/AI_HANDOVER.md`.
+
+Also added in the same pass, after the audit found them missing: `docs/RISK_REGISTER.md`
+(8 IDauto-owned open risks plus 9 cross-product), `docs/IDENTITY_ARCHITECTURE.md`, and
+`ops/runbooks/OFF_HOST_BACKUP_GATE.md`.
 
 ---
 

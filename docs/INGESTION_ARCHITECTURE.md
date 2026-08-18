@@ -3,6 +3,14 @@
 **Status:** DECIDED — binding on all IDA-3 implementation slices.
 **Stage:** `IDA-3-DESIGN-GATE` · **Decided:** 2026-08-12 · **Baseline:** `c6aef86071358d67583a60b9a63bfa2898fc15c5`
 
+> **Migrated verbatim — read as a dated design record, not as current status.** This is the
+> binding IDA-3 design of **2026-08-12** and its text is unedited. Two of its statements have
+> since been overtaken by events: §11 and the readiness table say off-host backup is absent,
+> and it was — until **2026-08-14**, when a verified, restore-tested off-host copy of the
+> database was created and the backup gate closed. `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` is
+> still **NO**, now on two blockers rather than three. Current status:
+> [`ROADMAP.md`](ROADMAP.md). Its design decisions remain binding.
+
 **Design only.** No endpoint was implemented, nothing was exposed, no SQL executed, no schema changed, nothing deployed. No scraping, OCR, or AI vision was added.
 
 **Predecessors:** [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`ROADMAP.md`](ROADMAP.md) · `MYTHOS_IDENTITY_ARCHITECTURE.md` (external — Mythos OS repository) · [`STORAGE_RUNBOOK.md`](../ops/runbooks/STORAGE_RUNBOOK.md) · `MYTHOS_STRATEGIC_EXECUTION_REVIEW_2026-08-11.md` (external — Mythos OS repository)

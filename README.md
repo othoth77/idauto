@@ -101,12 +101,12 @@ Nothing in this repository pretends to be further along than it is.
 | Read + write API, atomic audit logging | **IMPLEMENTED** (reference implementation; not deployed publicly) |
 | Content-addressed media storage | **IMPLEMENTED** |
 | Community ingestion service, rate limiting, review queue | **IMPLEMENTED** (admin-only route; no public endpoint exists) |
-| Off-host backup tooling | **IMPLEMENTED**, but no off-host copy exists yet — **BLOCKED** on object-store provisioning |
+| Off-host backup, restore-verified | **IMPLEMENTED** — a verified off-host copy of the database exists (2026-08-14); recurring scheduling and retention automation are **PLANNED** |
 | Real multi-user authentication | **BLOCKED** — see [`docs/ROADMAP.md`](docs/ROADMAP.md) IDA-2E |
 | Citizen passport, professional issuers, AI verification | **SPECIFIED**, not implemented |
 | W3C Verifiable Credentials / DID interoperability | **SPECIFIED**, not implemented |
 | Blockchain anchoring and Merkle batching | **SPECIFIED**, not implemented — no chain integration exists in this repository |
-| Public capture surface | **BLOCKED** — legal review, off-host backup and real auth all outstanding |
+| Public capture surface | **BLOCKED** — legal review and real authentication outstanding |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /
 LEGAL-REVIEW-REQUIRED in [`docs/ROADMAP.md`](docs/ROADMAP.md), and those tags are meant
@@ -143,6 +143,7 @@ Test execution, including which suites need a live database, is documented in
 **Protocol and architecture**
 [`OPEN_VEHICLE_IDENTITY_PROTOCOL.md`](docs/OPEN_VEHICLE_IDENTITY_PROTOCOL.md) ·
 [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
+[`IDENTITY_ARCHITECTURE.md`](docs/IDENTITY_ARCHITECTURE.md) ·
 [`TRUST_MODEL.md`](docs/TRUST_MODEL.md) ·
 [`PRIVACY_ARCHITECTURE.md`](docs/PRIVACY_ARCHITECTURE.md) ·
 [`BLOCKCHAIN_ARCHITECTURE.md`](docs/BLOCKCHAIN_ARCHITECTURE.md) ·
@@ -155,8 +156,9 @@ Test execution, including which suites need a live database, is documented in
 [`INGESTION_ARCHITECTURE.md`](docs/INGESTION_ARCHITECTURE.md) ·
 [`FIXPERT_INTEGRATION.md`](docs/FIXPERT_INTEGRATION.md)
 
-**Strategy and governance**
+**Strategy, risk and governance**
 [`ROADMAP.md`](docs/ROADMAP.md) ·
+[`RISK_REGISTER.md`](docs/RISK_REGISTER.md) ·
 [`ROADMAP_EVOLUTION_2026-08-18.md`](docs/ROADMAP_EVOLUTION_2026-08-18.md) ·
 [`OPEN_SOURCE_STRATEGY.md`](docs/OPEN_SOURCE_STRATEGY.md) ·
 [`BUSINESS_MODEL.md`](docs/BUSINESS_MODEL.md) ·
@@ -165,10 +167,15 @@ Test execution, including which suites need a live database, is documented in
 [`CONTRIBUTING.md`](CONTRIBUTING.md) ·
 [`SECURITY.md`](SECURITY.md)
 
+**Operations**
+[`TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md) ·
+[`STORAGE_RUNBOOK.md`](ops/runbooks/STORAGE_RUNBOOK.md) ·
+[`OFF_HOST_BACKUP_GATE.md`](ops/runbooks/OFF_HOST_BACKUP_GATE.md)
+
 **History**
 [`AI_HANDOVER.md`](docs/AI_HANDOVER.md) ·
 [`MIGRATION_FROM_MYTHOS_PROD.md`](docs/MIGRATION_FROM_MYTHOS_PROD.md) ·
-[`MIGRATION_AUDIT_REPORT.md`](docs/MIGRATION_AUDIT_REPORT.md) ·
+[`STANDALONE_MIGRATION_AUDIT.md`](docs/STANDALONE_MIGRATION_AUDIT.md) ·
 [`CHANGELOG.md`](CHANGELOG.md)
 
 ---

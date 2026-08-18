@@ -89,12 +89,18 @@ Enforced at the ingestion boundary, before storage:
 
 - IP addresses are **hashed** before storage (`ip_hash`, 64-char hex). No dotted or colonned
   address is ever persisted. *Verified on live data: every stored value is a hex digest.*
-- `ip_hash` is stored on the **submission envelope only** — never propagated to the
-  observation, and never written into an audit row. *Verified: zero observations and zero
-  audit rows carry one.*
+- `ip_hash` is populated on the **submission envelope only**. An `ip_hash` *column* also
+  exists on `idauto_observations`, `idauto_audit_log`, `idauto_capture_sessions`,
+  `idauto_consent_records` and `idauto_verifications` — the discipline is that the ingestion
+  path never writes to them. Stated precisely because "confined to submissions" is a claim
+  about **values**, not about the schema. *Verified on live data 2026-08-18: 24 submission
+  rows carry an `ip_hash`, every one a 64-character hex digest; **0 of 58 observations** and
+  **0 of 183 audit rows** carry one.*
 - Anonymous submissions create **no contributor record** and leave `actor_ref` and
-  `contributor_id` NULL. Anonymity is the absence of a record, not a record labelled
-  "anonymous".
+  `contributor_id` NULL. Anonymity is the absence of an identifier, not an identifier that
+  says "anonymous". *Verified on live data: all 54 audit rows with a NULL `actor_ref` carry
+  `actor_type = 'anonymous'`, and no other actor type ever has a NULL reference — so an
+  unattributed row is always a deliberate anonymous one, never a lost attribution.*
 - Ingestion-created media defaults to **restricted** scope. Widening is explicit, never
   default.
 - Precise location lives in its own table (`idauto_observation_locations`), restricted in
@@ -203,5 +209,7 @@ stated rather than assumed:
 | Erasure with tombstones | **SPECIFIED** — not implemented |
 | Real multi-user authentication | **BLOCKED** — see [`ROADMAP.md`](ROADMAP.md) IDA-2E |
 | Audit-on-read for restricted scope | **PLANNED** — required before any restricted read is exposed |
-| Off-host backup of evidence | **BLOCKED** — tooling implemented, no off-host copy exists |
-| Public capture surface | **BLOCKED** on legal review, off-host backup and real auth |
+| Off-host backup of the database | **IMPLEMENTED** — verified and restore-tested 2026-08-14 |
+| Off-host backup of the *media* store | **PLANNED** — the verified batch covered the database only |
+| Recurring backup schedule | **PLANNED** — one verified batch is not a regime |
+| Public capture surface | **BLOCKED** on legal review and real authentication |

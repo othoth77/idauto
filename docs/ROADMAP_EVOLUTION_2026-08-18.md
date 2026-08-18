@@ -26,7 +26,9 @@ The founding privacy constraint is unchanged and remains non-negotiable:
 > insurance identity, or any other protected personal information.
 
 The known blockers moved with the code and are not quietly dropped: real authentication is
-**BLOCKED**, off-host backup is **BLOCKED**, and every legal-review item remains open.
+**BLOCKED**, and every legal-review item remains open. (Off-host backup was reported blocked
+in this document's first draft; a completeness audit the same day found it had been executed
+and restore-verified on 2026-08-14. Corrected — see [`ROADMAP.md`](ROADMAP.md) IDA-3F.)
 
 ---
 
@@ -206,8 +208,9 @@ Stated plainly, because a strategy document that lists only wins is not a strate
 2. **Legal review is still open.** Public capture, GPS collection, public plate lookup,
    registration-certificate OCR and contributor consent are all unreviewed. No public
    surface may be exposed until they are.
-3. **Off-host backup is still BLOCKED.** The tooling exists and is tested offline; no
-   off-host copy exists. This gates any stage accepting real evidence.
+3. **There is no backup *schedule*.** A verified off-host copy of the database exists
+   (2026-08-14) and the gate is closed, but one batch is not a regime, and the media store
+   has no verified off-host copy. Both must be addressed before real evidence accumulates.
 4. **Professional adoption is unproven.** The whole growth loop depends on garages
    recording work. Nothing here demonstrates they will, and §3.1's citizen-first choice
    reduces but does not remove that dependency.
@@ -234,5 +237,5 @@ status tags, in [`ROADMAP.md`](ROADMAP.md).
 | IDA-5 | Was *Professional partner network*; now **Professional Issuers / Garage Network** | Reframed around verifiable issuer identity |
 | IDA-6 | Was *National enrichment / launch*; now **AI Trust & Anomaly Engine** | Absorbs Smart Gate; national enrichment moves to IDA-9 |
 | IDA-7 | **New** — Verifiable Credentials / DID interoperability | Also where real auth is finally resolved |
-| IDA-8 | **New** — Blockchain anchoring / Merkle proofs | Gated on IDA-7 and on off-host backup |
+| IDA-8 | **New** — Blockchain anchoring / Merkle proofs | Gated on IDA-7 and on a durable backup regime |
 | IDA-9 | **New** — Open protocol, ecosystem, internationalisation, part identity | |

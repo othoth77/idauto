@@ -34,8 +34,8 @@ anywhere.
 | IDA-0 | Foundation | ✅ **IMPLEMENTED** (2026-08-05) |
 | IDA-1 | Product specification & governance | ✅ **IMPLEMENTED** (2026-08-05) |
 | IDA-2 | PostgreSQL, API, manual capture | ✅ **IMPLEMENTED** with two explicit exceptions (2026-08-11) |
-| IDA-3 | Community ingestion, trust, enforcement | ✅ **IMPLEMENTED** A–E; F **BLOCKED**; G–I not started (2026-08-12) |
-| IDA-4 | Citizen Vehicle Passport | **SPECIFIED** — blocked on IDA-2E, IDA-3F, legal review |
+| IDA-3 | Community ingestion, trust, enforcement | ✅ **IMPLEMENTED** A–F; G–I not started |
+| IDA-4 | Citizen Vehicle Passport | **SPECIFIED** — blocked on IDA-2E and legal review |
 | IDA-5 | Professional Issuers / Garage Network | **SPECIFIED** |
 | IDA-6 | AI Trust & Anomaly Engine (incl. Smart Gate) | **SPECIFIED** |
 | IDA-7 | Verifiable Credentials / DID interoperability | **SPECIFIED** |
@@ -113,7 +113,8 @@ which is explicitly not authentication.
 
 - Live-test fixtures accumulate by design; a fixture lifecycle is undefined. Not a present
   correctness problem, and it should be defined before volume makes backups material.
-- The media directory has no external backup. Addressed by IDA-3F — which is itself blocked.
+- The media directory has no *verified off-host* backup. IDA-3F's verified batch covered the
+  database; media backup and restore exist locally but have not been exercised off-host.
 
 ---
 
@@ -131,37 +132,56 @@ IDA-1/IDA-2 schema had anticipated community capture.
 | **3C** | Rate-limit enforcement (resolving the deferred 2I question) | ✅ 63 tests |
 | **3D** | Private **admin-only** ingestion route. No public endpoint was created | ✅ 73 tests |
 | **3E** | Admin review queue | ✅ 48 tests |
-| **3F** | Off-host backup tooling — provider-neutral core, SigV4 adapter using only Node built-ins, no dependency added. Offline suite reproduces AWS's published SigV4 vector exactly | ⛔ **BLOCKED** |
+| **3F** | Off-host backup — provider-neutral core, SigV4 adapter using only Node built-ins, no dependency added. Offline suite reproduces AWS's published SigV4 vector exactly. **Executed and restore-verified 2026-08-14** | ✅ 35 tests; gate CLOSED |
 | **3G** | Consent and legal gate | **LEGAL-REVIEW-REQUIRED** — not started |
-| **3H** | Authenticated pilot | **BLOCKED** on 3F and IDA-2E — not started |
+| **3H** | Authenticated pilot | **BLOCKED** on IDA-2E (real auth) — not started |
 | **3I** | Public capture gate | **BLOCKED** — not started |
 
-### ⛔ IDA-3F — BLOCKED
+### ✅ IDA-3F — EXECUTED AND RESTORE-VERIFIED (2026-08-14)
 
-The tooling is implemented, merged and verified offline (35 assertions). **No off-host copy
-exists.** Discovery found no usable off-host destination configured anywhere — no sync tool
-installed, no credentials, no second host, no object store.
+> **Status correction, 2026-08-18.** The first pass of the standalone migration reported this
+> stage as BLOCKED with no off-host copy in existence. That was wrong: it read the IDA-3F
+> entries of 2026-08-12 without scanning forward to the entries that superseded them. The
+> record is in [`AI_HANDOVER.md`](AI_HANDOVER.md); the gate table is in
+> [`../ops/runbooks/OFF_HOST_BACKUP_GATE.md`](../ops/runbooks/OFF_HOST_BACKUP_GATE.md) §6.
 
-Writing backups to another directory on the same host was deliberately **not** done: the
-risk is host or disk loss, so a same-host copy would satisfy nothing while making the gate
-look closed.
+What actually happened, in order:
 
-Retention is report-only by construction — there is no deletion path, and `--destructive` is
-refused outright.
+1. **2026-08-12** — tooling merged, verified offline (30 assertions). No destination existed,
+   and the stage was correctly declared incomplete rather than closed. Writing backups to
+   another directory on the same host was deliberately *not* done: the risk is host or disk
+   loss, so a same-host copy would have satisfied nothing while making the gate look closed.
+2. **2026-08-14** — the object-store destination was provisioned, and a connectivity test
+   found **two real defects the offline suite could not have caught**: the default HTTPS
+   transport had *never worked* (options were passed in a shape Node ignores, so every real
+   request went to `localhost`), and no DELETE operation existed, making verification
+   round-trips impossible. Both fixed; the suite went to 34, then 35 after a `Content-Length`
+   fix that only surfaced at real dump size. The SigV4 signing itself was left byte-untouched
+   and is still pinned by AWS's published vector.
+3. **2026-08-14** — the backup ran: dump → SHA-256 (C1) → upload → **fresh download** →
+   SHA-256 (C2) → C1 == C2 → **isolated restore** into a throwaway container with
+   `--network none` → **24 tables / 2,551 rows, source-identical**. Local dumps removed
+   afterwards; zero credentials in the repository, verified by direct value comparison.
 
-**To close:** provision a private object store with least-privilege credentials and
-object-lock or versioning, store the credential outside the repository at mode 600, run
-push → verify-remote → an isolated restore drill, and record checksums. Only then is the
-stage complete.
+All seven backup-gate conditions are **MET** and the gate is **CLOSED**.
 
-**Risk accepted while blocked:** all backups live on the same host as the data they protect.
-Acceptable only while the data is synthetic — which is why 3F gates any stage accepting real
-evidence.
+**The lesson worth keeping:** a suite that injects a mock transport proves the logic and
+nothing about the wire. Thirty passing tests coexisted with a transport that had never once
+connected to the right host.
+
+**Still outstanding, and not claimed as done:**
+
+- **No schedule.** One verified batch is not a backup regime. Recurring backups, retention
+  automation and deployment integration are separate, not-yet-authorised work, and the gate
+  should be treated as stale once the newest verified batch ages beyond tolerance.
+- **The media store has no verified off-host copy.** The batch covered the database.
+- Retention remains **report-only by construction** — no deletion path exists, and
+  `--destructive` is refused outright.
 
 ### `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT = NO`
 
-Three independent blockers, all open: off-host backup (3F), legal/consent review (3G), and
-real authentication (IDA-2E → IDA-7).
+**Two** independent blockers remain open: legal/consent review (3G) and real authentication
+(IDA-2E → IDA-7). The third — off-host backup (3F) — **closed on 2026-08-14**.
 
 ---
 
@@ -250,7 +270,7 @@ verifier so the trustlessness claim is checkable without IDauto; multi-chain anc
 hedge.
 
 **Hard gate — anchoring must not begin until all six hold:** off-host backup operational and
-restore-tested; real authentication exists; canonical serialisation specified and
+restore-tested (**met 2026-08-14**, though without a recurring schedule); real authentication exists; canonical serialisation specified and
 independently implemented twice; the salt store's backup and recovery tested; legal review
 confirms no personal data can reach an anchor; the independent verifier exists and is
 published.
@@ -301,7 +321,7 @@ None of these is resolved. Each blocks the stage named.
 | Blocker | Blocks | Resolution |
 |---|---|---|
 | **Real authentication** (IDA-2E) | IDA-3H, IDA-4, everything citizen-facing | Build on W3C primitives at IDA-7 |
-| **Off-host backup** (IDA-3F) | IDA-3H, IDA-3I, any stage accepting real evidence | Provision an off-host store; run push, verify, restore drill |
+| **No backup *schedule*** | Degrades the closed IDA-3F gate over time | One verified batch exists (2026-08-14). Add recurring backups, retention automation, and off-host coverage of the media store |
 | **Legal review** (IDA-3G) | Every public surface | Answer the items above |
 | **Plate formats unverified** | Accuracy of validation in the first market | Confirm against an official source |
 | **Test fixture lifecycle undefined** | Nothing today | Define before volume makes backups material |

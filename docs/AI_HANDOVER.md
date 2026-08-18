@@ -27,6 +27,238 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+> **These five entries were added to the extraction on 2026-08-18 after an audit found them
+> missing.** They post-date the IDA-3F entries below and **supersede them**: they record that
+> the off-host destination was provisioned, that the S3 adapter's default transport was found
+> never to have worked over a real network, and that a verified off-host backup of the
+> `idauto` database now exists. Their scope spans three production databases, of which
+> `idauto` is one; they are reproduced whole rather than excerpted. See
+> [`ROADMAP.md`](ROADMAP.md) IDA-3F for the resulting status.
+
+## FINAL VPS INVENTORY RECONCILIATION (2026-08-14) — PASS · GATE CLOSED
+
+**The OFF-HOST-BACKUP-GATE is CLOSED.** Condition G — the last open one — was met by this reconciliation; A–F were met by the R2 provisioning, the batch-`20260814T161856Z` execution, and the owner's PC-gate declaration. The gate table in `docs/OFF_HOST_BACKUP_GATE.md` §6 is updated with per-condition evidence.
+
+### Reconciliation results (all read-only)
+
+| Check | Result |
+|---|---|
+| Git | HEAD `a5e46223ebd0ef96636d946ee8667b4a3b7c0c5c` == origin/main, worktree clean, 0 staged, 0 untracked |
+| R2 backups | **3/3 verified by signed HEAD metadata** — sizes and sha256 metadata match recorded C1 for all three; bucket holds exactly 3 objects, nothing was re-downloaded |
+| Temp backup files | 0 (`/var/backups/mythos` empty, verify dir removed, no `/tmp` artefacts) |
+| Temp restore containers / volumes | 0 / 0 |
+| Docker census | containers/volumes **identical to the pre-backup baseline**, networks 9, 0 unhealthy, 26 running |
+| Production DBs | all healthy, 0 restarts; idauto **24 tables / 2,551 rows** (pre-backup baseline identical), coolify 66 tables, darhijama_prod 39 tables |
+| Coolify stack | coolify, coolify-db, coolify-redis, coolify-realtime, coolify-sentinel — all healthy |
+| Credentials | 0 tracked, 0 in any project file (verified by direct value comparison, tracked **and** untracked); config outside repo, owner `ubuntu`, mode `0600` |
+| Code changes from backup execution | the two commits contain exactly the authorised adapter completion (`254592b`) and documentation (`a5e4622`) — no application code beyond that, no schema, no data |
+
+### What gate closure means — and does not mean
+
+`migrate.js` may now be given `backupGateClosed: true` **truthfully**. The assertion stays per-run and operator-made: it becomes false again the moment backups stop being current or restore-verified. **One verified batch is not a schedule** — recurring backups, retention automation and Coolify integration remain separate, not-yet-authorised work.
+
+### MPI runner gate status after this closure
+
+`backupGateClosed` ✔ truthful · `pcGateClosed` ✔ owner-declared · `inventoryReconciled` ✔ this reconciliation. **The three external gates of `migrate.js` can all be truthfully asserted for the first time.** MPI production migration remains blocked on its own prerequisites: F8/F9 ratification, D1/D2/D3/D5, activation and observability decisions.
+
+### Next stage
+
+Owner's choice: **BACKUP SCHEDULING** (recurring off-host backups, retention, Coolify) or **MPI F8/F9 RATIFICATION → IMPLEMENTATION**. Neither may start without a separate instruction.
+
+---
+
+## OFF-HOST BACKUP EXECUTION (2026-08-14) — PASS
+
+**Batch:** `20260814T161856Z` · **Destination:** R2 `mythos-offhost-backups` (bucket-scoped credential; config outside Git at mode 0600)
+
+**For the first time in this project's history, verified off-host backups of all three production databases exist.** The full C1 → upload → fresh download → C2 → isolated-restore chain passed for every database.
+
+### Evidence table
+
+| Database | Format | Size | C1 = C2 (SHA-256) | R2 object | Restore test |
+|---|---|---|---|---|---|
+| `idauto` (PG 15.18) | `pg_dump -Fc` in-container | 199,620 B | `badc4f82f36fc2aa8c75150bbbb16f943d71991e669477b1dcb1ba5f51197c80` | `idauto/20260814T161856Z/idauto-20260814T161856Z.dump` | **PASS** — `--exit-on-error` exit 0; **24 tables / 2,551 rows, source-identical** |
+| `coolify` (PG 15.19) | `pg_dump -Fc` in-container | 1,488,149 B | `6aab736f9cf0e19afdc7058f6e943c439b47a11792a752c1044e052ec2f78c10` | `coolify-db/20260814T161856Z/coolify-20260814T161856Z.dump` | **PASS** — exit 0; **66 tables**, 65 PKs |
+| `darhijama_prod` (MySQL 8.4.11) | `mysqldump --single-transaction --routines --triggers --events` in-container | 64,224 B | `32e65059f46b2af8400f73c582cab90aea64137be2b642218b97321d6285e9f1` | `darhijama-prod/20260814T161856Z/darhijama_prod-20260814T161856Z.sql` | **PASS** — exit 0; **39 tables**, largest table row-count source-identical (56=56), routines/triggers 0/0 matching source |
+| — | — | — | — | — | — |
+
+Every dump was created by the utility **inside its own container** (client==server version), uploaded and downloaded through the production S3 adapter's default transport, and restored from the **downloaded** copy into isolated scratch containers (`--network none`, tmpfs, no volume, no port), then destroyed. Remote sha256 metadata on each object also matches C1.
+
+### One defect found and fixed mid-stage (authorised deviation)
+
+The first real upload failed with **HTTP 411 `MissingContentLength`**: Node uses chunked transfer-encoding without an explicit `Content-Length`, which R2 tolerated for the tiny connectivity object but rejects at dump size. This was the previous stage's transport fix being incomplete, and was completed under that stage's authority as its own commit (`254592b`): `transportOptions()` now takes the body length and sets `content-length` in the default transport only (not a signed header — signature undisturbed; mock contract unchanged). Pinned by test 35; IDA-3F **35/35**. **Consequence: the stage-start checkpoint `eba1690` advanced to `254592b` before the docs commit.**
+
+Also learned, recorded for the future runbook: `mysql:8.4`'s entrypoint starts a **temporary** init server first — a restore begun after the first successful `mysqladmin ping` can be killed mid-flight when the entrypoint swaps to the final server. Wait for the *second* "ready for connections" (port 3306) line.
+
+### Safety results
+
+Production DBs modified **0** (post-run: idauto 24/2551, darhijama 39 — identical; all healthy, 0 restarts) · census 26/20/9 identical · temporary restore containers/volumes **0** · local dumps **removed** after off-host verification (0 remain) · credentials in Git **0** (verified by direct value comparison) · R2 holds exactly the **3** verified objects — **not deleted, they are the backups**.
+
+### Gate consequence
+
+Backup-gate conditions **B, C, D, E are now MET** (backup created; C1 recorded; C1==C2 on fresh download; restore-from-download proven). Combined with the live destination (A) and the owner-declared PC gate closure (F), **the OFF-HOST-BACKUP-GATE is effectively satisfied except G (final VPS inventory reconciliation)** — the runbook's `docs/OFF_HOST_BACKUP_GATE.md` §6 table should be updated at next touch. Not yet done: Coolify configuration, backup scheduling, retention automation — all explicitly out of this stage's scope.
+
+### Next stage
+
+**BACKUP SCHEDULING + GATE CLOSURE REVIEW** (separate instruction), then MPI F8/F9 ratification/implementation. MPI production migration remains blocked until the runner's three gates can be truthfully asserted.
+
+---
+
+## OFF-HOST S3 ADAPTER FIX (2026-08-14) — TRANSPORT + DELETE
+
+**Status: FIXED, live-verified.** Scope strictly the two defects found during the R2 connectivity test. No database backup was run, no Coolify change, no schedule, no production database touched.
+
+### Context: R2 destination is LIVE and connectivity-proven
+
+Cloudflare R2 bucket `mythos-offhost-backups` (endpoint account `771b5c57…f`, region `auto`, bucket-scoped Object Read & Write credential) is provisioned. Credentials live **only** in `/home/ubuntu/.config/mythos/idauto-offhost.env`, mode `0600`, outside the repository — the operator supplied them via their own terminal; they were delivered in AWS-CLI key names and renamed in place to the loader's convention (`ACCESS_KEY_ID`, `SECRET_ACCESS_KEY`, `ENDPOINT`, `REGION`, `BUCKET`) without any value being read or printed. Verified by direct in-memory comparison: **neither credential value appears in any tracked file.**
+
+The initial connectivity test (scratch harness) passed 10/10: upload → list → download → **SHA-256 round-trip identical** → delete (204) → bucket empty. It also exposed the two adapter defects fixed here.
+
+### Defect 1 — default transport never worked
+
+`s3-compatible.js` passed `{url}` to `https.request()`, whose options have **no `url` key** — Node ignored it and connected to `localhost:443` (proven: `ERR_TLS_CERT_ALTNAME_INVALID` from the local proxy). The IDA-3F suite passed 30/30 because every test injects a mock `requestImpl`; the real network path had never been exercised. **Fix:** new exported `transportOptions()` translates `{method, url, headers}` into `{hostname, port, path, method, headers}` plus a 60 s timeout that fails closed into the existing `provider unavailable` path. The injected-transport contract is unchanged, so all existing mocks remain valid.
+
+### Defect 2 — no DELETE operation
+
+`capabilities()` declared `delete: false`; only put/get/head/list existed, making verification round-trips impossible. **Fix:** `del()` added, `capabilities().delete` now true. **The append-only design stance is preserved where it actually lives:** core `retention()` remains report-only and never calls `del()` ("Deletion requires separate authorisation" — unchanged), and the header now records that true append-only enforcement belongs to the provider-side credential scope, not to the absence of a client method.
+
+### Evidence
+
+- **SigV4 `sign()` byte-untouched** — AWS published vector (test 29) still pins it; a new deterministic **DELETE vector is pinned** (test 34, fake creds, fixed date).
+- **IDA-3F: 34 passed, 0 failed** (30 existing + 4 new: transport URL handling, DELETE signing/204, mock-contract compatibility, DELETE vector).
+- **Live round-trip through the fixed adapter's own default transport** — no harness: put (200, sha metadata) → list → head (sha256 metadata verified) → get (**byte-identical**) → del (**204**) → **bucket empty**. 6/6.
+- Relevant full suites: **mythos-orchestrator-0 156/156** (leak detector), **devx-1 92/92**. Production census 26/20/9, 0 restarts, all healthy.
+
+### Consequence
+
+**The off-host tooling can now genuinely reach R2.** The remaining gap to closing the OFF-HOST-BACKUP-GATE is execution: dump the three production databases (§ runbook `docs/OFF_HOST_BACKUP_GATE.md`), C1 → upload → fresh download → C2 → C1==C2 → isolated restore test → gate closure. **Not started — awaiting separate instruction.**
+
+### Gates
+
+OFF-HOST-BACKUP-GATE **still BLOCKED** (destination now ready; backups not yet taken) · PC gate **CLOSED** · MPI F8/F9 **ready for ratification** · production migration **BLOCKED**.
+
+### Next stage
+
+**OFF-HOST BACKUP EXECUTION** (separate instruction required), then gate closure, then MPI F8/F9 ratification/implementation.
+
+---
+
+## OFF-HOST BACKUP PREPARATION (2026-08-14) — DESIGN / READ-ONLY ONLY
+
+**Status: runbook READY, execution BLOCKED.** Deliverable: **`docs/OFF_HOST_BACKUP_GATE.md`** (new; no such file previously existed).
+
+**Production DB modified 0 · production data copied 0 · production backups 0 · no dump taken · no bucket, credential or tooling created · no destination registered.** All source inspection was read-only.
+
+### The finding that shaped this stage: the tooling already exists
+
+The repository **already contains a working, provider-neutral, S3-compatible off-host backup implementation** — `projects/idauto/ops/offhost-backup.js` plus `projects/idauto/ops/adapters/s3-compatible.js`, covered by `tests/ida-3f-offhost-backup-test.js`. It is **R2-ready as written**: AWS SigV4 signing, HTTPS-only endpoints enforced, config-file mode `0600` enforced, injectable transport so it tests offline.
+
+**No new tooling is needed and none should be installed** — not `rclone`, `aws`, or `s3cmd`. A second mechanism would mean two backup paths sharing one set of guarantees.
+
+**The one real gap:** that tooling backs up *file artefacts with a manifest*. Database dumps are files it **carries**, not files it produces. The dump step is an addition in front of the existing pipeline, not a replacement — recorded as §4.D of the runbook.
+
+### Sources — verified read-only, and one detail that would have bitten
+
+| # | Container | Database | Engine | Tables | Size |
+|---|---|---|---|---|---|
+| 1 | `idauto-postgres` | `idauto` | PostgreSQL **15.18** | 24 | 11 MB |
+| 2 | `coolify-db` | `coolify` | PostgreSQL **15.19** | 66 | 24 MB |
+| 3 | `dar-hijama-production-mysql-1` | `darhijama_prod` | MySQL **8.4.11** | 39 | — |
+
+The two PostgreSQL servers are on **different minor versions**. A `pg_dump` client older than its server refuses to run, so no single external client can safely serve both. The runbook therefore requires `pg_dump` to run **inside each source container**, which matches client to server and removes any need for a network path to the database. Container credentials stay in container environment variables — never on a command line.
+
+### The four artefacts the gate depends on keeping separate
+
+**C1** source checksum · **O** uploaded object · **C2** checksum of a *freshly downloaded* copy · **R** restored database. **C1 == C2 is the round-trip proof**; **R is never byte-comparable** and is validated structurally against the table/row counts above.
+
+Two traps written into the runbook explicitly: **do not use ETag as the checksum** (for multipart uploads it is a hash-of-hashes, not a content hash), and **do not re-hash the local original** and call it a round trip — that proves only that the disk still works.
+
+### Validation performed
+
+- `tests/ida-3f-offhost-backup-test.js` — **30 passed, 0 failed**, including an **AWS-published SigV4 test vector**, so the signing is correct against a known-good reference and works with R2 unchanged.
+- 8 runbook claims checked **against the adapter source** rather than trusted from reading: config path, mode-0600 enforcement, non-HTTPS refusal, the five required config keys, SigV4, injectable transport, and the exported `push`/`verifyRemote`/`restoreVerify`/`retention`/`redact` surface. **All 8 verified.**
+
+No check requiring the absent destination was executed.
+
+### R2 contract — documented, not created
+
+Config lives at `~/.config/mythos/idauto-offhost.env`, mode `0600`, keys `ENDPOINT` / `REGION=auto` / `BUCKET` / `ACCESS_KEY_ID` / `SECRET_ACCESS_KEY`, with a **bucket-scoped** credential. **The owner writes this file directly.** No secret value appears in Git, this handover, logs, shell history, test output, or any report — and none was seen this session.
+
+### Gate status
+
+| Gate | Status |
+|---|---|
+| A — authorised destination exists | **BLOCKED** (0 `s3_storages`, no config file) |
+| B–E — backup, C1, C1==C2, restore-from-download | NOT STARTED (blocked by A) |
+| F — PC-DECOMMISSION-GATE | **CLOSED** — owner-declared 2026-08-14 |
+| G — final VPS inventory reconciled | pending the PC audit report |
+
+**Production migration remains BLOCKED**, enforced in code: `migrate.js` refuses to run without an explicit `backupGateClosed` assertion.
+
+### Next blocker — one owner action
+
+Create the R2 bucket and a bucket-scoped credential, then write `~/.config/mythos/idauto-offhost.env` with mode `0600`. Nothing else is missing: tooling, runbook, validation procedure and isolation requirements are all in place and tested offline.
+
+---
+
+## GATE CLOSURE ATTEMPT — OFF-HOST BACKUP + PC-DECOMMISSION (2026-08-14)
+
+**Status: NEITHER GATE CLOSED.** Both blockers are external to this session and cannot be resolved from the VPS. **Production databases modified: 0** (read-only `SELECT count(*)` only). **PC files deleted: 0** — the PC was never contacted.
+
+### Off-host backup — BLOCKED (single authorised check performed, not to be repeated)
+
+| Evidence | Result |
+|---|---|
+| Coolify `s3_storages` | **0** rows (0 usable) |
+| Coolify `scheduled_database_backups` | **0** (0 enabled) |
+| `scheduled_database_backup_executions` | **0** |
+| `scheduled_volume_backups` | **0** |
+| Object-storage tooling (`rclone`, `aws`, `s3cmd`, `restic`, `borg`, `mc`, `b2`, `gsutil`, `az`) | **none installed** |
+| Backup credentials (`rclone.conf`, `~/.aws/credentials`, `~/.s3cfg`, `/etc/restic`) | **none present** |
+| Destination endpoints in the repository | **none** |
+
+**No authorised off-host destination exists.** Per the standing rule, no account, bucket, API key, billing arrangement or credential was created. **§2 did not execute** — there is nowhere to upload to, so the dump → SHA-256 → upload → download → verify → restore-test cycle has no destination and was not attempted. This audit is now settled; it should not be repeated until the owner provisions a destination.
+
+### PC-Decommission Gate — OPEN, and the reason is concrete
+
+**The audit could not run.** Three findings:
+
+1. **`pc-audit.ps1` never existed.** Not on the VPS, and not anywhere in Git history (`git log --all --diff-filter=A`). The premise that one was already prepared is incorrect.
+2. **The VPS cannot reach the PC.** No VNC/RDP client is installed, there is no reverse tunnel, and no PC host entry exists.
+3. **The noVNC listener is pointed the wrong way for this purpose.** `127.0.0.1:6080` (websockify) serves *the VPS's own desktop* — it is a route **in to** the VPS, not **out to** the PC. Direction matters, and mistaking it would produce a confident audit of the wrong machine.
+
+**Delivered instead:** `scripts/pc-audit.ps1` — the "or equivalent read-only mechanism" the order permits. The owner runs it on the PC; it emits a JSON report to transfer back for reconciliation.
+
+It is **strictly read-only** and verified so: the only git verbs it invokes are `status`, `rev-parse`, `rev-list`, `for-each-ref`, `branch`, `log`, `ls-files`, `remote`. It never pulls, pushes, fetches, commits, resets, checks out, stashes or cleans, deletes nothing, and its single write is the report file.
+
+It covers what the gate actually needs:
+
+- **All four working copies** — branch, HEAD, upstream, ahead/behind, modified and untracked files with SHA-256, and every commit **not present on any remote**, which is the evidence that decides PC-UNIQUE vs CANONICAL-IN-GITHUB.
+- **A path discrepancy handled by probing, not guessing.** This handover records three of the copies at `C:\Users\Othman\…`; the audit order specifies `Desktop\…`. The script probes **both** candidates per target and reports which exists. Guessing would have silently audited the wrong directory, or declared a real working copy absent.
+- **A whole-PC sweep** — every `.git` on every fixed drive, loose development files outside any repository, and all copies of `mythos_data.json`. Without this, prerequisite #9 ("no unique development material exists only on PC") can only be *assumed*, and assuming it is exactly what a decommission gate exists to prevent.
+- **`ahead`/`behind` computed without fetching**, so the value reflects the clone's last known remote state. Recorded honestly in the report rather than made accurate by a mutating `fetch`.
+
+### Reconciliation status — unchanged, and unchangeable from here
+
+The 1,564-file manifest still stands as previously recorded: **959 + 217 TRANSFERRED · 65 NOT TRANSFERRED — INTENTIONAL (sensitive, stays on PC) · 322 assumed CANONICAL_IN_GIT · 1 UNRESOLVED (`mythos_data.json`, personal-data snapshot, must not be transferred) · MISSING: none.**
+
+The **322 files remain the sharpest open risk**, exactly as before: they were left on the PC on the assumption Git already holds them, and that assumption is still unverified. **29 of them** sit under `mythos-prod-stage3b` and `mythos-prod-work`, for which **no remote repository and no corresponding remote branch exist at all**. Until the audit runs, those 29 must be treated as **UNRESOLVED — PC UNIQUE**. Nothing was pushed to change that, and nothing should be.
+
+### Gate decision
+
+**PC-DECOMMISSION-GATE = OPEN.** Of the seven closure conditions, four cannot be evaluated without the PC report: working copies verified · no unexplained unique work · whole-PC inventory complete · all material in a final state. Sensitive exclusions are documented, and no PC file was deleted.
+
+### Next blocker — precisely two things, both owner actions
+
+1. **Provision an authorised off-host destination** (or state that one will not exist, which would require re-planning the backup gate rather than waiting on it).
+2. **Run `scripts/pc-audit.ps1` on the PC** and return `pc-audit-report.json`. Reconciliation and the gate decision can then be completed from the report alone, with no further PC access.
+
+Until both are done, **MPI-2A production migration stays blocked** — and the migration runner enforces this in code, not merely in prose.
+
+---
+
+---
+
 ## OWNER DECISION — IDA-3F DEFERRED (2026-08-12)
 
 **Status: `BLOCKED / DEFERRED`.** The owner has intentionally postponed Cloudflare R2 provisioning and the completion of IDA-3F, because R2 activation requires billing/payment setup.
