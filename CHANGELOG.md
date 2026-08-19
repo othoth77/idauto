@@ -8,6 +8,19 @@ The protocol is versioned separately from the implementation; see
 
 ## [Unreleased]
 
+### Added — Stage preparation verification, IDA-5 through IDA-9 + Part Identity (2026-08-19)
+
+docs: verify stages IDA-5..IDA-9 + part-identity preparation state. A documentation-only
+preparation/verification pass for master-mission Stages 8–12 — no implementation, no schema
+change. Adds [`docs/STAGE_PREPARATION_IDA5_TO_IDA9.md`](docs/STAGE_PREPARATION_IDA5_TO_IDA9.md),
+which classifies every required element of IDA-5 (professional issuers), IDA-7 (VC/DID),
+IDA-8 (anchoring), IDA-9 (open protocol) and Part Identity as PREPARED / PARTIAL / OPEN, each
+with a file+section citation. Incorporates the IDA-4 architecture review's binding findings,
+and records one correction to it: the review's untyped `credentials.items: {}` placeholder
+gap is attributed to `issuer.schema.json`, which has no such field — the actual placeholder
+is `passport.schema.json`'s `credentials` array. The onboarding-process gap for professional
+issuers (who verifies a garage is a garage) is recorded as the top open item for Stage 8.
+
 ### Added — IDA-4 gate-free foundation subset (2026-08-19)
 
 feat(ida4): gate-free foundation subset — IVID library, protocol artifacts, passport
