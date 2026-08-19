@@ -38,6 +38,16 @@ activation, no legal gate touched.
   protocol's status enum), `current_plate_ref` and `merged_into` omitted. Extended
   `tests/ida4-option-c-test.js` §3 accordingly; suites re-run: ida4-option-c 66/0,
   ida4-foundation 130/0, identity-conformance 81/0.
+- **Fix (Phase 2 audit, follow-up commit):** the public-resolution rate limiter tripped
+  `tests/ida-3d-private-ingest-route-test.js`'s structural guard (api.js must host no
+  rate-limit/counter implementation) because its bucket-key and upsert logic lived inline in
+  `reference/api.js`. Relocated into `reference/rate-limit.js` as first-class exports
+  `enforcePublicResolution()` / `floorPublicResolutionWindow()`; `reference/api.js` now only
+  reads config and calls that function. Narrowed the IDA-3D guard (line 86) to drop the
+  now-legitimate `require('./rate-limit.js')` prohibition while keeping the
+  bucket/counter-token prohibition intact. Suites re-run: ida-3d 73/0, ida-3c-rate-limit
+  63/0, ida4-option-c 66/0, ida4-foundation 130/0, identity-conformance 81/0,
+  ida-2c-readonly-api 26/0, ida-2d-write-api-and-audit 39/0.
 
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 

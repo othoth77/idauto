@@ -71,6 +71,52 @@ function selectBuckets(request, now) {
   return buckets;
 }
 
+// A5 OPTION C, 2026-08-19 — IDA-4 Option C's public passport surface.
+// This dimension ('public_resolution:window') is used by exactly one
+// caller: reference/api.js's GET /public/passport/:ivid route (its
+// header names this function specifically). It is a first-class
+// rate-limiting function, not ingestion-specific like enforce() above,
+// so it lives here rather than being reimplemented inline in api.js —
+// the IDA-3D structural guard (tests/ida-3d-private-ingest-route-test.js)
+// exists precisely to keep counter/bucket machinery out of api.js, and
+// this function is how a second, independent caller gets one without
+// violating that.
+//
+// Deliberately NOT built on enforce()/selectBuckets() above: those are
+// shaped around the ingestion actor-class model (anonymous/contributor/
+// professional_user/etc., admin-exempt, media-byte quotas) which does
+// not apply here — the public passport route has exactly one caller
+// class (unauthenticated, IP-only) and one configurable limit+window,
+// sourced from api.js's own config file rather than the LIMITS table
+// above. It DOES reuse bucketKey() and the atomic UPSERT (atomicStatement)
+// this file already exports, so the underlying counter mechanics are
+// shared, not duplicated.
+//
+// `dbClient` is any object exposing query(text, params) returning a
+// node-postgres-shaped { rows } — reference/db.js's pool object is
+// sufficient; no transaction is required since this is a single atomic
+// UPSERT. `config` is { limit: number, window_seconds: number } —
+// api.js owns reading this from config/idauto.example.json (config-file
+// I/O is an api.js concern, not this module's). `now` defaults to the
+// current time; passed explicitly by callers that need determinism.
+function floorPublicResolutionWindow(now, windowSeconds) {
+  var date = now instanceof Date ? now : new Date(now);
+  var size = windowSeconds * 1000;
+  if (!(size > 0) || isNaN(date.getTime())) throw new TypeError('rate-limit public-resolution window is invalid');
+  return new Date(Math.floor(date.getTime() / size) * size);
+}
+
+async function enforcePublicResolution(dbClient, ipHash, config, now) {
+  var windowStart = floorPublicResolutionWindow(now || new Date(), config.window_seconds);
+  var key = bucketKey('public_resolution:window', ipHash);
+  var result = await dbClient.query(UPSERT, [key, windowStart, 1]);
+  var count = Number(result.rows[0].count);
+  if (count > config.limit) {
+    return { allowed: false, retry_at: new Date(windowStart.getTime() + config.window_seconds * 1000) };
+  }
+  return { allowed: true, retry_at: null };
+}
+
 async function enforce(database, request, now) {
   if (request.actor_type === 'admin') return { state: 'allowed', allowed: true, buckets: [] };
   var buckets;
@@ -116,5 +162,8 @@ module.exports = {
   limits: JSON.parse(JSON.stringify(LIMITS, function (_, value) { return value === Infinity ? 'unlimited' : value; })),
   mediaLimits: Object.assign({}, MEDIA_LIMITS),
   states: { allowed: 'allowed', limited: 'limited', invalid: 'invalid', storage_error: 'storage_error' },
-  atomicStatement: UPSERT
+  atomicStatement: UPSERT,
+  // A5 OPTION C, 2026-08-19 — IDA-4 Option C's public passport route only.
+  floorPublicResolutionWindow: floorPublicResolutionWindow,
+  enforcePublicResolution: enforcePublicResolution
 };

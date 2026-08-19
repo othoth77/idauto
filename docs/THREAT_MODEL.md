@@ -102,21 +102,26 @@ retrofitting it after.
 are now real code, not only planned:
 
 - **Format gate before any database touch:** `reference/api.js`, `handlePublicPassportRoute()`
-  (~line 245) calls `reference/ivid.js`'s `validate()` (~line 270) BEFORE any `db.query()` in
+  (~line 231) calls `reference/ivid.js`'s `validate()` (~line 256) BEFORE any `db.query()` in
   the function — a malformed IVID never reaches the database, and gets the identical 404
   shape an unknown-but-valid IVID gets, so response shape alone cannot distinguish the two
   cases. `tests/ida4-option-c-test.js` §5 spies on `db.query` and asserts a call count of
   exactly zero for a malformed IVID.
-- **Rate limiting, this route's own bucket:** `reference/api.js`'s `enforcePublicResolutionLimit()`
-  (~line 210) reuses `reference/rate-limit.js`'s `bucketKey()`/`atomicStatement` primitives
-  with dimension `public_resolution:window` — a bucket no other route's rate limiting ever
-  writes to — configured via `config/idauto.example.json`'s `public_resolution` section.
-  `tests/ida4-option-c-test.js` §7 proves burst -> 429 with `Retry-After`, then recovery
-  after the configured window, in an isolated child process.
+- **Rate limiting, this route's own bucket:** relocated (post-`e220213` follow-up, an
+  IDA-3D structural-guard fix) into `reference/rate-limit.js`'s `enforcePublicResolution()`
+  (~line 109; window-flooring in `floorPublicResolutionWindow()`, ~line 102) — reuses that
+  module's key-hashing helper and atomic upsert primitive with dimension
+  `public_resolution:window`, a bucket no other route's rate limiting ever writes to.
+  `reference/api.js` only reads config (`loadPublicResolutionConfig()`,
+  `config/idauto.example.json`'s `public_resolution` section) and calls this function — it
+  hosts no counter/bucket-selection logic of its own, which is exactly what
+  `tests/ida-3d-private-ingest-route-test.js`'s structural guard checks api.js's source for
+  the absence of. `tests/ida4-option-c-test.js` §7 proves burst -> 429 with `Retry-After`,
+  then recovery after the configured window, in an isolated child process.
 - **Identical 404s:** confirmed directly by `tests/ida4-option-c-test.js` §4/§5/§6 — a
   well-formed unissued IVID, a malformed IVID, and a plate-shaped path segment all return
   the same `{"error":"not found"}` shape.
-- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 291); no route
+- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 277); no route
   under `/public/` accepts a plate value, and a `?plate=` query parameter is never read by
   the handler at all (the query string is never parsed). `tests/ida4-option-c-test.js` §6
   covers a plate-shaped path segment, `/public/plate/...`, and an ignored `?plate=` parameter.

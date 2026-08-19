@@ -143,8 +143,8 @@ function serveAdminAsset(req, res, pathname) {
 //      "malformed input" by response shape — and, more importantly, no
 //      query ever reaches the database for malformed input.
 //   3. Per-IP rate limiting — its own bucket
-//      (enforcePublicResolutionLimit() below), independent of every
-//      other bucket reference/rate-limit.js's enforce() computes
+//      (reference/rate-limit.js's enforcePublicResolution()), independent
+//      of every other bucket reference/rate-limit.js's enforce() computes
 //      elsewhere (anon:*, ip:*, media_bytes:*). Configured in
 //      config/idauto.example.json's public_resolution section.
 //   4. No plate parameter is ever read. The query string is never
@@ -195,31 +195,17 @@ function loadPublicResolutionConfig() {
   return _publicResolutionConfigCache;
 }
 
-function floorPublicResolutionWindow(now, windowSeconds) {
-  var size = windowSeconds * 1000;
-  return new Date(Math.floor(now.getTime() / size) * size);
-}
-
-// Its OWN rate-limit bucket — dimension 'public_resolution:window' is
-// used nowhere else in this codebase, so this route's counters can never
-// collide with reference/rate-limit.js's ingestion buckets (anon:*,
-// ip:*, media_bytes:*) even though both ultimately share the same
-// idauto_rate_limit_counters table and the same bucketKey()/UPSERT
-// primitives from reference/rate-limit.js — reused deliberately, not
-// reimplemented.
-async function enforcePublicResolutionLimit(ipHash, now) {
-  var cfg = loadPublicResolutionConfig();
-  var nowDate = now || new Date();
-  var windowStart = floorPublicResolutionWindow(nowDate, cfg.window_seconds);
-  var key = rateLimit.bucketKey('public_resolution:window', ipHash);
-  var result = await db.query(rateLimit.atomicStatement, [key, windowStart, 1]);
-  var count = Number(result.rows[0].count);
-  if (count > cfg.limit) {
-    return { allowed: false, retry_at: new Date(windowStart.getTime() + cfg.window_seconds * 1000) };
-  }
-  return { allowed: true };
-}
-
+// A5 OPTION C, 2026-08-19 (IDA-3D structural-guard note): the actual
+// counter mechanics — the key-hashing helper, the atomic upsert against
+// the shared rate-limit counter table, window flooring — live in
+// reference/rate-limit.js's enforcePublicResolution(), not here. api.js's
+// job is config-file reading (this file's own concern, including its
+// IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH override) and extracting the
+// caller's IP; it CALLS the rate-limiting module, it does not host any
+// counter-selection or key-derivation logic of its own. That is
+// precisely what tests/ida-3d-private-ingest-route-test.js's structural
+// guard checks api.js's source for the absence of — this route stays
+// genuinely rate-limited without api.js failing that check.
 function clientIpHash(req) {
   var ip = (req.socket && req.socket.remoteAddress) || '';
   return crypto.createHash('sha256').update(ip).digest('hex');
@@ -272,7 +258,7 @@ async function handlePublicPassportRoute(req, res, pathname) {
   }
 
   // 3. Per-IP rate limit, this route's own bucket.
-  var limitResult = await enforcePublicResolutionLimit(clientIpHash(req));
+  var limitResult = await rateLimit.enforcePublicResolution(db, clientIpHash(req), loadPublicResolutionConfig());
   if (!limitResult.allowed) {
     res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSeconds(limitResult.retry_at)) });
     return res.end(JSON.stringify({ error: 'rate limit exceeded' }));
