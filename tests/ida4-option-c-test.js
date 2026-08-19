@@ -306,7 +306,7 @@ async function validKnownIvid() {
   ok(factKeys.indexOf('colour') !== -1, 'the public fact (colour) is present');
   ok(factKeys.indexOf('engine_cc') === -1, 'the professional-scope fact is absent from a public passport');
   ok(factKeys.indexOf('vin') === -1, 'vin is absent from a public passport (deny-listed by fact_key, regardless of its access_scope)');
-  ok(factKeys.indexOf('plate_number') === -1, 'plate_number is absent from a public passport (deny-listed, interim default-closed, owner decision pending)');
+  ok(factKeys.indexOf('plate_number') === -1, 'plate_number is absent from a public passport (deny-listed per the A5-PLATE ruling, 2026-08-19)');
   ok(res.raw.indexOf('SECRET-VIN-SHOULD-NEVER-LEAK') === -1, 'the mythos_private-scope vin VALUE does not appear anywhere in the raw response body');
   ok(res.raw.indexOf('PUBLIC-SCOPED-VIN-SHOULD-STILL-NEVER-LEAK') === -1, 'the PUBLIC-scoped vin VALUE also does not appear — the deny-list, not just access_scope, is what keeps it out');
   ok(res.raw.indexOf('PUBLIC-SCOPED-PLATE-SHOULD-NEVER-LEAK') === -1, 'the PUBLIC-scoped plate_number VALUE does not appear anywhere in the raw response body');
@@ -745,12 +745,45 @@ async function privateModePassport() {
   var res = await request('GET', '/api/passport/' + encodeURIComponent(fixtureIvid), { 'Authorization': 'Bearer ' + ADMIN_TOKEN });
   ok(res.status === 200, 'GET /api/passport/:ivid (authenticated) -> 200');
   ok(res.body && res.body.ivid === fixtureIvid, 'the private passport resolves to the correct vehicle (ivid matches)');
+
+  // P2 (Opus review, 2026-08-19): the private route's vehicle object
+  // must be protocol/schemas/vehicle.schema.json-conformant too, built
+  // by the SAME shared helper (buildProtocolConformantVehicle()) the
+  // public route uses — not a raw DB row.
+  var privateVehicleKeys = Object.keys(res.body.vehicle || {}).sort();
+  var expectedVehicleKeys = ['protocol_version', 'ivid', 'status', 'created_at', 'observation_count', 'summary'].sort();
+  ok(JSON.stringify(privateVehicleKeys) === JSON.stringify(expectedVehicleKeys), 'the private route\'s vehicle object has exactly the same protocol-conformant key set as the public route\'s, got ' + JSON.stringify(privateVehicleKeys));
+  ok(res.body.vehicle.internal_ref === undefined && res.body.vehicle.seats === undefined && res.body.vehicle.gross_weight_kg === undefined && res.body.vehicle.engine_cc === undefined,
+    'no raw/internal columns (internal_ref, seats, gross_weight_kg, engine_cc) leak onto the private vehicle object either');
+
   ok(Array.isArray(res.body && res.body.plates) && res.body.plates.length === 1,
     'precondition: exactly one plate record is present (non-vacuous — matches the fixture\'s single linked plate)');
   ok(res.body.plates[0].plate_number === fixturePlateNumber,
     'plate_number IS present and correct in the private surface response — PRIVATE phase permits plate display, per the A5-PLATE ruling');
-  var factKeys = res.body.facts.map(function (f) { return f.fact_key; });
-  ok(factKeys.indexOf('vin') !== -1, 'the private surface also shows the mythos_private-scope vin fact — this route is the internal surface, not the anonymous one (assembled at scope mythos_private)');
+
+  // P2: each plate object must be protocol/schemas/plate.schema.json-conformant
+  // (additionalProperties:false) — exactly the keys buildProtocolConformantPlate()
+  // emits, no raw DB column names (governorate_name, status, valid_until).
+  var plateKeys = Object.keys(res.body.plates[0]).sort();
+  var expectedPlateKeys = ['protocol_version', 'id', 'subject_ivid', 'plate_number', 'plate_raw', 'format_code', 'region_code', 'valid_from', 'valid_to'].sort();
+  ok(JSON.stringify(plateKeys) === JSON.stringify(expectedPlateKeys), 'the plate object has exactly the schema-allowed key set, got ' + JSON.stringify(plateKeys));
+  ok(res.body.plates[0].protocol_version === '0.1.0-draft', 'plate.protocol_version matches the schema const');
+  ok(res.body.plates[0].subject_ivid === fixtureIvid, 'plate.subject_ivid matches the resolved vehicle\'s ivid');
+  ok(typeof res.body.plates[0].id === 'string' && res.body.plates[0].id.length > 0, 'plate.id is present and a string (schema requires string, not the raw numeric DB id)');
+  ok(res.body.plates[0].governorate_name === undefined && res.body.plates[0].status === undefined && res.body.plates[0].valid_until === undefined,
+    'no raw plate columns (governorate_name, status, valid_until) leak onto the plate object — mapped to region_code/dropped/valid_to respectively');
+  // P1 (Opus review, 2026-08-19): this route assembles at scope
+  // 'professional' with mythos_private facts excluded in SQL — the same
+  // two-layer pattern the public route uses, mirrored here. The fixture
+  // carries a mythos_private vin fact (the sentinel value) AND a
+  // professional-scoped engine_cc fact; the private surface must show
+  // the professional one and never the mythos_private one.
+  var professionalFact = res.body.facts.filter(function (f) { return f.fact_key === 'engine_cc'; })[0];
+  ok(!!professionalFact, 'precondition: the professional-scope engine_cc fact is present in the fixture (non-vacuous)');
+  ok(professionalFact && professionalFact.fact_value === '1600', 'the professional-scope engine_cc fact DOES appear on the private surface (scope professional, not restricted-only)');
+  var mythosPrivateFact = res.body.facts.filter(function (f) { return f.fact_value === 'SECRET-VIN-SHOULD-NEVER-LEAK'; });
+  ok(mythosPrivateFact.length === 0, 'the mythos_private-scope vin fact does NOT appear on the private surface either — restricted facts stay excluded (no audit-on-read path exists — PRIVACY_ARCHITECTURE.md §3)');
+  ok(res.raw.indexOf('SECRET-VIN-SHOULD-NEVER-LEAK') === -1, 'the mythos_private-scope vin VALUE does not appear anywhere in the raw private-surface response body');
 
   // No new plate-RESOLUTION path: this route takes an ivid, never a
   // plate, in its own path segment — confirmed structurally alongside

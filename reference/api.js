@@ -251,6 +251,95 @@ function factRowToPassportFact(row) {
   };
 }
 
+function toIsoString(value) {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+// Shared by BOTH passport routes (public and private, P2/Opus review,
+// 2026-08-19) — the raw idauto_vehicles row must never reach either
+// response: it carries internal_ref (the internal admin identifier the
+// IVID exists specifically to avoid exposing) and non-schema columns
+// (seats, gross_weight_kg, engine_cc, first_seen_at, last_seen_at,
+// fiche_status as a raw key) that protocol/schemas/vehicle.schema.json
+// (additionalProperties:false) does not allow. Extracted into one
+// function (rather than duplicated per route, as the first cut of the
+// private route mistakenly did) so both routes stay protocol-conformant
+// by construction, not by two independently-maintained copies agreeing
+// by luck.
+//
+// status: idauto_vehicles.fiche_status's full allowed set (chk_vehicle_status,
+// database/schema.sql: initial|pending_review|verified|conflict|merged|archived)
+// is an EXACT SUBSET of the protocol's status enum (which adds only
+// 'closed', unused by any DB row today) — so this is a direct, documented
+// passthrough of an already-public lifecycle field, not an invented
+// mapping. 'closed' cannot occur since no DB constraint permits it yet.
+//
+// current_plate_ref is always omitted — optional in the schema, and
+// never appropriate on the public route (A5); on the private route,
+// plate data is carried in the passport's separate `plates` array
+// (buildProtocolConformantPlate() below), not duplicated onto the
+// vehicle object. merged_into is omitted because idauto_vehicles has no
+// such column (a merge is not yet implemented).
+function buildProtocolConformantVehicle(vehicleRow) {
+  return {
+    protocol_version: '0.1.0-draft',
+    ivid: vehicleRow.ivid,
+    status: vehicleRow.fiche_status,
+    created_at: toIsoString(vehicleRow.created_at),
+    observation_count: vehicleRow.observation_count,
+    summary: {
+      make: vehicleRow.make,
+      model: vehicleRow.model,
+      variant: vehicleRow.variant,
+      year: vehicleRow.year,
+      body_type: vehicleRow.body_type,
+      fuel_type: vehicleRow.fuel_type,
+      colour: vehicleRow.colour,
+      category_code: vehicleRow.category_code
+    }
+  };
+}
+
+// Private-route only (P2, Opus review, 2026-08-19) — the raw idauto_plates
+// row is not protocol/schemas/plate.schema.json-conformant either
+// (additionalProperties:false; the schema has no `status` or
+// `governorate_name` property at all, and calls the closed-interval date
+// `valid_to`, not this schema's `valid_until`). Maps:
+//   - id: schema wants a string; the DB's numeric id is stringified.
+//   - subject_ivid: the resolved vehicle's ivid (schema-required; every
+//     plate belongs to exactly the vehicle this route already resolved).
+//   - plate_number, plate_raw, format_code: direct passthrough — same
+//     names in both the DB and the schema.
+//   - region_code: the schema's own description — "Coarse region only.
+//     Never a precise location" — is exactly what a Tunisian governorate
+//     is, so the plate's governorate CODE (idauto_governorates.code,
+//     e.g. "01"), not its French name, is mapped here. This is an
+//     interpretive choice (the schema does not name "governorate"
+//     anywhere) worth a reviewer's eyes; `governorate_name` itself has
+//     no schema field to map to and is dropped.
+//   - valid_from: schema-required; DB column is nullable (no plate
+//     necessarily has one recorded), so this falls back to the plate
+//     row's own created_at when valid_from is NULL, rather than emit a
+//     required field as null.
+//   - valid_to: DB's valid_until, renamed; null while the interval is
+//     open, exactly matching the schema's own description of null here.
+//   - `status` has no schema field at all and is dropped entirely — it
+//     is not "mapped," per the review finding's own instruction to drop
+//     fields with no schema equivalent.
+function buildProtocolConformantPlate(plateRow, subjectIvid) {
+  return {
+    protocol_version: '0.1.0-draft',
+    id: String(plateRow.id),
+    subject_ivid: subjectIvid,
+    plate_number: plateRow.plate_number,
+    plate_raw: plateRow.plate_raw || null,
+    format_code: plateRow.format_code || null,
+    region_code: plateRow.governorate_code || null,
+    valid_from: toIsoString(plateRow.valid_from || plateRow.created_at),
+    valid_to: plateRow.valid_until ? toIsoString(plateRow.valid_until) : null
+  };
+}
+
 async function handlePublicPassportRoute(req, res, pathname) {
   // 1. Path gate: only exactly this shape exists under /public/. Any
   // other path (e.g. /public/plate/xyz, /public/, /public/passport/)
@@ -338,42 +427,11 @@ async function handlePublicPassportRoute(req, res, pathname) {
     [candidate, 'public'].concat(denyList)
   );
 
-  // Chef Phase-1 audit fix (follow-up to e220213): the raw idauto_vehicles
-  // row must never reach a public response — it carries internal_ref (the
-  // internal admin identifier the IVID exists specifically to avoid
-  // exposing) and non-public columns (seats, gross_weight_kg, engine_cc)
-  // that bypass the fact-level access_scope filter entirely. Build a
-  // protocol/schemas/vehicle.schema.json-conformant object instead
-  // (additionalProperties:false — only these properties are legal).
-  //
-  // status: idauto_vehicles.fiche_status's full allowed set (chk_vehicle_status,
-  // database/schema.sql: initial|pending_review|verified|conflict|merged|archived)
-  // is an EXACT SUBSET of the protocol's status enum (which adds only
-  // 'closed', unused by any DB row today) — so this is a direct, documented
-  // passthrough of an already-public lifecycle field, not an invented
-  // mapping. 'closed' cannot occur since no DB constraint permits it yet.
-  //
-  // current_plate_ref is omitted entirely — it is optional in the schema,
-  // and A5 forbids plate exposure on this route regardless. merged_into is
-  // omitted because idauto_vehicles has no such column (a merge is not yet
-  // implemented — docs/IDA4_READINESS_AUDIT.md).
-  var publicVehicle = {
-    protocol_version: '0.1.0-draft',
-    ivid: vehicleRow.ivid,
-    status: vehicleRow.fiche_status,
-    created_at: vehicleRow.created_at instanceof Date ? vehicleRow.created_at.toISOString() : vehicleRow.created_at,
-    observation_count: vehicleRow.observation_count,
-    summary: {
-      make: vehicleRow.make,
-      model: vehicleRow.model,
-      variant: vehicleRow.variant,
-      year: vehicleRow.year,
-      body_type: vehicleRow.body_type,
-      fuel_type: vehicleRow.fuel_type,
-      colour: vehicleRow.colour,
-      category_code: vehicleRow.category_code
-    }
-  };
+  // Chef Phase-1 audit fix (follow-up to e220213), now shared with the
+  // private route too (P2, Opus review) via buildProtocolConformantVehicle()
+  // above — the raw idauto_vehicles row must never reach a public
+  // response; see that function's own header for the full mapping.
+  var publicVehicle = buildProtocolConformantVehicle(vehicleRow);
 
   var passport = passportAssembly.assemblePassport({
     vehicle: publicVehicle,
@@ -439,35 +497,47 @@ async function getPlate(res, plateNumber) {
 // added: internal plate lookup already exists and stays exactly as it
 // was, at GET /api/plates/:plate_number above.
 //
-// Assembles at scope 'mythos_private' — this codebase's admin-identity
-// model (reference/identity.js) is single-tier (an authenticated caller
-// is "admin," full stop; there is no finer-grained internal role today),
-// so 'mythos_private' is the correct (and only) internal scope to
-// assemble at. Unlike the public surface above, the vehicle object here
-// is the raw internal row (matching getVehicle()'s own shape convention
-// above) and plate records ARE included via assemblePassport()'s
-// `plates` input — the whole reason this route exists.
+// SCOPE (P1, Opus review, 2026-08-19 — corrected from an earlier,
+// wrong 'mythos_private' cut): this route assembles at scope
+// 'professional' (public + professional facts), and the facts SQL
+// below EXCLUDES access_scope = 'mythos_private' as a second,
+// independent layer — the same two-layer pattern the public route uses
+// (SQL filter + assemblePassport()'s own filter), mirrored here rather
+// than invented fresh. This file's own header says why (lines 7-8,
+// 14-16): every GET response in this file excludes mythos_private
+// because no audit-on-read path exists yet, and
+// docs/PRIVACY_ARCHITECTURE.md §3 requires every Restricted access to
+// be audit-logged — a requirement this route cannot satisfy any more
+// than any other GET here can. getFactsForVehicle() above is the real,
+// exact precedent (`AND access_scope != 'mythos_private'`), not
+// getReviewSubmission() (a different, observation-scoped, explicitly
+// mythos_private-carrying route with its own comment saying so) — the
+// original comment here miscited it. The A5-PLATE ruling does not need
+// restricted facts to satisfy its plate-display requirement: plates
+// live in idauto_plates, entirely independent of a fact's access_scope.
 async function getPrivatePassport(res, rawIvid) {
   if (!ivid.validate(rawIvid).ok) return notFound(res);
 
   var vehicleResult = await db.query(
-    'SELECT internal_ref, ivid, make, model, variant, year, body_type, fuel_type, colour, seats, ' +
-    'gross_weight_kg, engine_cc, category_code, fiche_status, first_seen_at, last_seen_at, ' +
-    'observation_count, created_at ' +
+    'SELECT ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
+    'fiche_status, created_at, observation_count ' +
     'FROM idauto_vehicles WHERE ivid = $1',
     [rawIvid]
   );
   if (vehicleResult.rows.length === 0) return notFound(res);
   var vehicleRow = vehicleResult.rows[0];
 
-  // No access_scope filter here at all (unlike the public surface above) —
-  // this is the internal surface; every fact, at every scope including
-  // mythos_private, is visible to an authenticated caller, matching
-  // getFactsForVehicle()'s and getReviewObservation()'s own precedent
-  // elsewhere in this file for what an authenticated GET may return.
+  // access_scope != 'mythos_private' — see this function's own header
+  // for why (getFactsForVehicle()'s precedent, the file's own GET
+  // invariant, PRIVACY_ARCHITECTURE.md §3's audit-on-read requirement).
+  // No fact-key deny-list here — that is specifically the ANONYMOUS
+  // surface's control (reference/public-surface-policy.js); this route
+  // is authenticated, and restricted-fact exclusion is handled by scope
+  // alone, matching getFactsForVehicle()'s own precedent exactly.
   var factsResult = await db.query(
     'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
-    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND is_active = TRUE ' +
+    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
+    "AND access_scope != 'mythos_private' AND is_active = TRUE " +
     'ORDER BY fact_key',
     [rawIvid]
   );
@@ -476,10 +546,11 @@ async function getPrivatePassport(res, rawIvid) {
   // effect: idauto_plates.vehicle_id is a direct FK to idauto_vehicles,
   // the same join pattern getPlate() above already uses (joined once
   // more here through the vehicle's ivid rather than its plate_number,
-  // since this route resolves by ivid only).
+  // since this route resolves by ivid only). g.code (not g.name_fr) is
+  // selected — see buildProtocolConformantPlate()'s own header for why.
   var platesResult = await db.query(
-    'SELECT p.plate_number, p.format_code, g.name_fr AS governorate_name, p.status, ' +
-    'p.valid_from, p.valid_until ' +
+    'SELECT p.id, p.plate_number, p.plate_raw, p.format_code, g.code AS governorate_code, ' +
+    'p.valid_from, p.valid_until, p.created_at ' +
     'FROM idauto_plates p LEFT JOIN idauto_governorates g ON g.id = p.governorate_id ' +
     'WHERE p.vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
     'ORDER BY p.id',
@@ -487,10 +558,10 @@ async function getPrivatePassport(res, rawIvid) {
   );
 
   var passport = passportAssembly.assemblePassport({
-    vehicle: vehicleRow,
+    vehicle: buildProtocolConformantVehicle(vehicleRow),
     facts: factsResult.rows.map(factRowToPassportFact),
-    plates: platesResult.rows,
-    scope: 'mythos_private',
+    plates: platesResult.rows.map(function (row) { return buildProtocolConformantPlate(row, rawIvid); }),
+    scope: 'professional',
     now: new Date()
   });
   sendJson(res, 200, passport);

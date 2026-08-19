@@ -48,6 +48,22 @@ re-verified. **This work is PENDING RE-REVIEW** — the Opus APPROVE / Haiku
 ACCEPT-WITH-FINDINGS verdicts below predate the ruling and this implementation of it, and
 do not cover it.
 
+**Follow-up fix addendum (2026-08-19, same day):** Opus reviewed the A5-PLATE
+implementation above and found two technical defects, both fixed. P1 — the private
+route as first built assembled at scope `mythos_private` with NO `access_scope` filter,
+serving restricted facts (including `vin`) to any authenticated caller; corrected to
+scope `'professional'` with `mythos_private` excluded in SQL, mirroring
+`getFactsForVehicle()`'s own precedent (the file's own header already states every GET
+excludes `mythos_private` because no audit-on-read path exists). Plate display is
+unaffected — plates are not Facts. P2 — the private route returned a raw
+`idauto_vehicles` row and raw `idauto_plates` rows, non-conformant with
+`vehicle.schema.json`/`plate.schema.json` (both `additionalProperties:false`) — the exact
+defect class `c003029` had already fixed once for the public route; corrected with a
+shared vehicle-builder function and a new plate-builder function, both routes
+protocol-conformant now. Suite grew to 128 assertions, run twice consecutively, both
+green; ida-3d 74/0, ida-2d 39/0, ida4-foundation 130/0, identity-conformance 81/0 all
+re-verified. Still PENDING RE-REVIEW.
+
 **Final review outcome (2026-08-19, end of stage, PRE-DATES the A5-PLATE revised ruling
 above):** after two Opus fix rounds, Opus's final verdict at `4ffa446` is **APPROVE**; the
 independent Haiku A–Q audit at the same commit is **ACCEPT-WITH-FINDINGS** (three

@@ -142,15 +142,20 @@ implication names are now real code, not only planned:
   shape before any database touch for every method, and the authenticated PRIVATE
   surface below is the only passport surface reachable; `true` = PUBLIC phase, the
   anonymous route is on with the deny-list above always applied.
-- **PRIVATE surface, NEW (A5-PLATE revised ruling, 2026-08-19):**
-  `GET /api/passport/:ivid` (`reference/api.js`'s `getPrivatePassport()`, ~line 450) —
-  authenticated (`requireAuth()`, the ordinary `ROUTES` table, never under `/public/`),
-  IVID-only lookup (no new plate-resolution path — internal plate lookup already existed
-  at `GET /api/plates/:plate_number` and is unchanged), assembled at scope
-  `mythos_private` INCLUDING plate records via `idauto_plates.vehicle_id`. This is where
-  the ruling's PRIVATE-phase "plate_number = permitted" is implemented — the anonymous
-  route's threat surface above is unchanged by its existence, since it is never reachable
-  without a valid bearer token. `tests/ida4-option-c-test.js` §11 and §13 cover it.
+- **PRIVATE surface, NEW (A5-PLATE revised ruling, 2026-08-19; scope corrected
+  post-review, P1):** `GET /api/passport/:ivid` (`reference/api.js`'s
+  `getPrivatePassport()`, ~line 518) — authenticated (`requireAuth()`, the ordinary
+  `ROUTES` table, never under `/public/`), IVID-only lookup (no new plate-resolution
+  path — internal plate lookup already existed at `GET /api/plates/:plate_number` and
+  is unchanged), assembled at scope `'professional'` with `mythos_private`-scope facts
+  excluded in SQL (mirroring `getFactsForVehicle()`'s own precedent and this file's own
+  no-audit-on-read invariant — an earlier cut wrongly assembled at `mythos_private` with
+  no filter at all; corrected). Plate records ARE included via `idauto_plates.vehicle_id`,
+  independent of fact scope — plates are not Facts, so this correction does not affect
+  plate display. This is where the ruling's PRIVATE-phase "plate_number = permitted" is
+  implemented — the anonymous route's threat surface above is unchanged by its existence,
+  since it is never reachable without a valid bearer token.
+  `tests/ida4-option-c-test.js` §11 and §13 cover it.
 
 This implementation note does not change the table's PLANNED marking for **Citizen
 registration**, **Ownership transfer**, or **Anchoring** — none of those three exist yet, and

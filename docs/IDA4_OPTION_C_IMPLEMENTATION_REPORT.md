@@ -69,11 +69,30 @@ Modified:
   authenticated PRIVATE-phase internal passport surface, in the ordinary `ROUTES`
   table, behind `requireAuth()` exactly like every other route below it. IVID-only
   lookup (no new plate-resolution path — internal plate lookup already existed at
-  `GET /api/plates/:plate_number` and is unchanged). Assembles at scope
-  `mythos_private` via `assemblePassport()`, INCLUDING the vehicle's plate records
-  (`idauto_plates.vehicle_id`, a direct FK — the same join `getPlate()` already uses,
-  joined here through the resolved vehicle's id instead of a plate number). This is
-  where the ruling's PRIVATE-phase plate display is implemented.
+  `GET /api/plates/:plate_number` and is unchanged). **Assembles at scope
+  `'professional'`, WITH `mythos_private`-scope facts excluded in SQL as a second
+  layer** (corrected post-Opus-review, P1 — an earlier cut of this route wrongly
+  assembled at `mythos_private`; see §14), INCLUDING the vehicle's plate records
+  regardless of fact scope (`idauto_plates.vehicle_id`, a direct FK — the same join
+  `getPlate()` already uses, joined here through the resolved vehicle's id instead of
+  a plate number — plates are not Facts and are unaffected by this correction). This
+  is where the ruling's PRIVATE-phase plate display is implemented. Both the vehicle
+  and plate objects are protocol-conformant (P2; see §6, `vehicle.schema.json` and
+  `plate.schema.json`), built by shared helper functions the public route also uses,
+  not raw DB rows.
+
+  **`plate.schema.json` mapping** (`additionalProperties:false`; `buildProtocolConformantPlate()`):
+
+  | Schema field | Source | Note |
+  |---|---|---|
+  | `protocol_version` | constant `'0.1.0-draft'` | |
+  | `id` | `idauto_plates.id`, stringified | schema requires a string, not the raw numeric DB id |
+  | `subject_ivid` | the already-resolved vehicle's `ivid` | every plate belongs to the vehicle this route resolved |
+  | `plate_number`, `plate_raw`, `format_code` | direct passthrough | same names in DB and schema |
+  | `region_code` | `idauto_governorates.code` (e.g. `"01"`) | **interpretive choice**, flagged for review: the schema names no "governorate" field; `region_code`'s own description — "Coarse region only. Never a precise location" — is exactly what a Tunisian governorate is, so the governorate CODE (not its French name) is mapped here |
+  | `valid_from` | `idauto_plates.valid_from`, falling back to the plate's own `created_at` if null | schema-required; the DB column is nullable, so a null is never emitted for a required field |
+  | `valid_to` | `idauto_plates.valid_until`, renamed | null while the interval is open, matching the schema's own description |
+  | *(dropped)* `governorate_name`, `status` | — | no corresponding schema field exists for either; per the review finding's own instruction, dropped rather than force-mapped |
 - Every pre-existing route (the entire `ROUTES` table, `/health` included) remains
   behind `requireAuth()` exactly as before — test-asserted (§10 of the suite).
 
@@ -146,6 +165,8 @@ The response's `vehicle` object is protocol-conformant
 subset of the protocol enum. `internal_ref` and non-public columns (`seats`,
 `gross_weight_kg`, `engine_cc`, `fiche_status` as a raw key) are excluded from the
 SELECT itself. `current_plate_ref` is omitted on the public surface (A5: no plate).
+Built by `buildProtocolConformantVehicle()`, shared with (not duplicated by) the
+private route (§3) — one function, both routes stay conformant by construction (P2).
 
 ## 7. Privacy (zero citizen PII)
 
@@ -205,9 +226,9 @@ header. Mutation 5 (auth removal) fails the suite.
 
 ## 11. Tests
 
-`tests/ida4-option-c-test.js`: **118 passed / 0 failed** (113 when the environment-dependent
+`tests/ida4-option-c-test.js`: **128 passed / 0 failed** (123 when the environment-dependent
 `issueMissing()` section takes its safe-skip branch instead — see §2/F5's own note; not an
-invariant count either way — final verified run, post-A5-PLATE-ruling implementation; run
+invariant count either way — final verified run, post-P1/P2-fix; run
 twice consecutively), live database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up
 (zero leftovers verified, including the new linked-plate fixture).
 Full repository pass (all 16 suites, run by the Chef directly, not taken on trust):
@@ -229,7 +250,7 @@ Full repository pass (all 16 suites, run by the Chef directly, not taken on trus
 | idauto-storage-ops | 73/0 |
 | identity-conformance | 81/0 |
 | ida4-foundation (env-free) | 130/0 |
-| ida4-option-c | 118/0 (113/0 if the safe-skip branch is taken — see above) |
+| ida4-option-c | 128/0 (123/0 if the safe-skip branch is taken — see above) |
 
 One regression was found and fixed during Phase 2: `ida-3d`'s structural guard
 ("api.js contains no rate-limit or counter implementation") tripped on the first
@@ -277,7 +298,8 @@ All on `ida4-option-c`, base `0044d57` (= `origin/main`):
 8. `9480b16` docs(ida4): Opus review follow-up — doc corrections, F1/F10/F11a, report update
 9. `4ffa446` docs+fix(ida4): register the plate-exposure owner question in the decision register; deny-list empty guard; minor review notes
 10. `79fb471` docs(ida4): record Opus APPROVE and Haiku ACCEPT-WITH-FINDINGS verdicts; close the Option C stage entry
-11. (this commit) feat(ida4): A5-PLATE revised ruling — public-surface policy module, private passport surface, tested phase gate
+11. `b80b00d` feat(ida4): A5-PLATE revised ruling — public-surface policy module, private passport surface, tested phase gate
+12. (this commit) fix(ida4): private passport surface — professional scope with restricted-fact exclusion, protocol-conformant vehicle and plate objects
 
 `c003029` fixes three Chef-audit findings in the first implementation (public exposure
 of `internal_ref`; non-public columns passing through at the column level; protocol
@@ -313,8 +335,44 @@ ida4-foundation, and identity-conformance all re-verified unchanged or expected-
 commit's own prose was caught and rephrased before commit, not left for a reviewer to
 find). **This commit's work is PENDING RE-REVIEW** — it postdates both verdicts above.
 
+Commit 12 fixes two technical defects Opus found reviewing commit 11: P1 — the private
+route's earlier scope-`mythos_private`/no-filter cut and its miscited justification (§14);
+P2 — its non-protocol-conformant vehicle and plate objects (§14, same defect class
+`c003029` already fixed once for the public route). Also P3 — one stale test-assertion
+label ("owner decision pending" → "per the A5-PLATE ruling"). Test suite grew from 118 to
+128 assertions (professional-vs-restricted fact assertions, exact vehicle/plate key-set
+assertions), run twice consecutively, both green; ida-3d, ida-2d, ida4-foundation,
+identity-conformance all re-verified unchanged. This commit's work is also PENDING
+RE-REVIEW.
+
 ## 14. Known limitations
 
+- **Private-surface scope, corrected (Opus review P1, 2026-08-19):** the first cut of
+  `GET /api/passport/:ivid` assembled at scope `'mythos_private'` with no `access_scope`
+  filter in SQL at all, serving restricted facts (including `vin`) to any authenticated
+  caller. This violated this file's own stated invariant (its header: every GET response
+  excludes `mythos_private` because no audit-on-read path exists) and
+  `docs/PRIVACY_ARCHITECTURE.md` §3's requirement that every Restricted access be
+  audit-logged — a requirement this route, like every other GET in this file, cannot
+  satisfy. The justifying comment also miscited precedent (claimed `getReviewSubmission()`
+  as support; the real, exact precedent is `getFactsForVehicle()`'s
+  `access_scope != 'mythos_private'`). Corrected: the route now assembles at scope
+  `'professional'` with `mythos_private` excluded in SQL — the public route's own
+  two-layer pattern, mirrored rather than reinvented. The A5-PLATE ruling never needed
+  restricted facts: plates live in `idauto_plates`, entirely independent of a fact's
+  `access_scope`, so plate display is unaffected by this correction.
+- **Private-surface protocol conformance, corrected (Opus review P2, 2026-08-19):** the
+  same first cut returned the raw `idauto_vehicles` row (leaking `internal_ref`, `seats`,
+  `gross_weight_kg`, `engine_cc`) and raw `idauto_plates` rows (`governorate_name`,
+  `status`, `valid_until` — none of which exist in `plate.schema.json`, which is
+  `additionalProperties:false` like `vehicle.schema.json`) — the exact defect class
+  `c003029` had already fixed for the public route, leaving the branch internally
+  inconsistent for one commit. Corrected: both routes now share one vehicle-building
+  function (`buildProtocolConformantVehicle()`) and the private route additionally uses a
+  new `buildProtocolConformantPlate()` — see §3/§6 for the exact field mapping, including
+  the interpretive choice of mapping `idauto_governorates.code` to the schema's
+  `region_code` (flagged there for a reviewer's eyes, since the schema does not name
+  "governorate" anywhere).
 - The passport's `credentials` slot remains the untyped `{}` placeholder in
   `passport.schema.json` (pre-existing, documented; typed in IDA-7).
 - `enforcePublicResolution()` uses fixed-window counting (matching IDA-3C's design):

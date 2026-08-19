@@ -109,6 +109,32 @@ activation, no legal gate touched.
   from open to ruled; §2/§3/§6/§8 updated for the policy module, private surface, and
   phase-gate semantics; FINAL STATUS unchanged), `docs/THREAT_MODEL.md` (plate-exclusion
   note updated to RULED; private surface documented).
+- **Fix (Opus review, APPROVE-WITH-FINDINGS on the A5-PLATE implementation, follow-up
+  commit):** two technical defects fixed. **P1** — the private route's first cut
+  assembled at scope `mythos_private` with NO `access_scope` filter in SQL at all,
+  serving restricted facts (`vin` included) to any authenticated caller; its justifying
+  comment also miscited precedent. Corrected: assembles at scope `'professional'`, with
+  `mythos_private`-scope facts excluded in SQL (`AND access_scope != 'mythos_private'`)
+  as a second layer — mirroring `getFactsForVehicle()`'s real precedent and the public
+  route's own two-layer pattern. Plate display is unaffected; plates aren't facts.
+  **P2** — the private route returned a raw `idauto_vehicles` row and raw
+  `idauto_plates` rows, violating `vehicle.schema.json`/`plate.schema.json` (both
+  `additionalProperties:false`) — the exact defect class `c003029` already fixed once
+  for the public route. Corrected with a shared `buildProtocolConformantVehicle()`
+  helper (used by both routes now, not duplicated) and a new
+  `buildProtocolConformantPlate()`, mapping `idauto_governorates.code` → `region_code`
+  and `valid_until` → `valid_to`, dropping `governorate_name`/`status` (no schema
+  field for either). **P3** — one stale test-assertion label updated ("owner decision
+  pending" → "per the A5-PLATE ruling, 2026-08-19"). `tests/ida4-option-c-test.js` grew
+  from 118 to 128 assertions (professional-vs-restricted-fact assertions with a
+  non-vacuous professional sentinel; exact vehicle/plate key-set assertions), run twice
+  consecutively, both green; also re-verified: ida-3d 74/0, ida-2d 39/0, ida4-foundation
+  130/0 (env-free), identity-conformance 81/0. Docs updated:
+  `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` (§3/§6/§14 updated with the corrected
+  scope, the plate-schema mapping table, and the two limitation write-ups; §11 counts
+  updated to 128/123; FINAL STATUS unchanged), `docs/THREAT_MODEL.md` and
+  `docs/AI_HANDOVER.md` (private-surface descriptions corrected from `mythos_private`
+  to `'professional'` with restricted-fact exclusion).
 
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 
