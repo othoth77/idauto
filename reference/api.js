@@ -338,11 +338,20 @@ async function handlePublicPassportRoute(req, res, pathname) {
   // a fact_key-level exclusion independent of the stored access_scope,
   // so a mis-scoped fact (e.g. a vin fact accidentally stored 'public')
   // still never reaches this route.
-  var denyPlaceholders = PUBLIC_FACT_KEY_DENY_LIST.map(function (_, i) { return '$' + (i + 3); }).join(', ');
+  // R2 (Opus review, 2026-08-19): guard against an empty deny-list. An
+  // empty `NOT IN ()` is a Postgres SYNTAX ERROR, not a no-op — the whole
+  // query would fail (closed: no facts leak) but OPAQUELY (a 500
+  // instead of an intentional, understood "no deny-list configured"
+  // outcome). PUBLIC_FACT_KEY_DENY_LIST is non-empty today and is not
+  // expected to ever be emptied, but this keeps that assumption from
+  // becoming a silent landmine if it ever is.
+  var denyClause = PUBLIC_FACT_KEY_DENY_LIST.length
+    ? 'AND fact_key NOT IN (' + PUBLIC_FACT_KEY_DENY_LIST.map(function (_, i) { return '$' + (i + 3); }).join(', ') + ') '
+    : '';
   var factsResult = await db.query(
     'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
     'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 ' +
-    'AND fact_key NOT IN (' + denyPlaceholders + ') AND is_active = TRUE ' +
+    denyClause + 'AND is_active = TRUE ' +
     'ORDER BY fact_key',
     [candidate, 'public'].concat(PUBLIC_FACT_KEY_DENY_LIST)
   );

@@ -34,7 +34,9 @@ sessions, or recovery flows, any plate-based public resolution.
 Added:
 - `database/migrations/ida4-option-c-ivid.sql` — the only schema change.
 - `reference/ivid-issuance.js` — the only writer of `idauto_vehicles.ivid`.
-- `tests/ida4-option-c-test.js` — 104-assertion live-database suite.
+- `tests/ida4-option-c-test.js` — 104-assertion live-database suite (99 when the
+  environment-dependent `issueMissing()` section in §2 takes its safe-skip branch — see
+  §11 for what determines which).
 - `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` — this report.
 
 Modified:
@@ -162,8 +164,11 @@ header. Mutation 5 (auth removal) fails the suite.
 
 ## 11. Tests
 
-`tests/ida4-option-c-test.js`: **104 passed / 0 failed** (final verified run, post-Opus-review fixes; run twice consecutively), live
-database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up (zero leftovers verified).
+`tests/ida4-option-c-test.js`: **104 passed / 0 failed** (99 when the environment-dependent
+`issueMissing()` section takes its safe-skip branch instead — see §2/F5's own note; not an
+invariant count either way — final verified run, post-Opus-review fixes; run twice
+consecutively), live database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up (zero
+leftovers verified).
 Full repository pass (all 16 suites, run by the Chef directly, not taken on trust):
 
 | Suite | Result |
@@ -177,13 +182,13 @@ Full repository pass (all 16 suites, run by the Chef directly, not taken on trus
 | ida-3a ingestion schema | 47/0 |
 | ida-3b ingestion service | 67/0 |
 | ida-3c rate limiting | 63/0 |
-| ida-3d private ingest route | 73/0 |
+| ida-3d private ingest route | 74/0 (F9 added one assertion post-Opus-review) |
 | ida-3e review queue | 48/0 |
 | ida-3f offhost backup (mythos-side suite) | 35/0 |
 | idauto-storage-ops | 73/0 |
 | identity-conformance | 81/0 |
 | ida4-foundation (env-free) | 130/0 |
-| ida4-option-c | 104/0 |
+| ida4-option-c | 104/0 (99/0 if the safe-skip branch is taken — see above) |
 
 One regression was found and fixed during Phase 2: `ida-3d`'s structural guard
 ("api.js contains no rate-limit or counter implementation") tripped on the first
@@ -248,7 +253,8 @@ corrections in `docs/AI_HANDOVER.md`, `docs/ROADMAP.md`, `docs/IDA4_READINESS_AU
 and `CHANGELOG.md` — stale assertion counts (reworded to avoid a hardcoded figure where the
 doc doesn't need one) and a stale, since-relocated function name (F1); and two new,
 documented limitations plus one documentation fix in §14 below (F6/F8). Test suite grew
-from 86 to 104 assertions; `tests/ida4-option-c-test.js` was run twice consecutively,
+from 86 to 104 (99 in the safe-skip case — not a fixed count either way, see above);
+`tests/ida4-option-c-test.js` was run twice consecutively,
 both green.
 
 ## 14. Known limitations
@@ -313,3 +319,20 @@ or is implied. `CITIZEN_FACING_IDA4_READY` = NO and `PUBLIC_ENDPOINT_READY_TO_IM
 production/public deployment additionally requires the Opus architecture review and
 Haiku independent audit of this implementation, and the documented security/readiness
 conditions — none of which this report satisfies by itself.
+
+## 17. Open owner items
+
+Standing register of decisions this branch surfaced but defaulted closed rather than
+answered, so they are not findable only in code comments, `docs/THREAT_MODEL.md`, a
+CHANGELOG entry, or a test — they now also have a named row in the actual decision
+register, `docs/IDA4_READINESS_AUDIT.md` (§I, the **A5-PLATE** row, and §J) (Opus review
+R1):
+
+- **A5-PLATE — OPEN.** May an anonymous public passport
+  (`GET /public/passport/:ivid`) display a `plate_number` fact? A5 decided plate
+  **resolution** (never look up a passport BY plate) — it did not rule on plate
+  **exposure** on an already-resolved public passport. **Interim behaviour today:
+  excluded.** `reference/api.js`'s `PUBLIC_FACT_KEY_DENY_LIST` includes `plate_number` as
+  a default-closed exclusion, independent of a fact's stored `access_scope`, until the
+  owner rules either way. Unblocking this requires an explicit owner decision, not an
+  engineering one.

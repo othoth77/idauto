@@ -150,10 +150,24 @@ async function insertFixture() {
   ok(Number(publicScopedDeniedCount) === 2, 'precondition: exactly 2 facts are stored access_scope=public AND deny-listed by fact_key (non-vacuous for the deny-list check below)');
 }
 
+// R4 (Opus review, 2026-08-19): §12's secondary fixture (the vehicle
+// created through the real authenticated write path) is tracked here so
+// its cleanup goes through this SAME finally-based path as the primary
+// fixture, rather than being deleted inline at the end of
+// issuanceWiredIntoWriteAPI() — a fixture created via §12 must still be
+// removed even if a LATER assertion in that function (or a later
+// section entirely) throws before reaching its own inline cleanup.
+var secondaryFixtureVehicleId = null;
+
 async function cleanupFixture() {
-  if (fixtureVehicleId == null) return;
-  await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [fixtureVehicleId]);
-  await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [fixtureVehicleId]);
+  if (fixtureVehicleId != null) {
+    await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [fixtureVehicleId]);
+    await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [fixtureVehicleId]);
+  }
+  if (secondaryFixtureVehicleId != null) {
+    await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [secondaryFixtureVehicleId]);
+    await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [secondaryFixtureVehicleId]);
+  }
 }
 
 async function migrationIdempotence() {
@@ -612,6 +626,10 @@ async function issuanceWiredIntoWriteAPI() {
 
   var dbRow = await db.query('SELECT id, ivid FROM idauto_vehicles WHERE internal_ref = $1', [newInternalRef]);
   ok(dbRow.rows.length === 1, 'precondition: the created vehicle is actually persisted (non-vacuous)');
+  // R4: track this row for cleanupFixture() as soon as its id is known —
+  // before any further assertion in this function that could throw —
+  // rather than deleting it inline only at the end of this function.
+  if (dbRow.rows.length === 1) secondaryFixtureVehicleId = dbRow.rows[0].id;
   ok(dbRow.rows[0].ivid === createResp.body.ivid, 'the persisted ivid column matches exactly what the create response returned');
 
   var auditCountForThisWrite = await scalar(
@@ -628,11 +646,8 @@ async function issuanceWiredIntoWriteAPI() {
   ok(auditRow.rows[0] && auditRow.rows[0].new_value_json.indexOf(createResp.body.ivid) !== -1,
     'the single vehicle.create audit row\'s new_value_json captures the issued ivid');
 
-  // Clean up this secondary fixture (distinct from the primary fixture
-  // cleanupFixture() tracks) — this suite's own row, not left to
-  // accumulate.
-  await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [dbRow.rows[0].id]);
-  await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [dbRow.rows[0].id]);
+  // R4: cleanup for this fixture happens in cleanupFixture() (the
+  // suite's own finally-based path, see main()), not inline here.
 }
 
 (async function main() {

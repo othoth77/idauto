@@ -496,6 +496,7 @@ original table is listed; unchanged gates are not restated.
 | Gate | Was | Now | Why |
 |---|---|---|---|
 | A5 admin-stub vs public path | OWNER DECISION | **DECIDED — 2026-08-19** | The owner decision, EXCERPTED (Opus review F11a: this is the approval sentence and its enumerated scope as it was communicated to engineering — it is not represented as the complete original text. The owner's separate binding prohibitions — no Option B / Magic Link, no citizen person store, no citizen PII collection (no person table, no email/phone/address, no auth identity, no sessions, no recovery flows) — are enforced and test-guarded throughout this branch, e.g. `tests/ida4-option-c-test.js` §10, but are not reproduced below as part of one continuous quotation, since this document cannot verify their exact original sentence boundaries against this excerpt): *"APPROVE OPTION C. Proceed with the zero-account IDA-4 public passport surface: IVID issuance, passport assembly, IVID-only QR resolution, never resolve by plate, no citizen PII, credential is never the vehicle/person identifier, apply the approved rate limiting and threat-model controls."* This closes the A5 decision gate itself — it does not by itself flip §E (public endpoint readiness) or `CITIZEN_FACING_IDA4_READY`, both of which remain gated on legal review (§B) independent of A5. See §J for the resulting branch. |
+| **A5-PLATE** (sub-item of A5, registered here 2026-08-19 per Opus review R1 — this decision register is the correct home for it, not only code comments/THREAT_MODEL/CHANGELOG/tests) | — | **OPEN — OWNER DECISION** | May an anonymous public passport (`GET /public/passport/:ivid`) display a `plate_number` fact? A5 decided plate **RESOLUTION** only — never look up a passport BY plate — and said nothing about plate **EXPOSURE** on an already-resolved public passport. **Interim behaviour today: excluded.** `reference/api.js`'s `PUBLIC_FACT_KEY_DENY_LIST` includes `plate_number` as a default-closed exclusion, independent of a fact's stored `access_scope`, pending this ruling; `tests/ida4-option-c-test.js` §3/§10 enforce it. Unblocking requires an explicit owner ruling, one way or the other — this row exists so that ruling has a place to be recorded when it happens. |
 | B. Legal | LEGAL REVIEW (enumerated) | **LEGAL REVIEW — matrix + counsel package exist; 16/16 OPEN, 0 APPROVED** | `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, full field set) and `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts for counsel). The four citizen-surface blockers: **L06, L07, L09, L16** (L16 by the §B.3 argument, not by the roadmap table — stated in the matrix) |
 | D1. Threat model | BLOCKED / TECH DEBT (no doc) | **Document exists** (`THREAT_MODEL.md` v1, with the transfer fraud section) — runtime controls it identifies remain PLANNED/gated | Written in the foundation subset |
 | D3. Fraud model | BLOCKED | **Documented** (THREAT_MODEL §6); runtime enforcement remains gated on A2 authorization | ibid. |
@@ -545,6 +546,12 @@ sub-surface with no account requirement — but it does not itself constitute th
 Opus review and independent audit" §H names as still required, nor does it touch legal
 review (§B) at all, since the surface it implements was chosen specifically to avoid
 collecting citizen PII or requiring L06/L07/L09/L16 to be answered.
+
+**One open owner question this branch surfaced and defaulted closed rather than answered:
+see the A5-PLATE row above.** May the already-resolved public passport display its
+`plate_number`? A5 answered plate *resolution* (never look up BY plate), not plate
+*exposure* on the resolved result — this implementation excludes `plate_number` by default
+until the owner rules either way.
 
 **Explicitly unchanged by this branch:** `CITIZEN_FACING_IDA4_READY` stays **NO**.
 `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays **NO**. No deployment occurred; no production

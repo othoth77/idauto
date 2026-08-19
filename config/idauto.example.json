@@ -392,7 +392,7 @@
   },
 
   "public_resolution": {
-    "_comment": "IDA-4 Option C (A5 OPTION C, 2026-08-19) — GET /public/passport/:ivid, reference/api.js's first and only unauthenticated route. IVID-only resolution: no plate lookup, no citizen PII. Its own rate-limit bucket, independent of every ingestion bucket in reference/rate-limit.js.",
+    "_comment": "IDA-4 Option C (A5 OPTION C, 2026-08-19) — GET /public/passport/:ivid, reference/api.js's first and only unauthenticated route. IVID-only resolution: no plate lookup, no citizen PII. Its own rate-limit bucket, independent of every ingestion bucket in reference/rate-limit.js. This whole section, including `enabled` (the kill-switch), is read ONCE per process and cached (reference/api.js's loadPublicResolutionConfig()) — editing this file, or toggling `enabled`, has no effect on an already-running process; it takes a process restart to pick up.",
     "enabled": true,
     "rate_limit": {
       "limit": 30,
