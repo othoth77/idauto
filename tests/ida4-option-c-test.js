@@ -55,6 +55,17 @@ var required = ['IDAUTO_DB_HOST', 'IDAUTO_DB_PORT', 'IDAUTO_DB_USER', 'IDAUTO_DB
 var missing = required.filter(function (name) { return !process.env[name]; });
 if (missing.length) throw new Error('missing required environment variable(s): ' + missing.join(', '));
 
+// F2 test support (§12): a real admin token/identity, set BEFORE
+// reference/api.js (and therefore reference/identity.js) is required —
+// matching tests/ida-2d-write-api-and-audit-test.js's and
+// tests/ida-3d-private-ingest-route-test.js's own convention, even
+// though identity.js's cache is actually populated lazily on first use,
+// not at require time.
+var ADMIN_TOKEN = 'ida4optionc-admin-' + crypto.randomBytes(18).toString('hex');
+var ADMIN_IDENTITY = 'admin:ida4-option-c-test';
+var _adminIdentities = {}; _adminIdentities[ADMIN_TOKEN] = ADMIN_IDENTITY;
+process.env.IDAUTO_ADMIN_IDENTITIES = JSON.stringify(_adminIdentities);
+
 var db = require(path.join(BASE, 'reference', 'db.js'));
 var ivid = require(path.join(BASE, 'reference', 'ivid.js'));
 var ividIssuance = require(path.join(BASE, 'reference', 'ivid-issuance.js'));
@@ -62,9 +73,14 @@ var api = require(path.join(BASE, 'reference', 'api.js'));
 var rateLimit = require(path.join(BASE, 'reference', 'rate-limit.js'));
 
 var server, port;
-function request(method, requestPath, headers) {
+// `body`, added for §12's authenticated POST /api/vehicles call, is
+// optional and backward-compatible — every pre-existing call site passes
+// only 3 arguments and is unaffected.
+function request(method, requestPath, headers, body) {
   return new Promise(function (resolve, reject) {
-    var req = http.request({ hostname: '127.0.0.1', port: port, path: requestPath, method: method, headers: headers || {} }, function (res) {
+    var finalHeaders = Object.assign({}, headers || {});
+    if (body !== undefined) finalHeaders['Content-Length'] = Buffer.byteLength(body);
+    var req = http.request({ hostname: '127.0.0.1', port: port, path: requestPath, method: method, headers: finalHeaders }, function (res) {
       var chunks = [];
       res.on('data', function (chunk) { chunks.push(chunk); });
       res.on('end', function () {
@@ -74,6 +90,7 @@ function request(method, requestPath, headers) {
       });
     });
     req.on('error', reject);
+    if (body !== undefined) req.write(body);
     req.end();
   });
 }
@@ -103,10 +120,19 @@ async function insertFixture() {
   );
   fixtureVehicleId = vehicle.rows[0].id;
 
+  // F4 (Opus review, 2026-08-19): two of these five are deliberately
+  // stored access_scope='public' despite being deny-listed fact_keys
+  // (PUBLIC_FACT_KEY_DENY_LIST, reference/api.js) — reproducing exactly
+  // the scenario the finding describes (writes.js:245/284 can set or
+  // default a fact to 'public' regardless of its key) so validKnownIvid()
+  // below can prove the deny-list, not just the access_scope filter,
+  // keeps them out.
   var factRows = [
     ['colour', 'blue', 'public'],
     ['engine_cc', '1600', 'professional'],
-    ['vin', 'SECRET-VIN-SHOULD-NEVER-LEAK', 'mythos_private']
+    ['vin', 'SECRET-VIN-SHOULD-NEVER-LEAK', 'mythos_private'],
+    ['vin', 'PUBLIC-SCOPED-VIN-SHOULD-STILL-NEVER-LEAK', 'public'],
+    ['plate_number', 'PUBLIC-SCOPED-PLATE-SHOULD-NEVER-LEAK', 'public']
   ];
   for (var i = 0; i < factRows.length; i++) {
     await db.query(
@@ -116,7 +142,12 @@ async function insertFixture() {
     );
   }
   var factCount = await scalar('SELECT count(*) AS c FROM idauto_vehicle_facts WHERE vehicle_id = $1', [fixtureVehicleId]);
-  ok(Number(factCount) === 3, 'precondition: fixture vehicle has exactly 3 facts across 3 scopes (non-vacuous)');
+  ok(Number(factCount) === 5, 'precondition: fixture vehicle has exactly 5 facts (non-vacuous)');
+  var publicScopedDeniedCount = await scalar(
+    "SELECT count(*) AS c FROM idauto_vehicle_facts WHERE vehicle_id = $1 AND access_scope = 'public' AND fact_key IN ('vin','plate_number')",
+    [fixtureVehicleId]
+  );
+  ok(Number(publicScopedDeniedCount) === 2, 'precondition: exactly 2 facts are stored access_scope=public AND deny-listed by fact_key (non-vacuous for the deny-list check below)');
 }
 
 async function cleanupFixture() {
@@ -164,18 +195,42 @@ async function issuancePermanence() {
   );
   ok(Number(auditCount) === 1, 'exactly one audit row was written for issuance (the no-op second call wrote none)');
 
-  var missingBefore = await scalar('SELECT count(*) AS c FROM idauto_vehicles WHERE ivid IS NULL');
-  var missingResults = await ividIssuance.issueMissing(db);
-  ok(Array.isArray(missingResults), 'issueMissing returns an array');
-  ok(missingResults.length === Number(missingBefore), 'issueMissing issued exactly the number of vehicles that were missing an ivid');
-  var missingAfter = await scalar('SELECT count(*) AS c FROM idauto_vehicles WHERE ivid IS NULL');
-  ok(Number(missingAfter) === 0, 'no vehicle is left without an ivid after issueMissing');
+  // F5 (Opus review, 2026-08-19): this suite must NEVER write to rows it
+  // does not own. issueMissing() operates across the WHOLE idauto_vehicles
+  // table, so before calling it, verify every currently-missing-ivid row
+  // is one of THIS suite's own fixtures (internal_ref prefixed
+  // FIXTURE_PREFIX) — by this point in a normal run that's exactly one
+  // row (the fixture insertFixture() just created; every pre-existing
+  // vehicle already got a permanent ivid the first time this suite or
+  // issueMissing() ever ran against this database). If a genuinely
+  // non-fixture row is ever found missing an ivid — a scenario that
+  // should not occur post-F2 (new vehicles get an ivid at creation), but
+  // could still arise from a row inserted outside the API — this suite
+  // SKIPS the issueMissing() call entirely rather than mutate operational
+  // rows it doesn't own. issueForVehicle()'s permanence/issuance logic is
+  // already fully exercised above without needing issueMissing() to run
+  // at all, so skipping loses no coverage of that logic.
+  var missingRowsBefore = await db.query('SELECT id, internal_ref FROM idauto_vehicles WHERE ivid IS NULL');
+  var nonFixtureMissing = missingRowsBefore.rows.filter(function (r) {
+    return typeof r.internal_ref !== 'string' || r.internal_ref.indexOf(FIXTURE_PREFIX) !== 0;
+  });
+  if (nonFixtureMissing.length > 0) {
+    console.log('  SKIP issueMissing() — ' + nonFixtureMissing.length + ' non-fixture vehicle(s) currently lack an ivid; refusing to mutate rows this suite does not own. issueForVehicle() permanence/issuance logic is already fully covered by the direct calls above.');
+  } else {
+    ok(true, 'precondition: every vehicle currently missing an ivid is this suite\'s own fixture — safe to call issueMissing()');
+    var missingBefore = missingRowsBefore.rows.length;
+    var missingResults = await ividIssuance.issueMissing(db);
+    ok(Array.isArray(missingResults), 'issueMissing returns an array');
+    ok(missingResults.length === missingBefore, 'issueMissing issued exactly the number of vehicles that were missing an ivid');
+    var missingAfter = await scalar('SELECT count(*) AS c FROM idauto_vehicles WHERE ivid IS NULL');
+    ok(Number(missingAfter) === 0, 'no vehicle is left without an ivid after issueMissing');
 
-  var second2 = await ividIssuance.issueMissing(db);
-  ok(Array.isArray(second2) && second2.length === 0, 'issueMissing is idempotent — a second run issues nothing');
+    var second2 = await ividIssuance.issueMissing(db);
+    ok(Array.isArray(second2) && second2.length === 0, 'issueMissing is idempotent — a second run issues nothing');
+  }
 
   var stillFirst = await db.query('SELECT ivid FROM idauto_vehicles WHERE id = $1', [fixtureVehicleId]);
-  ok(stillFirst.rows[0].ivid === first, 'the fixture vehicle ivid is unchanged after issueMissing runs across the whole table');
+  ok(stillFirst.rows[0].ivid === first, 'the fixture vehicle ivid is unchanged after this section runs');
 }
 
 async function validKnownIvid() {
@@ -187,12 +242,19 @@ async function validKnownIvid() {
   ok(res.body && res.body.qr && res.body.qr.payload === fixtureIvid, 'qr.payload === the requested ivid exactly');
   ok(res.body && res.body.scope === 'public', 'passport scope is hardcoded public');
   ok(typeof res.body.completeness_note === 'string' && res.body.completeness_note.length > 0, 'completeness_note is present and non-empty');
-  ok(Array.isArray(res.body.facts) && res.body.facts.length === 1, 'exactly one fact is visible — the public-scope one (non-vacuous: not zero, not three)');
+  // F4: exactly one fact is visible even though the fixture stores THREE
+  // access_scope='public' facts (colour, and the deny-listed vin +
+  // plate_number) — proving PUBLIC_FACT_KEY_DENY_LIST, not just the
+  // access_scope filter, keeps the deny-listed ones out.
+  ok(Array.isArray(res.body.facts) && res.body.facts.length === 1, 'exactly one fact is visible — colour only, despite 3 public-scoped facts existing (non-vacuous: not zero, not three)');
   var factKeys = res.body.facts.map(function (f) { return f.fact_key; });
   ok(factKeys.indexOf('colour') !== -1, 'the public fact (colour) is present');
   ok(factKeys.indexOf('engine_cc') === -1, 'the professional-scope fact is absent from a public passport');
-  ok(factKeys.indexOf('vin') === -1, 'the mythos_private-scope fact (vin) is absent from a public passport');
-  ok(res.raw.indexOf('SECRET-VIN-SHOULD-NEVER-LEAK') === -1, 'the restricted fact VALUE does not appear anywhere in the raw response body');
+  ok(factKeys.indexOf('vin') === -1, 'vin is absent from a public passport (deny-listed by fact_key, regardless of its access_scope)');
+  ok(factKeys.indexOf('plate_number') === -1, 'plate_number is absent from a public passport (deny-listed, interim default-closed, owner decision pending)');
+  ok(res.raw.indexOf('SECRET-VIN-SHOULD-NEVER-LEAK') === -1, 'the mythos_private-scope vin VALUE does not appear anywhere in the raw response body');
+  ok(res.raw.indexOf('PUBLIC-SCOPED-VIN-SHOULD-STILL-NEVER-LEAK') === -1, 'the PUBLIC-scoped vin VALUE also does not appear — the deny-list, not just access_scope, is what keeps it out');
+  ok(res.raw.indexOf('PUBLIC-SCOPED-PLATE-SHOULD-NEVER-LEAK') === -1, 'the PUBLIC-scoped plate_number VALUE does not appear anywhere in the raw response body');
   ok(res.headers['content-security-policy'] !== undefined, 'CSP header is applied to the public response');
   ok(res.headers['x-content-type-options'] === 'nosniff', 'X-Content-Type-Options header is applied');
   ok(res.headers['cache-control'] === 'no-store', 'Cache-Control: no-store is applied');
@@ -335,7 +397,12 @@ async function burstAndRecovery() {
   // rows before the child starts, scoped to precisely the
   // public_resolution:window/127.0.0.1 bucket key — never any other
   // dimension's rows, and never anything but a counter row this suite
-  // itself could have written.
+  // itself could have written. This is cleanup of rate-limit counters
+  // this suite's OWN earlier requests (§3/§9, and any prior run of this
+  // suite against the same 127.0.0.1 loopback address) created — not
+  // operational data, and not any other caller's traffic, since the
+  // dimension is used by no other route in this codebase (F5/general
+  // hygiene note, Opus review 2026-08-19).
   var publicResolutionIpHash = crypto.createHash('sha256').update('127.0.0.1').digest('hex');
   var publicResolutionBucketKey = rateLimit.bucketKey('public_resolution:window', publicResolutionIpHash);
   await db.query('DELETE FROM idauto_rate_limit_counters WHERE bucket_key = $1', [publicResolutionBucketKey]);
@@ -350,6 +417,63 @@ async function burstAndRecovery() {
     ok(parsed.results[2].status === 429, 'the third request (over the limit) returns 429');
     ok(parsed.results[2].retryAfter !== null && Number(parsed.results[2].retryAfter) >= 1, '429 response carries a Retry-After header of at least 1 second');
     ok(parsed.after.status !== 429, 'after waiting past the window, the bucket has recovered — no longer rate-limited');
+  } finally {
+    try { fs.unlinkSync(childScript); } catch (_) {}
+    try { fs.unlinkSync(cfgPath); } catch (_) {}
+  }
+}
+
+// F3 (Opus review, 2026-08-19): config/idauto.example.json's
+// public_resolution.enabled kill-switch was previously read by nothing.
+// Isolated in its own child process (like burstAndRecovery() above) so
+// this test's spied-zero-db-queries proof is against a fresh process —
+// this suite's own db.query is already un-spyable at this point (it was
+// restored in malformedIvidNoDbCall()'s finally block), and a fresh
+// process is the cleanest way to prove the disabled route never
+// initializes a pool connection at all, not just "never queries with
+// this particular already-open client."
+async function killSwitchDisabled() {
+  console.log('\n11. F3 kill-switch: public_resolution.enabled=false -> 404 everywhere under /public/, zero DB queries');
+  var cfgPath = path.join(os.tmpdir(), 'ida4-option-c-disabled-' + crypto.randomBytes(6).toString('hex') + '.json');
+  fs.writeFileSync(cfgPath, JSON.stringify({ public_resolution: { enabled: false, rate_limit: { limit: 30, window_seconds: 60 } } }));
+  var childScript = path.join(os.tmpdir(), 'ida4-option-c-disabled-child-' + crypto.randomBytes(6).toString('hex') + '.js');
+  var childSource = [
+    "'use strict';",
+    "var http = require('http');",
+    "var dbPath = " + JSON.stringify(path.join(BASE, 'reference', 'db.js')) + ";",
+    "var db = require(dbPath);",
+    "var queryCalls = 0;",
+    "var originalQuery = db.query;",
+    "db.query = function () { queryCalls++; return originalQuery.apply(db, arguments); };",
+    "var api = require(" + JSON.stringify(path.join(BASE, 'reference', 'api.js')) + ");",
+    "var ivid = require(" + JSON.stringify(path.join(BASE, 'reference', 'ivid.js')) + ");",
+    "(async function () {",
+    "  var server = api.createServer();",
+    "  await new Promise(function (resolve) { server.listen(0, '127.0.0.1', resolve); });",
+    "  var port = server.address().port;",
+    "  var knownGoodIvid = ivid.generate();",
+    "  var result = await new Promise(function (resolve, reject) {",
+    "    http.get({ hostname: '127.0.0.1', port: port, path: '/public/passport/' + encodeURIComponent(knownGoodIvid) }, function (res) {",
+    "      var chunks = [];",
+    "      res.on('data', function (c) { chunks.push(c); });",
+    "      res.on('end', function () { resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }); });",
+    "    }).on('error', reject);",
+    "  });",
+    "  await new Promise(function (r) { server.close(r); });",
+    "  console.log(JSON.stringify({ status: result.status, body: result.body, queryCalls: queryCalls }));",
+    "  process.exit(0);",
+    "})().catch(function (e) { console.error('CHILD_FATAL: ' + e.message); process.exit(1); });"
+  ].join('\n');
+  fs.writeFileSync(childScript, childSource);
+  try {
+    var env = Object.assign({}, process.env, { IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH: cfgPath });
+    var output = childProcess.execFileSync(process.execPath, [childScript], { env: env, timeout: 15000 }).toString('utf8');
+    var lastLine = output.trim().split('\n').pop();
+    var parsed = JSON.parse(lastLine);
+    ok(parsed.status === 404, 'with public_resolution.enabled=false, a well-formed, format-valid ivid still resolves 404');
+    var parsedBody = null; try { parsedBody = JSON.parse(parsed.body); } catch (_) {}
+    ok(parsedBody && typeof parsedBody.error === 'string', 'the disabled-route 404 has the standard error shape (identical to every other 404 on this route)');
+    ok(parsed.queryCalls === 0, 'zero database queries occurred while the kill-switch was engaged (spied db.query call count is exactly zero), got ' + parsed.queryCalls);
   } finally {
     try { fs.unlinkSync(childScript); } catch (_) {}
     try { fs.unlinkSync(cfgPath); } catch (_) {}
@@ -458,6 +582,57 @@ async function a5ProhibitionGuards() {
   // assertion pins the SQL layer directly so it cannot silently rot.
   ok(/access_scope = \$2/.test(apiSource), 'the facts query in api.js still filters access_scope = $2 in SQL (defense-in-depth, not just in assemblePassport())');
   ok(/\[candidate, 'public'\]/.test(apiSource), 'the facts query still binds $2 to the literal string \'public\' (not a caller-influenced or looser value)');
+
+  // 6. F4 deny-list structural pin (Opus review, 2026-08-19): a mutation
+  // shrinking or removing PUBLIC_FACT_KEY_DENY_LIST, or dropping the SQL
+  // exclusion that applies it, must fail this suite even though the
+  // primary behavioral proof lives in §3 above.
+  ok(/var PUBLIC_FACT_KEY_DENY_LIST = \['vin', 'plate_number'\];/.test(apiSource), 'PUBLIC_FACT_KEY_DENY_LIST is exactly [\'vin\', \'plate_number\'] in api.js source');
+  ok(/fact_key NOT IN \(/.test(apiSource), 'the facts query in api.js still applies a fact_key NOT IN (...) exclusion');
+}
+
+// F2 (Opus review, 2026-08-19): before this fix, nothing in production
+// ever called reference/ivid-issuance.js — the live 86-vehicle backfill
+// only ever happened via this very test suite (issueMissing()). This
+// proves the fix directly: a vehicle created through the real,
+// authenticated write path (POST /api/vehicles) has a permanent ivid in
+// the SAME response, not only after a later, separate backfill step.
+async function issuanceWiredIntoWriteAPI() {
+  console.log('\n12. F2: issuance is wired into the authenticated POST /api/vehicles write path');
+  var payload = JSON.stringify({ make: 'IDA4OptionCWiringTest', model: 'TestModel', year: 2026 });
+  var createResp = await request('POST', '/api/vehicles',
+    { 'Authorization': 'Bearer ' + ADMIN_TOKEN, 'Content-Type': 'application/json' }, payload);
+  ok(createResp.status === 201, 'POST /api/vehicles (authenticated) -> 201');
+  ok(createResp.body && typeof createResp.body.internal_ref === 'string' && createResp.body.internal_ref.length > 0,
+    'precondition: response includes a real internal_ref (non-vacuous)');
+
+  var newInternalRef = createResp.body && createResp.body.internal_ref;
+  ok(createResp.body && typeof createResp.body.ivid === 'string' && ivid.validate(createResp.body.ivid).ok,
+    'the vehicle has a well-formed ivid IMMEDIATELY in the create response — issuance is wired into production, not reachable only via the test suite or an out-of-band issueMissing() run');
+
+  var dbRow = await db.query('SELECT id, ivid FROM idauto_vehicles WHERE internal_ref = $1', [newInternalRef]);
+  ok(dbRow.rows.length === 1, 'precondition: the created vehicle is actually persisted (non-vacuous)');
+  ok(dbRow.rows[0].ivid === createResp.body.ivid, 'the persisted ivid column matches exactly what the create response returned');
+
+  var auditCountForThisWrite = await scalar(
+    "SELECT count(*) AS c FROM idauto_audit_log WHERE event_type = 'vehicle.create' AND target_ref = $1",
+    [newInternalRef]
+  );
+  ok(Number(auditCountForThisWrite) === 1, 'exactly one vehicle.create audit row exists for this write — issuance did not add a second, separate audit row for the same atomic write');
+  var separateIssuanceAuditCount = await scalar(
+    "SELECT count(*) AS c FROM idauto_audit_log WHERE event_type = 'ivid.issue' AND target_ref = $1",
+    [String(dbRow.rows[0].id)]
+  );
+  ok(Number(separateIssuanceAuditCount) === 0, 'no separate ivid.issue audit row was written for this write (skipAudit:true honoured; the ivid is captured in the one vehicle.create audit row instead)');
+  var auditRow = await db.query("SELECT new_value_json FROM idauto_audit_log WHERE event_type = 'vehicle.create' AND target_ref = $1", [newInternalRef]);
+  ok(auditRow.rows[0] && auditRow.rows[0].new_value_json.indexOf(createResp.body.ivid) !== -1,
+    'the single vehicle.create audit row\'s new_value_json captures the issued ivid');
+
+  // Clean up this secondary fixture (distinct from the primary fixture
+  // cleanupFixture() tracks) — this suite's own row, not left to
+  // accumulate.
+  await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [dbRow.rows[0].id]);
+  await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [dbRow.rows[0].id]);
 }
 
 (async function main() {
@@ -476,6 +651,8 @@ async function a5ProhibitionGuards() {
     await adminRouteStillAuthenticated();
     await noAuthorizationHeaderAnywhere();
     await a5ProhibitionGuards();
+    await killSwitchDisabled();
+    await issuanceWiredIntoWriteAPI();
   } finally {
     await cleanupFixture();
     if (server) await new Promise(function (resolve) { server.close(resolve); });

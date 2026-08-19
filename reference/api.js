@@ -175,20 +175,29 @@ var PUBLIC_RESOLUTION_CONFIG_PATH = process.env.IDAUTO_PUBLIC_RESOLUTION_CONFIG_
   path.join(__dirname, '..', 'config', 'idauto.example.json');
 var _publicResolutionConfigCache = null;
 
-// Reads config/idauto.example.json's public_resolution.rate_limit
-// section once per process (cached, same pattern as
-// reference/plate-validator.js's loadFormats()). Falls back to a safe
-// default if the section is absent so this route never silently runs
-// unlimited.
+// Reads config/idauto.example.json's public_resolution section once per
+// process (cached, same pattern as reference/plate-validator.js's
+// loadFormats()). Falls back to safe defaults if the section (or its
+// rate_limit sub-section) is absent so this route never silently runs
+// unlimited OR silently disabled — `enabled` defaults to true absent an
+// explicit `false`, matching every other config value's "safe default"
+// posture in this function.
+//
+// F3 (Opus review, 2026-08-19): `enabled` was previously read by
+// nothing — a documented kill-switch with no wiring. Now consulted by
+// handlePublicPassportRoute() before any database touch (see there).
 function loadPublicResolutionConfig() {
   if (_publicResolutionConfigCache) return _publicResolutionConfigCache;
   var section = {};
+  var enabled = true;
   try {
     var raw = fs.readFileSync(PUBLIC_RESOLUTION_CONFIG_PATH, 'utf8');
     var config = JSON.parse(raw);
     section = (config.public_resolution && config.public_resolution.rate_limit) || {};
+    if (config.public_resolution && config.public_resolution.enabled === false) enabled = false;
   } catch (_) { /* fall through to defaults below */ }
   _publicResolutionConfigCache = {
+    enabled: enabled,
     limit: typeof section.limit === 'number' && section.limit > 0 ? section.limit : 30,
     window_seconds: typeof section.window_seconds === 'number' && section.window_seconds > 0 ? section.window_seconds : 60
   };
@@ -210,6 +219,39 @@ function clientIpHash(req) {
   var ip = (req.socket && req.socket.remoteAddress) || '';
   return crypto.createHash('sha256').update(ip).digest('hex');
 }
+
+// F4 (Opus review, 2026-08-19) — fact-key deny-list for the public
+// route. writes.js:245 (reviewFact acceptance) sets access_scope =
+// 'public' UNCONDITIONALLY, and writes.js:284 (createFact) DEFAULTS
+// access_scope to 'public' when a caller omits it — so a single admin
+// call that forgets to set access_scope could publish a fact this
+// route's SQL-level access_scope filter alone would not catch, since
+// that filter only checks the STORED scope, not the fact_key. This
+// deny-list excludes specific fact_keys from the public route
+// REGARDLESS of their stored access_scope, as a second, independent
+// layer.
+//
+// Derived from docs/PRIVACY_ARCHITECTURE.md §3's "Never public" table,
+// cross-referenced against database/schema.sql's fact_key vocabulary
+// (colour|make|model|variant|year|body_type|fuel_type|seats|engine_cc|
+// category_code|vin|gross_weight_kg|plate_number — the only fact_keys
+// that exist at all): of that vocabulary, exactly one key falls under a
+// "Never public" category — 'vin' ("Restricted attributes: VIN, engine
+// number"; engine_cc is engine DISPLACEMENT, a normal public technical
+// spec already in the protocol summary set, not "engine number" — an
+// engine's serial/identifying number, which this fact_key vocabulary
+// has no separate key for). No other "Never public" category (owner
+// identity, sensitive documents, precise movement/location, raw
+// capture, contributor identity, internal signals) maps onto any
+// fact_key in this vocabulary at all — none of those things are ever
+// stored as a Fact.
+//
+// 'plate_number' is added as a SEPARATE, INTERIM, default-closed
+// exclusion — OWNER DECISION PENDING: A5 decided plate RESOLUTION (never
+// look up a passport by plate), not plate EXPOSURE on this anonymous
+// surface. Until the owner rules on whether an already-resolved public
+// passport may display its plate, it is excluded by default here (2026-08-19).
+var PUBLIC_FACT_KEY_DENY_LIST = ['vin', 'plate_number'];
 
 // Maps one idauto_vehicle_facts row (already filtered to access_scope =
 // 'public' by the caller's SQL) into the protocol-shaped fact object
@@ -235,6 +277,16 @@ async function handlePublicPassportRoute(req, res, pathname) {
   // path-then-method dispatch order.
   var m = /^\/public\/passport\/([^/]+)$/.exec(pathname);
   if (!m) return notFound(res);
+
+  // F3 KILL-SWITCH (Opus review, 2026-08-19) — checked before the method
+  // gate and BEFORE any database touch, deliberately: when
+  // config/idauto.example.json's public_resolution.enabled is false,
+  // this route must behave as if it does not exist at all — the
+  // identical 404 shape for every method, not just GET, and with zero
+  // query difference from a plain unknown-route 404.
+  if (!loadPublicResolutionConfig().enabled) {
+    return notFound(res);
+  }
 
   // 1. Method gate.
   if (req.method !== 'GET') {
@@ -281,12 +333,18 @@ async function handlePublicPassportRoute(req, res, pathname) {
   var vehicleRow = vehicleResult.rows[0];
 
   // Defense-in-depth: access_scope = 'public' filtered in SQL, in
-  // addition to assemblePassport()'s own scope filter below.
+  // addition to assemblePassport()'s own scope filter below. PLUS
+  // PUBLIC_FACT_KEY_DENY_LIST (F4, see that constant's own comment) —
+  // a fact_key-level exclusion independent of the stored access_scope,
+  // so a mis-scoped fact (e.g. a vin fact accidentally stored 'public')
+  // still never reaches this route.
+  var denyPlaceholders = PUBLIC_FACT_KEY_DENY_LIST.map(function (_, i) { return '$' + (i + 3); }).join(', ');
   var factsResult = await db.query(
     'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
-    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 AND is_active = TRUE ' +
+    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 ' +
+    'AND fact_key NOT IN (' + denyPlaceholders + ') AND is_active = TRUE ' +
     'ORDER BY fact_key',
-    [candidate, 'public']
+    [candidate, 'public'].concat(PUBLIC_FACT_KEY_DENY_LIST)
   );
 
   // Chef Phase-1 audit fix (follow-up to e220213): the raw idauto_vehicles
@@ -801,7 +859,18 @@ function createServer() {
     // table below.
     if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
       Promise.resolve().then(function () { return handlePublicPassportRoute(req, res, pathname); }).catch(function (err) {
-        if (err && err.httpStatus) return sendJson(res, err.httpStatus, { error: err.message });
+        // F7 (Opus review, 2026-08-19): a response may already be
+        // underway (e.g. writeHead already called) by the time an error
+        // surfaces here — writing again would throw a second, uglier
+        // error. Destroy the socket instead of attempting a second write.
+        if (res.headersSent) { req.socket.destroy(); return; }
+        // Never echo err.message to this ANONYMOUS, unauthenticated
+        // caller — unlike the authenticated ROUTES catch below (whose own
+        // comment already warns against echoing driver-shaped detail),
+        // this caller has proven nothing about themselves at all, so even
+        // an httpStatus-carrying application error (a message string an
+        // internal caller wrote for an admin's eyes) gets a generic body.
+        if (err && err.httpStatus) return sendJson(res, err.httpStatus, { error: 'request could not be processed' });
         var mapped = writes.mapDbError(err);
         sendJson(res, mapped.status, { error: mapped.error });
       });

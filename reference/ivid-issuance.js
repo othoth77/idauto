@@ -23,10 +23,14 @@
 //     shape from any other write's.
 //
 // Deliberately NOT wired to a bearer identity: issuance is triggered by
-// system processes (issueMissing(), or an admin action that itself
-// already went through requireAuth()), never by an unauthenticated
-// caller — this module has no route of its own; reference/api.js calls
-// it only from within already-gated code paths.
+// system processes (issueMissing()) or an authenticated admin write that
+// itself already went through requireAuth() — never by an
+// unauthenticated caller. This module has no route of its own.
+// reference/writes.js's createVehicle() calls issueForVehicle() inside
+// the SAME transaction as the vehicle INSERT (Opus review F2,
+// 2026-08-19) — every vehicle created through the authenticated
+// POST /api/vehicles path now gets a permanent ivid at creation time,
+// not only via the out-of-band issueMissing() backfill.
 //
 // Every write here goes through a caller-supplied `client` (already
 // inside a transaction the caller owns, or a plain pool query object) —
@@ -49,7 +53,19 @@ var MAX_COLLISION_RETRIES = 5; // bounded — see file header; a real
 // `client` is any object exposing query(text, params) returning a
 // node-postgres-shaped { rows } — either a pool (reference/db.js) or a
 // transaction client (reference/db.js's getClientForTransaction()).
-async function issueForVehicle(client, vehicleId) {
+//
+// `options.skipAudit` (default false): when true, this call writes NO
+// audit row of its own. Used exactly once, by reference/writes.js's
+// createVehicle(), which already writes ONE audit row for the whole
+// vehicle-creation write (event_type='vehicle.create') whose
+// new_value_json includes the issued ivid — a second, separate
+// 'ivid.issue' row for the same atomic write would double-count it and
+// change the "exactly one audit row per write" invariant
+// tests/ida-2d-write-api-and-audit-test.js asserts. Every OTHER caller
+// (issueMissing(), and direct test calls) leaves this false and gets the
+// normal per-issuance 'system'-actor audit row described above.
+async function issueForVehicle(client, vehicleId, options) {
+  var skipAudit = !!(options && options.skipAudit);
   if (vehicleId === undefined || vehicleId === null) {
     throw new Error('ivid-issuance.issueForVehicle: vehicleId is required');
   }
@@ -81,12 +97,14 @@ async function issueForVehicle(client, vehicleId) {
         [candidate, vehicleId]
       );
       if (updated.rows.length === 1) {
-        await client.query(
-          'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, new_value_json) ' +
-          'VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          ['ivid.issue', 'system', 'ivid-issuance', 'idauto_vehicles', String(vehicleId),
-            'IDA-4 Option C IVID issuance', JSON.stringify({ ivid: candidate })]
-        );
+        if (!skipAudit) {
+          await client.query(
+            'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, new_value_json) ' +
+            'VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            ['ivid.issue', 'system', 'ivid-issuance', 'idauto_vehicles', String(vehicleId),
+              'IDA-4 Option C IVID issuance', JSON.stringify({ ivid: candidate })]
+          );
+        }
         return candidate;
       }
       // Zero rows updated and no error thrown means a concurrent caller
@@ -115,10 +133,23 @@ async function issueForVehicle(client, vehicleId) {
 }
 
 // Issues an ivid for every vehicle currently lacking one. Returns an
-// array of { vehicle_id, ivid, already_had } — already_had is always
-// false here since this only selects rows with ivid IS NULL, kept as an
-// explicit field (rather than omitted) so callers logging this result
-// don't have to know that invariant to read it correctly.
+// array of { vehicle_id, ivid, already_had } — every row in the result
+// was selected because it had ivid IS NULL at SELECT time, so
+// already_had is hardcoded false here rather than computed. Documented
+// precisely (Opus review F6/F8, 2026-08-19) because it is NOT a
+// guarantee about the actual issueForVehicle() call outcome: under a
+// race, a concurrent caller could set this exact vehicle's ivid between
+// this function's SELECT and its own call to issueForVehicle() for that
+// row, in which case issueForVehicle() correctly returns the OTHER
+// caller's already-issued value (see its own permanence guarantee
+// above) while this field still reports false. This is a narrow,
+// documented imprecision in a diagnostic/logging field only — it never
+// affects correctness of issuance itself (issueForVehicle() never
+// overwrites regardless of what this field claims), and pool-mode (no
+// explicit transaction) calls to issueMissing() are inherently racy
+// against concurrent writers in exactly this way, which is why
+// deployment should prefer a transaction client here when concurrent
+// issuance is possible.
 async function issueMissing(client) {
   var missing = await client.query('SELECT id FROM idauto_vehicles WHERE ivid IS NULL ORDER BY id ASC');
   var results = [];
