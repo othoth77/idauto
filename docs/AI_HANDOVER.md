@@ -27,6 +27,70 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+## IDA4-FOUNDATION-SUBSET — GATE-FREE FOUNDATION SUBSET OF IDA-4 (2026-08-19) — PASS
+
+**Branch:** `ida4-foundation` @ `f649398` (on top of the `ida4-readiness` audit). Implements
+exactly the subset the architecture review approved from
+[`IDA4_READINESS_AUDIT.md`](IDA4_READINESS_AUDIT.md) §H: schema/protocol groundwork that
+creates NO reachable write path, processes NO real person's data, and answers/presupposes NO
+legal question. **IDA-4 itself is NOT marked implemented** — see `ROADMAP.md`'s IDA-4 section
+for the item-by-item status this entry does not duplicate.
+
+**In the boundary (7 items, all delivered):**
+
+1. Schema-defect fixes in `protocol/schemas/` — `passport`/`anomaly` required-field
+   additions, `ownership-transfer.supersedes`, the IVID pattern bound `{16,}` → `{16,30}`,
+   and a dated `protocol/README.md` subsection reconciling `additionalProperties: false`
+   against OVIP §13 (cross-referenced from §13 itself).
+2. `reference/ivid.js` — pure IVID issuance/validation library, Crockford base32 (verified
+   character-for-character identical to the schema's own class), a from-scratch weighted
+   check-symbol algorithm (proven in the file header to catch every single-symbol
+   substitution and every adjacent transposition of distinct symbols, for payloads up to the
+   30-symbol bound), ≥5 pinned test vectors.
+3. `protocol/schemas/holder-ref.schema.json` and `protocol/schemas/tombstone.schema.json` —
+   additive protocol artifacts, `MAPPING.md` updated with both rows.
+4. `reference/passport-assembly.js` — pure passport-assembly function (no I/O, no clock read
+   beyond an injected `now`): scope filtering, `trust_summary` (T0-T3 + separate `anchored`,
+   never a T4 key), always-present `completeness_note`, `qr.payload` structurally forced
+   equal to `vehicle.ivid`.
+5. `docs/IVID_MIGRATION_PLAN.md` (PLAN ONLY — NOT EXECUTED) and
+   `database/migrations/ivid-migration-dry-run.js` (no DB connection; refuses to run if any
+   `IDAUTO_DB_*` env var is set — proven by a child-process test).
+6. `docs/THREAT_MODEL.md` — version 1, system-wide, including the ownership-transfer fraud
+   model with an explicit structurally-prevented-vs-needs-runtime-control split per scenario,
+   and the AI boundary (detection routes to review, never declares fraud).
+7. `tests/ida4-foundation-test.js` — **130 assertions, 0 failures**, offline and
+   environment-variable-free except for one deliberate child-process invocation that sets a
+   fake `IDAUTO_DB_HOST` to prove the migration dry run's refusal guard fires.
+
+**Explicitly NOT done (out of the approved boundary, deliberately):**
+
+- The citizen-facing surface itself: no HTTP route, no citizen registration, no person-store
+  table, no auth mechanism. `docs/IDA4_READINESS_AUDIT.md` §A (real authentication) and §B
+  (16 LEGAL-REVIEW-REQUIRED items, 4 attributed to IDA-4) remain exactly as BLOCKED/LEGAL
+  REVIEW as that audit found them — this stage moves neither gate.
+- No live-database migration execution — `ivid-migration-dry-run.js` takes no DB connection
+  by construction and the plan is explicitly marked PLAN ONLY.
+- No media upload path of any kind.
+- Person store schema/table — `holder-ref.schema.json` specifies the reference boundary
+  only; the store it points at remains unbuilt and out of protocol scope by design.
+
+**Validation:** `tests/ida4-foundation-test.js` 130/0 (new).
+`tests/identity-conformance-test.js` 81/0 (unchanged by the schema `required`-array
+additions — no conformance assertion in that suite reads the affected fields).
+`tests/ida-2a-schema-and-plate-validation-test.js` 44/0 (unchanged; that suite does not read
+`protocol/schemas/`). The three `protocol/vocabularies/*.json` digests are byte-identical to
+before this stage (`1df70435…`, `18e64fc5…`, `923b59ab…`) — none of those three files was
+touched.
+
+**No route, table, or auth mechanism was added.** `git status` after this stage's single
+commit shows only the files listed above plus the docs updated to describe them (
+`docs/BLOCKCHAIN_ARCHITECTURE.md` §8 backup-status correction, `MAPPING.md`'s `subject_ref`
+alignment with `ROADMAP.md` IDA-7, `ROADMAP.md`'s own IDA-4 dated note, this entry,
+`CHANGELOG.md`).
+
+---
+
 ## IDA4-READINESS-AUDIT — GATE AUDIT BEFORE IDA-4 IMPLEMENTATION (2026-08-19) — DOCS-ONLY
 
 **Branch:** `ida4-readiness` @ `350792b` (two commits ahead of `main` @ `bdfec2c`, not

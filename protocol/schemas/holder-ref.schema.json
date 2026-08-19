@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/holder-ref.schema.json",
+  "title": "HolderRef",
+  "description": "The opaque, pseudonymous boundary between the vehicle store and the person store. Grounded in docs/PRIVACY_ARCHITECTURE.md §6 ('Personal data lives only in the person store... a pseudonymous, non-resolving reference') and docs/OPEN_VEHICLE_IDENTITY_PROTOCOL.md §9.3 ('The OwnershipTransfer record references holders by pseudonymous holder reference, never by embedded personal data... a holder erasure must not destroy the vehicle's history'). This schema defines the REFERENCE only. The person store itself — a holder's name, address, contact details, national identifier or any other real-world identity attribute — is explicitly OUT OF PROTOCOL SCOPE: OVIP defines no schema for it, deliberately, because it is designed to be a separate, access-restricted, independently erasable store that a vehicle-facing caller never reaches (PRIVACY_ARCHITECTURE.md §2, 'Two subjects, deliberately not joined'). A HolderRef is what the vehicle-facing protocol is allowed to know about a holder: an opaque string, nothing else.",
+  "type": "object",
+  "required": ["ref"],
+  "additionalProperties": false,
+  "properties": {
+    "ref": {
+      "description": "The opaque pseudonymous holder reference string. NOT derived from any government-issued identifier (CIN, passport number, national ID) or from any other real-world identity attribute — an opaque reference is only a genuine privacy boundary if it cannot be reversed by inspection or re-derived from public inputs, which is exactly why it must not be a hash of a low-entropy personal value (docs/PRIVACY_ARCHITECTURE.md §5 makes the identical point about anchoring: 'a hash of a plate, a phone number or a national ID is a lookup table with extra steps, not a pseudonym'). Shares the IVID's versioning and alphabet discipline (Crockford base32, no I/L/O/U) so both identifier families are parsed and validated the same way. Survives a holder erasure as a dangling, non-resolving reference per OVIP §9.3: the reference string persists so OwnershipTransfer history stays intact and un-rewritten, but nothing personal behind it does once erased.",
+      "type": "string",
+      "pattern": "^hld:[0-9]+:[0-9A-HJKMNP-TV-Z]{16,30}$"
+    },
+    "resolvable": {
+      "description": "Always false in every vehicle-facing view (a passport, an OwnershipTransfer, an audit trail). A HolderRef that could be resolved to a person by anything other than the person store's own access-controlled boundary would defeat the reason this schema exists. Present as an explicit, checkable false rather than left implicit.",
+      "type": "boolean",
+      "const": false,
+      "default": false
+    }
+  },
+  "not": {
+    "description": "Structural prohibition, stated for readers rather than validators, mirroring vehicle.schema.json's technique exactly: no property carrying a person's name, address, contact detail or national identifier may ever be added to this schema. If a caller needs that data, it belongs in the person store — out of protocol scope by design — never here.",
+    "anyOf": [
+      { "required": ["name"] }, { "required": ["full_name"] }, { "required": ["owner_name"] },
+      { "required": ["address"] }, { "required": ["phone"] }, { "required": ["email"] },
+      { "required": ["national_id"] }, { "required": ["cin"] }
+    ]
+  }
+}

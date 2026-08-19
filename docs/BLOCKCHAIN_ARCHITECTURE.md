@@ -204,7 +204,15 @@ set, not a singleton.
 
 IDA-8 anchoring **MUST NOT** begin until all of the following are true:
 
-1. Off-host backup is operational and restore-tested (currently **BLOCKED**).
+1. Off-host backup is operational and restore-tested (**database leg CLOSED 2026-08-14** per
+   `docs/ROADMAP.md` IDA-3F — dump → SHA-256 → upload → fresh download → SHA-256 match →
+   isolated restore, 24 tables / 2,551 rows, source-identical; all seven backup-gate
+   conditions MET, `ops/runbooks/OFF_HOST_BACKUP_GATE.md` §6. Still open, and this condition
+   is therefore **NOT fully satisfied**: a recurring backup **schedule** (one verified batch
+   is not a regime — the batch ages toward staleness with no automation refreshing it) and a
+   verified off-host copy of the **media store** — see `docs/IDA4_READINESS_AUDIT.md` §F2/§F3.
+   Corrected 2026-08-19: this condition previously read as if off-host backup were entirely
+   BLOCKED, which understated the 2026-08-14 closure of its database leg.).
 2. Real authentication exists (currently **BLOCKED**).
 3. Canonical serialisation is specified, versioned and independently implemented twice.
 4. The salt store's backup and recovery path is tested.
