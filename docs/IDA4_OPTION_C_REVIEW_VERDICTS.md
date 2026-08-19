@@ -87,3 +87,42 @@ restored).
 - Open owner item: **A5-PLATE** (`IDA4_READINESS_AUDIT.md` §I) — may an anonymous public
   passport display a `plate_number` fact? Interim default-closed (deny-listed) until the
   owner rules.
+
+---
+
+## 4. Revised A5-PLATE ruling round (2026-08-19, commits `b80b00d`..`59855be`)
+
+The owner issued a revised A5-PLATE decision (FINAL RULE: PRIVATE plate permitted /
+PUBLIC plate hidden / public resolution IVID-only, with an explicit public-surface
+policy and a tested PRIVATE→PUBLIC configuration gate). Implementation: the
+`reference/public-surface-policy.js` policy artifact (deny keys `vin`, `plate_number`
+as a non-configurable floor), the authenticated `GET /api/passport/:ivid` private
+surface (IVID-only lookup, professional scope with a parameterized
+`access_scope != 'mythos_private'` SQL layer, protocol-conformant vehicle and plate
+objects via shared builders), and the `public_resolution.enabled` phase gate.
+
+**Opus (two passes): APPROVE-WITH-FINDINGS, findings fixed.** Pass 1 affirmed the
+interpretation on all three design questions (non-configurable policy floor, phase
+gate, IVID-only private lookup) and raised P1 (private route served restricted-scope
+facts on a miscited precedent) and P2 (private passport not protocol-conformant) —
+both fixed in `7bc4ff9` and re-verified by Opus mutation (each scope layer proven
+independently sufficient). Pass 2 caught two prose-tripped structural-guard
+regressions (`ida-2c` 25/1, `ida-3e` 47/1) and the report's consequent false
+full-green claim — fixed in `59855be` by rewording comments (guards untouched, per
+Opus's explicit instruction), adding windowed structural pins for both private-route
+scope layers, and recording the standing rule that any commit touching
+`reference/api.js` comments must re-run `ida-2c`, `ida-3d`, and `ida-3e`.
+
+**Haiku (independent, owner-mandated five-point test): ACCEPT.** All five points
+verified against a live server at `59855be`: (1) private mode → plate visible
+(200 with `plate_number`; 401 without auth); (2) public mode → plate hidden (no
+`plate_number`/`vin` anywhere in the anonymous body, same vehicle); (3) plate cannot
+resolve publicly (every vector 404); (4) IVID resolution functional on both surfaces,
+identical 404s, zero DB queries for malformed input; (5) no PII leakage on either
+surface. Phase gate verified: disabled → anonymous surface 404 with zero DB queries
+while the private surface still serves plate. Full suite 128/0 (documented safe-skip
+branch); all 16 repository suites green at this commit. No findings above
+informational.
+
+Unchanged throughout: L01–L16 (16/16 OPEN), B1/B2/B3, `CITIZEN_FACING_IDA4_READY` =
+NO, `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` = NO, deployment NOT authorized.
