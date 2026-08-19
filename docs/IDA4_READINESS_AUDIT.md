@@ -495,7 +495,7 @@ original table is listed; unchanged gates are not restated.
 
 | Gate | Was | Now | Why |
 |---|---|---|---|
-| A5 admin-stub vs public path | OWNER DECISION | **DECIDED — 2026-08-19** | The owner decision text, recorded verbatim: *"APPROVE OPTION C. Proceed with the zero-account IDA-4 public passport surface: IVID issuance, passport assembly, IVID-only QR resolution, never resolve by plate, no citizen PII, credential is never the vehicle/person identifier, apply the approved rate limiting and threat-model controls."* This closes the A5 decision gate itself — it does not by itself flip §E (public endpoint readiness) or `CITIZEN_FACING_IDA4_READY`, both of which remain gated on legal review (§B) independent of A5. See §J for the resulting branch. |
+| A5 admin-stub vs public path | OWNER DECISION | **DECIDED — 2026-08-19** | The owner decision, EXCERPTED (Opus review F11a: this is the approval sentence and its enumerated scope as it was communicated to engineering — it is not represented as the complete original text. The owner's separate binding prohibitions — no Option B / Magic Link, no citizen person store, no citizen PII collection (no person table, no email/phone/address, no auth identity, no sessions, no recovery flows) — are enforced and test-guarded throughout this branch, e.g. `tests/ida4-option-c-test.js` §10, but are not reproduced below as part of one continuous quotation, since this document cannot verify their exact original sentence boundaries against this excerpt): *"APPROVE OPTION C. Proceed with the zero-account IDA-4 public passport surface: IVID issuance, passport assembly, IVID-only QR resolution, never resolve by plate, no citizen PII, credential is never the vehicle/person identifier, apply the approved rate limiting and threat-model controls."* This closes the A5 decision gate itself — it does not by itself flip §E (public endpoint readiness) or `CITIZEN_FACING_IDA4_READY`, both of which remain gated on legal review (§B) independent of A5. See §J for the resulting branch. |
 | B. Legal | LEGAL REVIEW (enumerated) | **LEGAL REVIEW — matrix + counsel package exist; 16/16 OPEN, 0 APPROVED** | `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, full field set) and `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts for counsel). The four citizen-surface blockers: **L06, L07, L09, L16** (L16 by the §B.3 argument, not by the roadmap table — stated in the matrix) |
 | D1. Threat model | BLOCKED / TECH DEBT (no doc) | **Document exists** (`THREAT_MODEL.md` v1, with the transfer fraud section) — runtime controls it identifies remain PLANNED/gated | Written in the foundation subset |
 | D3. Fraud model | BLOCKED | **Documented** (THREAT_MODEL §6); runtime enforcement remains gated on A2 authorization | ibid. |
@@ -531,8 +531,13 @@ owner-approved Option C surface has been built on branch `ida4-option-c`: IVID i
 anywhere on the surface, a format gate before any database touch, its own rate-limit bucket
 (`config/idauto.example.json`'s `public_resolution` section), scope hardcoded to `public`
 with SQL-level `access_scope='public'` defense-in-depth, and a `qr.payload === ivid`
-assertion before every response. Test suite: `tests/ida4-option-c-test.js` (live database,
-47 assertions, 0 failures at last run).
+assertion before every response. Test suite: the live-database suite in
+`tests/ida4-option-c-test.js` (0 failures at every run to date). An Opus architecture
+review (APPROVE-WITH-FINDINGS) subsequently found and this branch fixed eleven defects —
+a fact-key deny-list independent of stored `access_scope`, issuance wired into the
+authenticated vehicle-creation write path, a previously-dead rate-limit kill-switch now
+wired, and several test/documentation hygiene fixes (`docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md`
+§13–§14 has the full list).
 
 **This closes no gate above.** It is an implementation of the sub-surface §H's "arguable"
 paragraph and §H's "what would flip it to YES" note already anticipated — a defined

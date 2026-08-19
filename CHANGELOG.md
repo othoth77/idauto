@@ -21,8 +21,8 @@ live-database assertions, 0 failures; `tests/ida4-foundation-test.js` remains 13
 `tests/identity-conformance-test.js` remains 81/0. All 86 existing vehicles in the live
 database now carry a permanent IVID (`issueMissing()`), applied as part of this stage's own
 test run, per the task's explicit allowance to add the column and issue IVIDs against real
-operational data. Docs updated: `docs/IDA4_READINESS_AUDIT.md` (A5 row -> DECIDED, quoting
-the owner decision verbatim, new §J), `docs/ROADMAP.md` (dated note), `docs/THREAT_MODEL.md`
+operational data. Docs updated: `docs/IDA4_READINESS_AUDIT.md` (A5 row -> DECIDED, owner
+decision excerpted, new §J), `docs/ROADMAP.md` (dated note), `docs/THREAT_MODEL.md`
 (§5 QR-resolution row marked IMPLEMENTED with file/line references). `CITIZEN_FACING_IDA4_READY`
 stays NO. `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays NO. No deployment, no production
 activation, no legal gate touched.
@@ -48,6 +48,34 @@ activation, no legal gate touched.
   bucket/counter-token prohibition intact. Suites re-run: ida-3d 73/0, ida-3c-rate-limit
   63/0, ida4-option-c 66/0, ida4-foundation 130/0, identity-conformance 81/0,
   ida-2c-readonly-api 26/0, ida-2d-write-api-and-audit 39/0.
+- **Fix (Opus architecture review, APPROVE-WITH-FINDINGS, follow-up commit):** eleven
+  findings fixed. F4 — a fact-key deny-list (`PUBLIC_FACT_KEY_DENY_LIST = ['vin',
+  'plate_number']` in `reference/api.js`, derived from `docs/PRIVACY_ARCHITECTURE.md` §3 plus
+  an interim owner-decision-pending exclusion for `plate_number`) now excludes those keys
+  from the public route regardless of a fact's stored `access_scope`, closing the gap where
+  `writes.js`'s `reviewFact()`/`createFact()` can set or default a fact to `public`
+  regardless of its key. F2 — `reference/writes.js`'s `createVehicle()` now calls
+  `reference/ivid-issuance.js`'s `issueForVehicle()` inside its own transaction, so every
+  vehicle created through the authenticated write path gets a permanent ivid immediately;
+  previously nothing in production called that module at all. F3 —
+  `config/idauto.example.json`'s `public_resolution.enabled` kill-switch, previously read by
+  nothing, is now wired: disabled returns the identical 404 shape for the whole route before
+  any database touch. F7 — the anonymous `/public/` error path no longer echoes
+  `err.message`, and gained a `res.headersSent` guard. F5 — the live suite no longer calls
+  `issueMissing()` unconditionally; it verifies every currently-missing-ivid row is its own
+  fixture first and skips otherwise. F9 — restored a `tests/ida-3d...` assertion that api.js
+  never calls the ingestion rate limiter directly. F10 — `docs/THREAT_MODEL.md`'s §5
+  implementation note no longer orphans the Anchoring table row. F11a — the A5 owner-decision
+  quote is now labelled "excerpted" rather than "verbatim" everywhere it appears (this file
+  included, above). F1 — corrected a stale assertion count and a stale, since-relocated
+  function name (`enforcePublicResolutionLimit` → `enforcePublicResolution`) in
+  `docs/AI_HANDOVER.md`. F6/F8 — two new documented limitations (pool-mode issuance-audit
+  non-atomicity, mitigated for the write path by F2's wiring; `VARCHAR(40)`'s zero headroom
+  for a future multi-digit IVID version) plus one documentation fix (`issueMissing()`'s
+  `already_had` field) recorded in `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §14. Suite
+  grew from 86 to 104 assertions, run twice consecutively (both green); also re-verified:
+  ida-3d 74/0, ida-2d 39/0 (unchanged — the F2 wiring preserves its exact
+  one-audit-row-per-write assertion), ida4-foundation 130/0, identity-conformance 81/0.
 
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 

@@ -231,17 +231,23 @@ LEGAL-REVIEW-REQUIRED items, specifically #6/#7/#9/#16 which the roadmap itself 
 IDA-4). Nothing in this subset creates a route, a database write path, a citizen account, or
 processes a real person's data — it does not move either gate, and is not claimed to.
 
-**Dated note, 2026-08-19, branch `ida4-option-c`.** Following the A5 owner decision recorded
-verbatim in `docs/IDA4_READINESS_AUDIT.md` §I/§J ("APPROVE OPTION C..."), the zero-account
+**Dated note, 2026-08-19, branch `ida4-option-c`.** Following the A5 owner decision,
+excerpted in `docs/IDA4_READINESS_AUDIT.md` §I/§J ("APPROVE OPTION C..." — that entry
+explains why "excerpted," not "verbatim," is the accurate label), the zero-account
 Option C sub-surface has been implemented on this branch: `reference/ivid-issuance.js`
 (permanent IVID issuance, `system`-actor audit rows), `database/migrations/ida4-option-c-ivid.sql`
 (adds `idauto_vehicles.ivid`), and `reference/api.js`'s first unauthenticated route,
 `GET /public/passport/:ivid` — IVID-only resolution, a format gate before any database
-touch, its own rate-limit bucket, hardcoded `public` scope with SQL-level defense-in-depth,
-and a `qr.payload === ivid` assertion. `tests/ida4-option-c-test.js`: 47 live-database
-assertions, 0 failures. **This is pending Opus review and Haiku audit before anything
-further happens with it** — it is not deployed, not merged to `main`, and does not change
-`CITIZEN_FACING_IDA4_READY` (still NO) or `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` (still NO).
+touch, its own rate-limit bucket, hardcoded `public` scope with SQL-level defense-in-depth
+plus a fact-key deny-list, and a `qr.payload === ivid` assertion. The live-database suite in
+`tests/ida4-option-c-test.js` passes with 0 failures (see
+`docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §11 for the current exact assertion count,
+not restated here as a fixed number since it will grow with future fixes). An Opus
+architecture review (APPROVE-WITH-FINDINGS) subsequently found and this branch fixed eleven
+defects, documented in that same report's §13–§14. **This is pending Haiku audit before
+anything further happens with it** — it is not deployed, not merged to `main`, and does not
+change `CITIZEN_FACING_IDA4_READY` (still NO) or `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT`
+(still NO).
 The citizen-facing write surface (self-registration, ownership transfer, erasure) remains
 exactly as BLOCKED as the paragraph above states — Option C answers none of gate A's
 authentication questions or gate B's legal questions, by design.

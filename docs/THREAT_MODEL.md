@@ -95,11 +95,12 @@ retrofitting it after.
 |---|---|---|
 | **Citizen registration** | Real per-person accounts, the first actor class beyond "admin" and "anonymous contributor" | Requires real authentication (`docs/IDA4_READINESS_AUDIT.md` §A — BLOCKED). Introduces account-takeover and multi-account (Sybil) fraud as live threats for the first time — `docs/IDA4_READINESS_AUDIT.md` §D2: "no citizen-specific abuse model... because no real accounts exist yet to abuse." This document does not invent one prematurely; it names the gap as a precondition of the surface opening, not a detail to sort out after |
 | **Ownership transfer** | Citizen-initiated `OwnershipTransfer` records | Full fraud model in §6 below |
-| **QR resolution** | A public endpoint resolving a passport's `qr.payload` (the IVID) to a public-scope passport view | Enumeration risk if resolution is unauthenticated and IVIDs are treated as guessable — they are not (80 bits of entropy, `reference/ivid.js`), but the RESOLUTION ENDPOINT itself, once built, needs its own rate-limiting design independent of the identifier's unguessability, since rate-limit-free resolution would let an attacker distinguish "exists" from "does not exist" at volume even without ever guessing a valid one. **IMPLEMENTED — IDA-4 Option C, A5 OPTION C, 2026-08-19** (see below) |
+| **QR resolution** | A public endpoint resolving a passport's `qr.payload` (the IVID) to a public-scope passport view | Enumeration risk if resolution is unauthenticated and IVIDs are treated as guessable — they are not (80 bits of entropy, `reference/ivid.js`), but the RESOLUTION ENDPOINT itself, once built, needs its own rate-limiting design independent of the identifier's unguessability, since rate-limit-free resolution would let an attacker distinguish "exists" from "does not exist" at volume even without ever guessing a valid one. **IMPLEMENTED — IDA-4 Option C, A5 OPTION C, 2026-08-19** (see the implementation note below the table) |
+| **Anchoring** | Blockchain commitment of Merkle-batched record hashes | `docs/BLOCKCHAIN_ARCHITECTURE.md` §8's six-condition implementation gate is the threat-relevant control here: anchoring an incomplete or unverified record set early "produces permanent, publicly checkable evidence of a system that was not ready." Independent verifier security (§8 below) is one of the six gate conditions and is itself BLOCKED |
 
 **Implementation note (IDA-4 Option C, `ida4-option-c` branch, not yet merged/deployed —
-`docs/IDA4_READINESS_AUDIT.md` §J).** The four controls this row's threat implication names
-are now real code, not only planned:
+`docs/IDA4_READINESS_AUDIT.md` §J).** The four controls the QR-resolution row's threat
+implication names are now real code, not only planned:
 
 - **Format gate before any database touch:** `reference/api.js`, `handlePublicPassportRoute()`
   (~line 231) calls `reference/ivid.js`'s `validate()` (~line 256) BEFORE any `db.query()` in
@@ -125,11 +126,17 @@ are now real code, not only planned:
   under `/public/` accepts a plate value, and a `?plate=` query parameter is never read by
   the handler at all (the query string is never parsed). `tests/ida4-option-c-test.js` §6
   covers a plate-shaped path segment, `/public/plate/...`, and an ignored `?plate=` parameter.
+- **Fact-key deny-list and kill-switch, added post-Opus-review (2026-08-19):**
+  `PUBLIC_FACT_KEY_DENY_LIST` (`reference/api.js`) excludes `vin`
+  (`docs/PRIVACY_ARCHITECTURE.md` §3 "Restricted attributes") and, as an interim
+  default-closed exclusion pending an owner ruling, `plate_number` — independent of a fact's
+  stored `access_scope`, so a mis-scoped `public` fact still cannot reach this route.
+  `config/idauto.example.json`'s `public_resolution.enabled` kill-switch is now wired: when
+  `false`, the whole route returns the identical 404 shape before any database touch.
 
-This implementation note does not change this table's PLANNED marking for **Citizen
+This implementation note does not change the table's PLANNED marking for **Citizen
 registration**, **Ownership transfer**, or **Anchoring** — none of those three exist yet, and
 Option C deliberately does not touch any of them.
-| **Anchoring** | Blockchain commitment of Merkle-batched record hashes | `docs/BLOCKCHAIN_ARCHITECTURE.md` §8's six-condition implementation gate is the threat-relevant control here: anchoring an incomplete or unverified record set early "produces permanent, publicly checkable evidence of a system that was not ready." Independent verifier security (§8 below) is one of the six gate conditions and is itself BLOCKED |
 
 ---
 

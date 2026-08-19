@@ -34,7 +34,7 @@ sessions, or recovery flows, any plate-based public resolution.
 Added:
 - `database/migrations/ida4-option-c-ivid.sql` — the only schema change.
 - `reference/ivid-issuance.js` — the only writer of `idauto_vehicles.ivid`.
-- `tests/ida4-option-c-test.js` — 86-assertion live-database suite.
+- `tests/ida4-option-c-test.js` — 104-assertion live-database suite.
 - `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` — this report.
 
 Modified:
@@ -44,7 +44,7 @@ Modified:
   rate-limiting module, not in `api.js`).
 - `config/idauto.example.json` — new `public_resolution` section (limit 30 / 60 s).
 - `tests/ida-3d-private-ingest-route-test.js` — one structural guard narrowed (see §11).
-- `docs/IDA4_READINESS_AUDIT.md` (A5 → DECIDED, verbatim owner text; new §J),
+- `docs/IDA4_READINESS_AUDIT.md` (A5 → DECIDED, owner text excerpted; new §J),
   `docs/THREAT_MODEL.md` (§5 QR-resolution controls marked IMPLEMENTED),
   `docs/ROADMAP.md`, `docs/AI_HANDOVER.md`, `CHANGELOG.md`.
 
@@ -77,7 +77,17 @@ mod 1024 → two 5-bit symbols. Issuance (`reference/ivid-issuance.js`):
   overwrite; the loser re-reads and returns the winner's value.
 - UNIQUE-collision handled by bounded regeneration (5 attempts; 80-bit entropy makes
   even one retry unexpected).
-- Audit row per real issuance, `actor_type='system'`, same shape as every other write's.
+- Audit row per real issuance, `actor_type='system'`, same shape as every other write's —
+  EXCEPT when the caller passes `{ skipAudit: true }` (used exactly once: see the wiring
+  note immediately below), in which case the issuance is instead captured inside the
+  caller's own single audit row.
+- **Wired into production (Opus review F2, fixed on this branch):** `reference/writes.js`'s
+  `createVehicle()` calls `issueForVehicle()` inside the SAME transaction as the vehicle
+  `INSERT`, so every vehicle created through the authenticated `POST /api/vehicles` path
+  gets a permanent ivid immediately, in the create response — not only via the out-of-band
+  `issueMissing()` backfill this stage's own live-DB test run performed. (Before this fix,
+  nothing in production ever called `reference/ivid-issuance.js` at all — see §14 for the
+  pool-mode-atomicity nuance this wiring resolves for the write path specifically.)
 - The credential is never the vehicle/person identifier: `internal_ref` remains the
   internal identity; the IVID is a public resolution credential only.
 
@@ -152,7 +162,7 @@ header. Mutation 5 (auth removal) fails the suite.
 
 ## 11. Tests
 
-`tests/ida4-option-c-test.js`: **86 passed / 0 failed** (final verified run), live
+`tests/ida4-option-c-test.js`: **104 passed / 0 failed** (final verified run, post-Opus-review fixes; run twice consecutively), live
 database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up (zero leftovers verified).
 Full repository pass (all 16 suites, run by the Chef directly, not taken on trust):
 
@@ -173,7 +183,7 @@ Full repository pass (all 16 suites, run by the Chef directly, not taken on trus
 | idauto-storage-ops | 73/0 |
 | identity-conformance | 81/0 |
 | ida4-foundation (env-free) | 130/0 |
-| ida4-option-c | 86/0 |
+| ida4-option-c | 104/0 |
 
 One regression was found and fixed during Phase 2: `ida-3d`'s structural guard
 ("api.js contains no rate-limit or counter implementation") tripped on the first
@@ -216,11 +226,30 @@ All on `ida4-option-c`, base `0044d57` (= `origin/main`):
 3. `1d50368` fix(ida4): relocate the public-resolution limiter into reference/rate-limit.js; narrow the IDA-3D structural guard accordingly
 4. `93f662b` test(ida4): A5 prohibition guards — no person store, no citizen-PII surface
 5. `1bfdd9c` test(ida4): pin the SQL access_scope defense-in-depth layer; isolate the burst test's rate-limit window
+6. `74fc3d3` docs(ida4): Option C implementation report — IMPLEMENTATION COMPLETE, deployment not authorized
+7. `421bb08` fix(ida4): Opus review follow-up — deny-list, issuance wiring, kill-switch, error hygiene
+8. (this commit) docs(ida4): Opus review follow-up — doc corrections, F1/F10/F11a, report update
 
 `c003029` fixes three Chef-audit findings in the first implementation (public exposure
 of `internal_ref`; non-public columns passing through at the column level; protocol
 non-conformance of the vehicle object) — found by empirical inspection of a live
 response, fixed, and re-verified empirically.
+
+Commits 7–8 (Opus architecture review, APPROVE-WITH-FINDINGS) fix eleven findings, split
+code/tests (7) from documentation (8): a fact-key deny-list (F4, `vin` + interim
+`plate_number`) independent of stored `access_scope`; issuance wired into the authenticated
+vehicle-creation write path (F2); the `public_resolution.enabled` kill-switch, previously
+read by nothing (F3); the live suite no longer mutates non-fixture rows without an explicit
+guard (F5); an anonymous-caller error-message echo and a missing `headersSent` guard, fixed
+(F7); a restored ingestion-limiter structural guard in `tests/ida-3d...` (F9);
+`docs/THREAT_MODEL.md`'s orphaned table row, reattached (F10); the A5 quote relabelled from
+"verbatim" to "excerpted" everywhere it appears, not just where first flagged (F11a);
+corrections in `docs/AI_HANDOVER.md`, `docs/ROADMAP.md`, `docs/IDA4_READINESS_AUDIT.md` §J,
+and `CHANGELOG.md` — stale assertion counts (reworded to avoid a hardcoded figure where the
+doc doesn't need one) and a stale, since-relocated function name (F1); and two new,
+documented limitations plus one documentation fix in §14 below (F6/F8). Test suite grew
+from 86 to 104 assertions; `tests/ida4-option-c-test.js` was run twice consecutively,
+both green.
 
 ## 14. Known limitations
 
@@ -236,6 +265,38 @@ response, fixed, and re-verified empirically.
   ledger. Acceptable at current volume.
 - `status` passthrough assumes `chk_vehicle_status` remains a subset of the protocol
   enum; the conformance suite guards the schema side.
+- **Pool-mode issuance atomicity (Opus review F6/F8, flagged, not fully closed):**
+  `issueForVehicle()`/`issueMissing()` called with the plain pool object (`reference/db.js`'s
+  `db`) — e.g. this stage's own live-DB backfill and this suite's direct
+  `issueForVehicle(db, ...)` test calls — write the `ivid` `UPDATE` and its own audit-log
+  `INSERT` as two SEPARATE, non-atomic statements, weaker than `reference/writes.js`'s
+  `withAudit()` standard (one `BEGIN`/`COMMIT` wrapping both). **Mitigated for the one call
+  path that matters for live traffic:** `createVehicle()`'s new wiring (F2, §5 above) calls
+  `issueForVehicle()` with the SAME transaction client the vehicle `INSERT` uses, so
+  issuance IS atomic with creation for every vehicle created through the authenticated API.
+  The non-atomic pattern remains for maintenance/backfill-style pool-mode calls, which is
+  accepted as a deliberate scope boundary of this fix, not a further defect.
+- **`idauto_vehicles.ivid VARCHAR(40)` has zero headroom** for a future multi-digit IVID
+  version or a maximum-length payload: today's v1 format (`ivid:1:<16-symbol
+  payload>:<2-symbol check>`) is 26 characters, but `protocol/schemas/vehicle.schema.json`'s
+  `ivid` pattern permits payloads up to 30 symbols — a maximum-length v1 IVID is exactly 40
+  characters (fits, zero slack), and any version number beyond a single digit (`ivid:10:...`)
+  would not fit at all. Flagged for whoever plans the IDA-7 protocol alignment or any future
+  higher-entropy issuance; not a defect in what exists today (v1 issuance is fixed at exactly
+  16 payload symbols, `reference/ivid.js`'s `V1_PAYLOAD_SYMBOLS`).
+- **`issueMissing()`'s `already_had` field (Opus review F6/F8, documented rather than
+  changed):** hardcoded `false` for every row it processes, since every row it selects had
+  `ivid IS NULL` at SELECT time by definition. Under a race, a concurrent caller could set
+  that exact vehicle's `ivid` between this function's `SELECT` and its own call to
+  `issueForVehicle()`, which would then correctly return the OTHER caller's value while this
+  field still reports `false` — a narrow, now-documented imprecision in a diagnostic field
+  only (see `reference/ivid-issuance.js`'s own comment on `issueMissing()`); it never affects
+  the correctness of issuance itself, since `issueForVehicle()` never overwrites regardless
+  of what this field claims. Changing the field's contract (e.g. to a real boolean derived
+  from the actual outcome) was assessed and deliberately NOT done, because every existing
+  caller of `issueForVehicle()` — including this stage's own already-passing, already-
+  mutation-verified tests — depends on it returning the bare ivid string, and widening that
+  return shape would ripple beyond this fix's scope for a diagnostic-only field.
 
 ## 15. Legal status
 

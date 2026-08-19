@@ -27,51 +27,75 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
-## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, PENDING REVIEW
+## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, OPUS-REVIEWED (APPROVE-WITH-FINDINGS), FINDINGS FIXED
 
 **Branch:** `ida4-option-c` @ this commit (on top of `main`, not merged). **Type:**
-Implementation — the owner-approved A5 OPTION C surface, per the decision text now quoted
-verbatim in `docs/IDA4_READINESS_AUDIT.md` §I/§J: *"APPROVE OPTION C. Proceed with the
-zero-account IDA-4 public passport surface: IVID issuance, passport assembly, IVID-only QR
-resolution, never resolve by plate, no citizen PII, credential is never the vehicle/person
-identifier, apply the approved rate limiting and threat-model controls."*
+Implementation — the owner-approved A5 OPTION C surface, per the owner decision excerpted
+in `docs/IDA4_READINESS_AUDIT.md` §I/§J (that entry explains why "excerpted," not
+"verbatim," is now the accurate label — see the F11a fix below): *"APPROVE OPTION C.
+Proceed with the zero-account IDA-4 public passport surface: IVID issuance, passport
+assembly, IVID-only QR resolution, never resolve by plate, no citizen PII, credential is
+never the vehicle/person identifier, apply the approved rate limiting and threat-model
+controls."*
 
 **Produces:**
 - **`database/migrations/ida4-option-c-ivid.sql`** — one additive, idempotent migration:
   `ALTER TABLE idauto_vehicles ADD COLUMN IF NOT EXISTS ivid VARCHAR(40) UNIQUE`. Applied to
   the live database as part of this stage's own test run.
-- **`reference/ivid-issuance.js`** — `issueForVehicle(client, vehicleId)` (generates via
-  `reference/ivid.js`, PERMANENT once set, never overwrites, bounded retry on a UNIQUE
-  collision, one `system`-actor `idauto_audit_log` row per real issuance) and
-  `issueMissing(client)` (issues for every vehicle lacking one).
+- **`reference/ivid-issuance.js`** — `issueForVehicle(client, vehicleId, options)` (generates
+  via `reference/ivid.js`, PERMANENT once set, never overwrites, bounded retry on a UNIQUE
+  collision, one `system`-actor `idauto_audit_log` row per real issuance unless
+  `options.skipAudit` is set) and `issueMissing(client)` (issues for every vehicle lacking
+  one). **Wired into production (Opus review F2):** `reference/writes.js`'s `createVehicle()`
+  now calls `issueForVehicle()` inside its own transaction — before this fix, nothing in
+  production ever called this module; the live 86-vehicle backfill only ever happened via
+  the test suite.
 - **`reference/api.js`** — its first and only unauthenticated route,
   `GET /public/passport/:ivid`, reached before `requireAuth()` deliberately. Control chain:
-  method/path gate -> FORMAT GATE BEFORE ANY DATABASE TOUCH
-  (`reference/ivid.js`'s `validate()`) -> per-IP rate limit on its own bucket
-  (`enforcePublicResolutionLimit()`, dimension `public_resolution:window`, configured in
-  `config/idauto.example.json`'s new `public_resolution` section) -> IVID-only lookup (never
+  method/path gate -> KILL-SWITCH (`config/idauto.example.json`'s `public_resolution.enabled`,
+  wired post-Opus-review F3; previously read by nothing) -> FORMAT GATE BEFORE ANY DATABASE
+  TOUCH (`reference/ivid.js`'s `validate()`) -> per-IP rate limit on its own bucket
+  (`reference/rate-limit.js`'s `enforcePublicResolution()` — corrected name; an earlier
+  iteration of this entry named a since-relocated `enforcePublicResolutionLimit()` that no
+  longer exists — dimension `public_resolution:window`, configured in
+  `config/idauto.example.json`'s `public_resolution` section) -> IVID-only lookup (never
   plate; the query string is never parsed, so `?plate=` is inert) -> `assemblePassport()`
-  with scope HARDCODED `'public'` plus SQL-level `access_scope='public'` defense-in-depth ->
-  `qr.payload === ivid` assertion -> the existing CSP/security header set. Every pre-existing
-  admin route remains authenticated exactly as before.
+  with scope HARDCODED `'public'` plus SQL-level `access_scope='public'` defense-in-depth
+  PLUS a fact-key deny-list (`PUBLIC_FACT_KEY_DENY_LIST = ['vin', 'plate_number']`, Opus
+  review F4 — independent of a fact's stored `access_scope`) -> `qr.payload === ivid`
+  assertion -> the existing CSP/security header set, with the anonymous-caller error path
+  hardened (Opus review F7: no `err.message` echo, a `res.headersSent` guard). Every
+  pre-existing admin route remains authenticated exactly as before.
 - **`tests/ida4-option-c-test.js`** — live-database suite: migration idempotence, issuance
-  permanence, a real 200 with a leakage check (professional and `mythos_private` facts
-  proven absent from the response body), valid-format-unknown -> 404, malformed -> 404 with
-  a spied `db.query` call count of zero, plate-shaped path segment / `/public/plate/...` /
-  ignored `?plate=` all covered, burst -> 429 with `Retry-After` then recovery after the
-  window (isolated in a child process with a small config override so it doesn't slow or
-  pollute the main suite), a pre-existing admin route still 401, and the public route
-  confirmed to work with no `Authorization` header. **47 assertions, 0 failures.**
-- Docs: `docs/IDA4_READINESS_AUDIT.md` (A5 row -> **DECIDED**, quoting the decision verbatim;
-  new **§J** noting this implementation exists, pending review — `CITIZEN_FACING_IDA4_READY`
-  and `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` both explicitly left at **NO**),
-  `docs/ROADMAP.md` (dated note under IDA-4), `docs/THREAT_MODEL.md` (§5's QR-resolution row
-  marked **IMPLEMENTED** with file/line references), `CHANGELOG.md`.
+  permanence, a real 200 with a leakage check (professional, `mythos_private`, and
+  deny-listed `vin`/`plate_number` facts all proven absent from the response body),
+  valid-format-unknown -> 404, malformed -> 404 with a spied `db.query` call count of zero,
+  plate-shaped path segment / `/public/plate/...` / ignored `?plate=` all covered, burst ->
+  429 with `Retry-After` then recovery after the window (isolated in a child process), a
+  pre-existing admin route still 401, the public route confirmed to work with no
+  `Authorization` header, A5 prohibition guards (no person store, no citizen-PII surface),
+  the kill-switch (§11), and issuance wired into the write path (§12). Run twice
+  consecutively; both green. **See `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §11 for the
+  current exact assertion count** — not restated here as a fixed number, since it will grow
+  with future fixes and a hardcoded figure here would go stale exactly like the "47" this
+  entry originally (incorrectly) carried.
+- Docs: `docs/IDA4_READINESS_AUDIT.md` (A5 row -> **DECIDED**, owner decision excerpted, not
+  claimed verbatim; new **§J** noting this implementation exists, pending review —
+  `CITIZEN_FACING_IDA4_READY` and `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` both explicitly left
+  at **NO**), `docs/ROADMAP.md` (dated note under IDA-4), `docs/THREAT_MODEL.md` (§5's
+  QR-resolution row marked **IMPLEMENTED** with file/line references, table/prose ordering
+  fixed so the Anchoring row renders correctly — Opus review F10), `CHANGELOG.md`.
 
-**Suites at this commit:** `tests/ida4-option-c-test.js` 47/0 (live DB — all 86 existing
-vehicles in the live database now carry a permanent IVID via `issueMissing()`, the one
-intentional, permitted mutation of real operational data this stage makes); `tests/ida4-foundation-test.js`
-130/0 (env-free, unchanged); `tests/identity-conformance-test.js` 81/0 (unchanged).
+**Suites at this commit:** `tests/ida4-option-c-test.js` — see
+`docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §11 for the exact current count, live DB (all
+86 pre-existing vehicles carry a permanent IVID via `issueMissing()`, the one intentional,
+permitted mutation of real operational data this stage makes; every vehicle created since
+F2's fix gets one immediately at creation instead); `tests/ida4-foundation-test.js` 130/0
+(env-free, unchanged); `tests/identity-conformance-test.js` 81/0 (unchanged);
+`tests/ida-3d-private-ingest-route-test.js` (one assertion added, Opus review F9: api.js
+never calls the ingestion rate limiter directly); `tests/ida-2d-write-api-and-audit-test.js`
+39/0 (unchanged — the F2 write-path wiring preserves the exact one-audit-row-per-write
+invariant that suite asserts, via `issueForVehicle(..., { skipAudit: true })`).
 
 **What this is not.** No deployment. No production activation. No legal gate touched — this
 surface was chosen specifically to avoid the L06/L07/L09/L16 questions, not to answer them.
