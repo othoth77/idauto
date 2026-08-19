@@ -109,6 +109,18 @@ feat(protocol): publish identity vocabularies — actor-type.v1, org-role.v1,
 actor-identifier.v1; schema conformance suite tests/identity-conformance-test.js; no schema
 change, no runtime change.
 
+### Published — 2026-08-18
+
+`othoth77/idauto` created; the audited tree published to `main` verbatim as the repository's
+initial commit (`bdfec2c`, tree `26b93fb8`, 91 files). Verified from a **clean clone**:
+commit and tree hashes match, all 91 files byte-identical to the audited tree, `npm install`
+from the published lockfile, a freshly created PostgreSQL 16 database, and **13 suites /
+601 assertions / 0 failures**.
+
+This repository is now the canonical home of IDauto. The duplicated source in
+`othoth77/mythos-prod` is removed by a separate draft pull request there.
+
+
 ### Added — standalone repository and Open Vehicle Identity Protocol (2026-08-18)
 
 Extracted from `othoth77/mythos-prod` (`projects/idauto/`) into `othoth77/idauto` and
