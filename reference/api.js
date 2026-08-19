@@ -32,17 +32,33 @@
 // other mutation. The read (like every other GET in this file) still
 // excludes mythos_private-scope rows — unchanged policy, not relaxed by
 // adding a new resource type.
+//
+// A5 OPTION C, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §A5 — owner
+// decision recorded verbatim there): IDA-4 Option C adds
+// GET /public/passport/:ivid — this file's FIRST unauthenticated route.
+// It is reached BEFORE requireAuth() below, deliberately: it is not an
+// admin route with auth accidentally skipped, it is the one route this
+// server intentionally serves with no bearer token at all, scoped
+// narrowly to IVID-only public-passport resolution. See
+// handlePublicPassportRoute()'s own header for the full control chain.
+// Every route below this comment remains authenticated exactly as
+// before — requireAuth() still gates the entire ROUTES table.
 // =====================================================
 
 var http = require('http');
 var url = require('url');
 var fs = require('fs');
 var path = require('path');
+var crypto = require('crypto');
 var db = require('./db.js');
 var writes = require('./writes.js');
 var identity = require('./identity.js');
 var storage = require('./storage.js');
 var ingestion = require('./ingestion.js');
+var ivid = require('./ivid.js');
+var passportAssembly = require('./passport-assembly.js');
+var rateLimit = require('./rate-limit.js');
+var publicSurfacePolicy = require('./public-surface-policy.js');
 
 function requireAuth(req, res) {
   var header = req.headers['authorization'] || '';
@@ -104,6 +120,341 @@ function serveAdminAsset(req, res, pathname) {
   return true;
 }
 
+// =====================================================
+// IDA-4 Option C — GET /public/passport/:ivid
+// A5 OPTION C, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §A5)
+//
+// This is the repository's ONLY unauthenticated route. It exists to
+// resolve an IVID QR code (reference/ivid.js) to a public-scope Digital
+// Vehicle Passport (reference/passport-assembly.js) with NO account, NO
+// citizen PII, and NO plate-based lookup anywhere on the path — the
+// owner's binding constraints. Control chain, in the order implemented
+// below (order is itself a security requirement — see the numbered
+// comments inline):
+//
+//   1. Path/method gate — only GET /public/passport/:ivid exists. Any
+//      other path under /public/ (including a hypothetical
+//      /public/plate/...) is 404, identically to an unknown route
+//      elsewhere in this file. A non-GET method on the matched path is
+//      405, matching this file's existing convention.
+//   2. FORMAT GATE BEFORE ANY DATABASE TOUCH — reference/ivid.js's
+//      validate() runs first. A malformed IVID gets the SAME response
+//      shape (404, {"error":"not found"}) as a well-formed-but-unknown
+//      IVID, so a caller cannot distinguish "no such IVID" from
+//      "malformed input" by response shape — and, more importantly, no
+//      query ever reaches the database for malformed input.
+//   3. Per-IP rate limiting — its own bucket
+//      (reference/rate-limit.js's enforcePublicResolution()), independent
+//      of every other bucket reference/rate-limit.js's enforce() computes
+//      elsewhere (anon:*, ip:*, media_bytes:*). Configured in
+//      config/idauto.example.json's public_resolution section.
+//   4. No plate parameter is ever read. The query string is never
+//      parsed by this handler — only pathname is used — so a ?plate=...
+//      parameter is inert by construction, not filtered after the fact.
+//   5. Lookup is by ivid only (WHERE ivid = $1), never by plate/internal
+//      ref/anything else. scope is HARDCODED to 'public' in the
+//      assemblePassport() call — never caller-influenced — and the SQL
+//      fact query additionally filters access_scope = 'public' as
+//      defense-in-depth, so even a future bug in assemblePassport's own
+//      scope filter could not leak a non-public fact through this route.
+//   6. qr.payload === the requested ivid is asserted before the
+//      response is sent (assemblePassport already enforces this
+//      internally and throws otherwise; this route asserts it again at
+//      its own boundary, matching the codebase's "structural, not just
+//      hoped-for" style — see passport-assembly.js's own qr comment).
+//   7. The existing CSP/security-header set (identical to
+//      serveAdminAsset()'s) is applied to the response.
+// =====================================================
+
+// IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH lets a test point this route at a
+// small, fast-cycling config file (short window, low limit) instead of
+// the real config/idauto.example.json, so burst/recovery behaviour can
+// be exercised in real (not simulated) time without a slow test run —
+// see tests/ida4-option-c-test.js. Unset in every real deployment, which
+// falls back to the real config file exactly as before.
+var PUBLIC_RESOLUTION_CONFIG_PATH = process.env.IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH ||
+  path.join(__dirname, '..', 'config', 'idauto.example.json');
+var _publicResolutionConfigCache = null;
+
+// Reads config/idauto.example.json's public_resolution section once per
+// process (cached, same pattern as reference/plate-validator.js's
+// loadFormats()). Falls back to safe defaults if the section (or its
+// rate_limit sub-section) is absent so this route never silently runs
+// unlimited OR silently disabled — `enabled` defaults to true absent an
+// explicit `false`, matching every other config value's "safe default"
+// posture in this function.
+//
+// F3 (Opus review, 2026-08-19): `enabled` was previously read by
+// nothing — a documented kill-switch with no wiring. Now consulted by
+// handlePublicPassportRoute() before any database touch (see there).
+function loadPublicResolutionConfig() {
+  if (_publicResolutionConfigCache) return _publicResolutionConfigCache;
+  var section = {};
+  var enabled = true;
+  try {
+    var raw = fs.readFileSync(PUBLIC_RESOLUTION_CONFIG_PATH, 'utf8');
+    var config = JSON.parse(raw);
+    section = (config.public_resolution && config.public_resolution.rate_limit) || {};
+    if (config.public_resolution && config.public_resolution.enabled === false) enabled = false;
+  } catch (_) { /* fall through to defaults below */ }
+  _publicResolutionConfigCache = {
+    enabled: enabled,
+    limit: typeof section.limit === 'number' && section.limit > 0 ? section.limit : 30,
+    window_seconds: typeof section.window_seconds === 'number' && section.window_seconds > 0 ? section.window_seconds : 60
+  };
+  return _publicResolutionConfigCache;
+}
+
+// A5 OPTION C, 2026-08-19 (IDA-3D structural-guard note): the actual
+// counter mechanics — the key-hashing helper, the atomic upsert against
+// the shared rate-limit counter table, window flooring — live in
+// reference/rate-limit.js's enforcePublicResolution(), not here. api.js's
+// job is config-file reading (this file's own concern, including its
+// IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH override) and extracting the
+// caller's IP; it CALLS the rate-limiting module, it does not host any
+// counter-selection or key-derivation logic of its own. That is
+// precisely what tests/ida-3d-private-ingest-route-test.js's structural
+// guard checks api.js's source for the absence of — this route stays
+// genuinely rate-limited without api.js failing that check.
+function clientIpHash(req) {
+  var ip = (req.socket && req.socket.remoteAddress) || '';
+  return crypto.createHash('sha256').update(ip).digest('hex');
+}
+
+// F4 (Opus review, 2026-08-19), RULED — A5-PLATE revised decision,
+// 2026-08-19: PRIVATE permitted / PUBLIC hidden / resolution IVID-only.
+// The public route's fact-key deny-list — 'vin' and 'plate_number' —
+// now lives in reference/public-surface-policy.js, the one audited
+// artifact the owner's ruling requires ("public exposure must be
+// controlled by an explicit public-surface policy, not by manual code
+// edits"). It is deliberately NOT a local constant here and NOT
+// config-toggleable — see that module's own header for the full ruling
+// text and why. writes.js:245/284 can still set or default a fact's
+// access_scope to 'public' regardless of its fact_key; this deny-list
+// remains the independent second layer that catches that regardless of
+// the SQL-level access_scope filter.
+//
+// Maps one idauto_vehicle_facts row (already filtered to access_scope =
+// 'public' by the caller's SQL) into the protocol-shaped fact object
+// reference/passport-assembly.js expects (provenance.access_scope, per
+// its own header comment) — a pure reshape, no additional filtering
+// decision made here.
+function factRowToPassportFact(row) {
+  return {
+    id: 'fact-' + row.id,
+    fact_key: row.fact_key,
+    fact_value: row.fact_value,
+    fact_value_normalized: row.fact_value_normalized,
+    confidence_score: row.confidence_score,
+    verification_status: row.verification_status,
+    provenance: { access_scope: row.access_scope }
+  };
+}
+
+function toIsoString(value) {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+// Shared by BOTH passport routes (public and private, P2/Opus audit,
+// 2026-08-19) — the raw idauto_vehicles row must never reach either
+// response: it carries internal_ref (the internal admin identifier the
+// IVID exists specifically to avoid exposing) and non-schema columns
+// (seats, gross_weight_kg, engine_cc, first_seen_at, last_seen_at,
+// fiche_status as a raw key) that protocol/schemas/vehicle.schema.json
+// (additionalProperties:false) does not allow. Extracted into one
+// function (rather than duplicated per route, as the first cut of the
+// private route mistakenly did) so both routes stay protocol-conformant
+// by construction, not by two independently-maintained copies agreeing
+// by luck.
+//
+// status: idauto_vehicles.fiche_status's full allowed set (chk_vehicle_status,
+// database/schema.sql: initial|pending_review|verified|conflict|merged|archived)
+// is an EXACT SUBSET of the protocol's status enum (which adds only
+// 'closed', unused by any DB row today) — so this is a direct, documented
+// passthrough of an already-public lifecycle field, not an invented
+// mapping. 'closed' cannot occur since no DB constraint permits it yet.
+//
+// current_plate_ref is always omitted — optional in the schema, and
+// never appropriate on the public route (A5); on the private route,
+// plate data is carried in the passport's separate `plates` array
+// (buildProtocolConformantPlate() below), not duplicated onto the
+// vehicle object. merged_into is omitted because idauto_vehicles has no
+// such column (a merge is not yet implemented).
+function buildProtocolConformantVehicle(vehicleRow) {
+  return {
+    protocol_version: '0.1.0-draft',
+    ivid: vehicleRow.ivid,
+    status: vehicleRow.fiche_status,
+    created_at: toIsoString(vehicleRow.created_at),
+    observation_count: vehicleRow.observation_count,
+    summary: {
+      make: vehicleRow.make,
+      model: vehicleRow.model,
+      variant: vehicleRow.variant,
+      year: vehicleRow.year,
+      body_type: vehicleRow.body_type,
+      fuel_type: vehicleRow.fuel_type,
+      colour: vehicleRow.colour,
+      category_code: vehicleRow.category_code
+    }
+  };
+}
+
+// Private-route only (P2, Opus review, 2026-08-19) — the raw idauto_plates
+// row is not protocol/schemas/plate.schema.json-conformant either
+// (additionalProperties:false; the schema has no `status` or
+// `governorate_name` property at all, and calls the closed-interval date
+// `valid_to`, not this schema's `valid_until`). Maps:
+//   - id: schema wants a string; the DB's numeric id is stringified.
+//   - subject_ivid: the resolved vehicle's ivid (schema-required; every
+//     plate belongs to exactly the vehicle this route already resolved).
+//   - plate_number, plate_raw, format_code: direct passthrough — same
+//     names in both the DB and the schema.
+//   - region_code: the schema's own description — "Coarse region only.
+//     Never a precise location" — is exactly what a Tunisian governorate
+//     is, so the plate's governorate CODE (idauto_governorates.code,
+//     e.g. "01"), not its French name, is mapped here. This is an
+//     interpretive choice (the schema does not name "governorate"
+//     anywhere) worth a reviewer's eyes; `governorate_name` itself has
+//     no schema field to map to and is dropped.
+//   - valid_from: schema-required; DB column is nullable (no plate
+//     necessarily has one recorded), so this falls back to the plate
+//     row's own created_at when valid_from is NULL, rather than emit a
+//     required field as null.
+//   - valid_to: DB's valid_until, renamed; null while the interval is
+//     open, exactly matching the schema's own description of null here.
+//   - `status` has no schema field at all and is dropped entirely — it
+//     is not "mapped," per the review finding's own instruction to
+//     omit fields with no schema equivalent.
+function buildProtocolConformantPlate(plateRow, subjectIvid) {
+  return {
+    protocol_version: '0.1.0-draft',
+    id: String(plateRow.id),
+    subject_ivid: subjectIvid,
+    plate_number: plateRow.plate_number,
+    plate_raw: plateRow.plate_raw || null,
+    format_code: plateRow.format_code || null,
+    region_code: plateRow.governorate_code || null,
+    valid_from: toIsoString(plateRow.valid_from || plateRow.created_at),
+    valid_to: plateRow.valid_until ? toIsoString(plateRow.valid_until) : null
+  };
+}
+
+async function handlePublicPassportRoute(req, res, pathname) {
+  // 1. Path gate: only exactly this shape exists under /public/. Any
+  // other path (e.g. /public/plate/xyz, /public/, /public/passport/)
+  // is 404 regardless of method — matching this file's existing
+  // path-then-method dispatch order.
+  var m = /^\/public\/passport\/([^/]+)$/.exec(pathname);
+  if (!m) return notFound(res);
+
+  // F3 KILL-SWITCH (Opus review, 2026-08-19) — checked before the method
+  // gate and BEFORE any database touch, deliberately: when
+  // config/idauto.example.json's public_resolution.enabled is false,
+  // this route must behave as if it does not exist at all — the
+  // identical 404 shape for every method, not just GET, and with zero
+  // query difference from a plain unknown-route 404.
+  if (!loadPublicResolutionConfig().enabled) {
+    return notFound(res);
+  }
+
+  // 1. Method gate.
+  if (req.method !== 'GET') {
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'GET' });
+    return res.end(JSON.stringify({ error: 'method not allowed' }));
+  }
+
+  // 2. FORMAT GATE BEFORE ANY DATABASE TOUCH. A decode failure is
+  // treated as a format failure too (same 404 shape, still zero DB
+  // touch) rather than surfaced as a distinct 400 — this route's only
+  // job is IVID resolution, and an undecodable path segment cannot be a
+  // well-formed IVID either way.
+  var candidate;
+  try {
+    candidate = decodeURIComponent(m[1]);
+  } catch (_) {
+    return notFound(res);
+  }
+  if (!ivid.validate(candidate).ok) {
+    return notFound(res);
+  }
+
+  // 3. Per-IP rate limit, this route's own bucket.
+  var limitResult = await rateLimit.enforcePublicResolution(db, clientIpHash(req), loadPublicResolutionConfig());
+  if (!limitResult.allowed) {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSeconds(limitResult.retry_at)) });
+    return res.end(JSON.stringify({ error: 'rate limit exceeded' }));
+  }
+
+  // 5. Lookup by ivid only — never by plate, internal_ref, or any other
+  // identifier. No plate parameter exists to read in the first place
+  // (the query string is never parsed by this handler). internal_ref,
+  // seats, gross_weight_kg, engine_cc and fiche_status's raw column name
+  // are deliberately NOT selected here at all — see the protocol-shaping
+  // block below for what replaces fiche_status and why the others are
+  // never public.
+  var vehicleResult = await db.query(
+    'SELECT ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
+    'fiche_status, created_at, observation_count ' +
+    'FROM idauto_vehicles WHERE ivid = $1',
+    [candidate]
+  );
+  if (vehicleResult.rows.length === 0) return notFound(res);
+  var vehicleRow = vehicleResult.rows[0];
+
+  // Defense-in-depth: access_scope = 'public' filtered in SQL, in
+  // addition to assemblePassport()'s own scope filter below. PLUS the
+  // reviewed deny-list from reference/public-surface-policy.js (A5-PLATE
+  // ruling) — a fact_key-level exclusion independent of the stored
+  // access_scope, so a mis-scoped fact (e.g. a vin fact accidentally
+  // stored 'public') still never reaches this route.
+  // R2 (Opus review, 2026-08-19): guard against an empty deny-list. An
+  // empty `NOT IN ()` is a Postgres SYNTAX ERROR, not a no-op — the whole
+  // query would fail (closed: no facts leak) but OPAQUELY (a 500
+  // instead of an intentional, understood "no deny-list configured"
+  // outcome). The policy module's deny-list is non-empty today and is
+  // not expected to ever be emptied, but this keeps that assumption from
+  // becoming a silent landmine if it ever is.
+  var denyList = publicSurfacePolicy.deniedFactKeys();
+  var denyClause = denyList.length
+    ? 'AND fact_key NOT IN (' + denyList.map(function (_, i) { return '$' + (i + 3); }).join(', ') + ') '
+    : '';
+  var factsResult = await db.query(
+    'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
+    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 ' +
+    denyClause + 'AND is_active = TRUE ' +
+    'ORDER BY fact_key',
+    [candidate, 'public'].concat(denyList)
+  );
+
+  // Chef Phase-1 audit fix (follow-up to e220213), now shared with the
+  // private route too (P2, Opus review) via buildProtocolConformantVehicle()
+  // above — the raw idauto_vehicles row must never reach a public
+  // response; see that function's own header for the full mapping.
+  var publicVehicle = buildProtocolConformantVehicle(vehicleRow);
+
+  var passport = passportAssembly.assemblePassport({
+    vehicle: publicVehicle,
+    facts: factsResult.rows.map(factRowToPassportFact),
+    scope: 'public', // HARDCODED — never caller-influenced.
+    now: new Date()
+  });
+
+  // 6. Structural assertion, not just hoped for.
+  if (passport.qr.payload !== candidate) {
+    throw new Error('handlePublicPassportRoute: internal invariant violated — qr.payload must equal the requested ivid');
+  }
+
+  // 7. Existing CSP/security header set, identical to serveAdminAsset().
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+  });
+  res.end(JSON.stringify(passport));
+}
+
 // GET /api/vehicles/:internal_ref
 // Public/professional-safe vehicle fields only. No owner fields exist in
 // the schema at all (idauto_vehicles has none, by design — see AD-2).
@@ -130,6 +481,93 @@ async function getPlate(res, plateNumber) {
   );
   if (result.rows.length === 0) return notFound(res);
   sendJson(res, 200, result.rows[0]);
+}
+
+// GET /api/passport/:ivid — the PRIVATE, authenticated passport surface.
+// A5-PLATE REVISED RULING, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §I):
+// "PRIVATE PHASE: plate_number may be displayed / stored normally / used
+// by authorized internal users according to the existing authorization
+// model." This route is that authorized internal display — it lives in
+// the ordinary, authenticated ROUTES table below (behind requireAuth(),
+// exactly like every other route in this section), NEVER under /public/.
+//
+// IVID-ONLY LOOKUP, matching GET /public/passport/:ivid's own discipline
+// above — the owner's ruling approves plate DISPLAY, not plate-based
+// LOOKUP, anywhere, including here. No new plate-resolution path is
+// added: internal plate lookup already exists and stays exactly as it
+// was, at GET /api/plates/:plate_number above.
+//
+// SCOPE (P1, Opus review, 2026-08-19 — corrected from an earlier,
+// wrong 'mythos_private' cut): this route assembles at scope
+// 'professional' (public + professional facts), and the facts SQL
+// below EXCLUDES access_scope = 'mythos_private' as a second,
+// independent layer — the same two-layer pattern the public route uses
+// (SQL filter + assemblePassport()'s own filter), mirrored here rather
+// than invented fresh. This file's own header says why (lines 7-8,
+// 14-16): every GET response in this file excludes mythos_private
+// because no audit-on-read path exists yet, and
+// docs/PRIVACY_ARCHITECTURE.md §3 requires every Restricted access to
+// be audit-logged — a requirement this route cannot satisfy any more
+// than any other GET here can. getFactsForVehicle() above is the real,
+// exact precedent (`AND access_scope != 'mythos_private'`), not
+// getReviewSubmission() (a different, observation-scoped, explicitly
+// mythos_private-carrying route with its own comment saying so) — the
+// original comment here miscited it. The A5-PLATE ruling does not need
+// restricted facts to satisfy its plate-display requirement: plates
+// live in idauto_plates, entirely independent of a fact's access_scope.
+async function getPrivatePassport(res, rawIvid) {
+  if (!ivid.validate(rawIvid).ok) return notFound(res);
+
+  var vehicleResult = await db.query(
+    'SELECT ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
+    'fiche_status, created_at, observation_count ' +
+    'FROM idauto_vehicles WHERE ivid = $1',
+    [rawIvid]
+  );
+  if (vehicleResult.rows.length === 0) return notFound(res);
+  var vehicleRow = vehicleResult.rows[0];
+
+  // access_scope != 'mythos_private' — see this function's own header
+  // for why (getFactsForVehicle()'s precedent, the file's own GET
+  // invariant, PRIVACY_ARCHITECTURE.md §3's audit-on-read requirement).
+  // No fact-key deny-list here — that is specifically the ANONYMOUS
+  // surface's control (reference/public-surface-policy.js); this route
+  // is authenticated, and restricted-fact exclusion is handled by scope
+  // alone, matching getFactsForVehicle()'s own precedent exactly.
+  // Q6 (style, Opus review, 2026-08-19): 'mythos_private' is parameterized
+  // ($2), matching this file's own convention (getFactsForVehicle() above
+  // binds it the same way) rather than inlined as a SQL literal.
+  var factsResult = await db.query(
+    'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
+    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
+    'AND access_scope != $2 AND is_active = TRUE ' +
+    'ORDER BY fact_key',
+    [rawIvid, 'mythos_private']
+  );
+
+  // Plate records — the PRIVATE-phase half of the A5-PLATE ruling in
+  // effect: idauto_plates.vehicle_id is a direct FK to idauto_vehicles,
+  // the same join pattern getPlate() above already uses (joined once
+  // more here through the vehicle's ivid rather than its plate_number,
+  // since this route resolves by ivid only). g.code (not g.name_fr) is
+  // selected — see buildProtocolConformantPlate()'s own header for why.
+  var platesResult = await db.query(
+    'SELECT p.id, p.plate_number, p.plate_raw, p.format_code, g.code AS governorate_code, ' +
+    'p.valid_from, p.valid_until, p.created_at ' +
+    'FROM idauto_plates p LEFT JOIN idauto_governorates g ON g.id = p.governorate_id ' +
+    'WHERE p.vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
+    'ORDER BY p.id',
+    [rawIvid]
+  );
+
+  var passport = passportAssembly.assemblePassport({
+    vehicle: buildProtocolConformantVehicle(vehicleRow),
+    facts: factsResult.rows.map(factRowToPassportFact),
+    plates: platesResult.rows.map(function (row) { return buildProtocolConformantPlate(row, rawIvid); }),
+    scope: 'professional',
+    now: new Date()
+  });
+  sendJson(res, 200, passport);
 }
 
 // GET /api/observations/:id
@@ -536,6 +974,7 @@ var ROUTES = [
   { method: 'POST', pattern: /^\/api\/vehicles$/, handler: function (req, res) { return postVehicle(req, res); } },
   { method: 'GET', pattern: /^\/api\/plates\/([^/]+)$/, handler: function (req, res, m) { return getPlate(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/plates$/, handler: function (req, res) { return postPlate(req, res); } },
+  { method: 'GET', pattern: /^\/api\/passport\/([^/]+)$/, handler: function (req, res, m) { return getPrivatePassport(res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return getObservationMedia(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/ingest\/observations$/, handler: function (req, res) { return postIngestObservation(req, res); } },
   { method: 'POST', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return postObservationMedia(req, res, decodePathSegment(m[1])); } },
@@ -550,6 +989,31 @@ function createServer() {
     var pathname = parsed.pathname;
 
     if (serveAdminAsset(req, res, pathname)) return;
+
+    // A5 OPTION C, 2026-08-19 — the one unauthenticated route, reached
+    // BEFORE requireAuth() deliberately. Every path under /public/ is
+    // handled here and NEVER falls through to the authenticated ROUTES
+    // table below.
+    if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
+      Promise.resolve().then(function () { return handlePublicPassportRoute(req, res, pathname); }).catch(function (err) {
+        // F7 (Opus review, 2026-08-19): a response may already be
+        // underway (e.g. writeHead already called) by the time an error
+        // surfaces here — writing again would throw a second, uglier
+        // error. Destroy the socket instead of attempting a second write.
+        if (res.headersSent) { req.socket.destroy(); return; }
+        // Never echo err.message to this ANONYMOUS, unauthenticated
+        // caller — unlike the authenticated ROUTES catch below (whose own
+        // comment already warns against echoing driver-shaped detail),
+        // this caller has proven nothing about themselves at all, so even
+        // an httpStatus-carrying application error (a message string an
+        // internal caller wrote for an admin's eyes) gets a generic body.
+        if (err && err.httpStatus) return sendJson(res, err.httpStatus, { error: 'request could not be processed' });
+        var mapped = writes.mapDbError(err);
+        sendJson(res, mapped.status, { error: mapped.error });
+      });
+      return;
+    }
+
     if (!requireAuth(req, res)) return;
 
     var matchedPath = ROUTES.filter(function (r) { return r.pattern.test(pathname); });

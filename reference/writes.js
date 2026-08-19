@@ -34,6 +34,7 @@
 var db = require('./db.js');
 var crypto = require('crypto');
 var storage = require('./storage.js');
+var ividIssuance = require('./ivid-issuance.js');
 
 // Maps a Postgres error to a safe {status, error} pair — never echoes the
 // driver's raw message (it can include table/column/value fragments).
@@ -93,6 +94,18 @@ function genInternalRef() {
 }
 
 // POST /api/vehicles
+// F2 (Opus review, 2026-08-19): every vehicle created here gets a
+// permanent ivid, issued inside this SAME transaction via
+// reference/ivid-issuance.js's issueForVehicle() — see that module's
+// header for the permanence guarantee. Previously nothing in production
+// called that module at all; issuance only ever happened out-of-band
+// (issueMissing(), or directly from the test suite). skipAudit:true on
+// the issuance call because this write already gets exactly ONE audit
+// row below (event_type='vehicle.create'), whose new_value_json now
+// includes the issued ivid — a second 'ivid.issue' row for the same
+// atomic write would double the audit-row count for this one write,
+// which tests/ida-2d-write-api-and-audit-test.js's §2 asserts is
+// exactly one.
 async function createVehicle(body, identity) {
   var internalRef = genInternalRef();
   return withAudit(
@@ -101,13 +114,15 @@ async function createVehicle(body, identity) {
     async function (client) {
       var result = await client.query(
         'INSERT INTO idauto_vehicles (internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, gross_weight_kg, engine_cc, category_code, fiche_status) ' +
-        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, gross_weight_kg, engine_cc, category_code, fiche_status',
+        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id, internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, gross_weight_kg, engine_cc, category_code, fiche_status',
         [internalRef, body.make || null, body.model || null, body.variant || null, body.year || null,
           body.body_type || null, body.fuel_type || null, body.colour || null, body.seats || null,
           body.gross_weight_kg || null, body.engine_cc || null, body.category_code || null, 'initial']
       );
       var row = result.rows[0];
-      return { record: row, auditTargetRef: row.internal_ref };
+      row.ivid = await ividIssuance.issueForVehicle(client, row.id, { skipAudit: true });
+      delete row.id; // internal serial PK — never part of this API's response shape, unchanged from before this wiring.
+      return { record: row, auditTargetRef: internalRef };
     }
   );
 }

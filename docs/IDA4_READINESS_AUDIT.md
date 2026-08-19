@@ -495,7 +495,8 @@ original table is listed; unchanged gates are not restated.
 
 | Gate | Was | Now | Why |
 |---|---|---|---|
-| A5 admin-stub vs public path | OWNER DECISION | **OWNER DECISION — evaluated, decision text recorded** | The architecture review evaluated options A (wait for IDA-7), B1/B2/B3 (interim auth variants; B3 dominated and ruled out), and C (the zero-account half: IVID issuance, passport assembly, IVID-only public QR resolution — no PII, no legal trigger). Verdict: *owner decision required* — hold citizen PII and answer L06/L07/L09/L16 now for a citizen write path two stages early (B, recommended variant B1 magic-link), or keep zero PII and wait for IDA-7 (A). **Recommended default: authorize option C first**, with two attached conditions: QR resolution by IVID only, never by plate (else L03 applies); and if B is ever chosen, the credential-is-never-the-identifier guardrail plus the A2 authorization model are in scope from the start |
+| A5 admin-stub vs public path | OWNER DECISION | **DECIDED — 2026-08-19** | The owner decision, EXCERPTED (Opus review F11a: this is the approval sentence and its enumerated scope as it was communicated to engineering — it is not represented as the complete original text. The owner's separate binding prohibitions — no Option B / Magic Link, no citizen person store, no citizen PII collection (no person table, no email/phone/address, no auth identity, no sessions, no recovery flows) — are enforced and test-guarded throughout this branch, e.g. `tests/ida4-option-c-test.js` §10, but are not reproduced below as part of one continuous quotation, since this document cannot verify their exact original sentence boundaries against this excerpt): *"APPROVE OPTION C. Proceed with the zero-account IDA-4 public passport surface: IVID issuance, passport assembly, IVID-only QR resolution, never resolve by plate, no citizen PII, credential is never the vehicle/person identifier, apply the approved rate limiting and threat-model controls."* This closes the A5 decision gate itself — it does not by itself flip §E (public endpoint readiness) or `CITIZEN_FACING_IDA4_READY`, both of which remain gated on legal review (§B) independent of A5. See §J for the resulting branch. |
+| **A5-PLATE** (sub-item of A5, registered 2026-08-19 per Opus review R1; DECIDED same day by a revised owner ruling) | OPEN — OWNER DECISION | **DECIDED — 2026-08-19 (revised ruling)** | Owner ruling, quoted exactly: *"PRIVATE PHASE: plate_number may be displayed / stored normally / used by authorized internal users according to the existing authorization model; this does NOT authorize plate-based public passport resolution. PUBLIC PHASE: plate_number MUST NOT appear in the anonymous public passport response; MUST NOT be used as the public passport resolution key; IVID remains the ONLY public resolution identifier; public exposure must be controlled by an explicit public-surface policy, not by manual code edits; the transition from PRIVATE to PUBLIC must have a tested configuration/policy gate; add regression tests proving the plate is visible in private mode and excluded in public mode. Do NOT delete plate_number from the database. Do NOT implement plate-based public lookup. Do NOT change the A5 IVID-only resolution decision. FINAL RULE: PRIVATE: plate_number = permitted. PUBLIC: plate_number = hidden. PUBLIC RESOLUTION: IVID only."* **Implemented:** `reference/public-surface-policy.js` (the one reviewed public-surface-policy artifact the ruling requires — NOT config-toggleable, since the FINAL RULE is unconditional) carries the PUBLIC-phase deny-list (`vin`, `plate_number`); `reference/api.js`'s new authenticated `GET /api/passport/:ivid` is the PRIVATE-phase internal surface, plate included; `config/idauto.example.json`'s `public_resolution.enabled` is the tested PRIVATE/PUBLIC configuration/policy gate (`tests/ida4-option-c-test.js` §11 proves both phases from the same config state in one child process). `plate_number` was never deleted from the database; no plate-based public lookup was added; the A5 IVID-only resolution decision is unchanged. |
 | B. Legal | LEGAL REVIEW (enumerated) | **LEGAL REVIEW — matrix + counsel package exist; 16/16 OPEN, 0 APPROVED** | `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, full field set) and `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts for counsel). The four citizen-surface blockers: **L06, L07, L09, L16** (L16 by the §B.3 argument, not by the roadmap table — stated in the matrix) |
 | D1. Threat model | BLOCKED / TECH DEBT (no doc) | **Document exists** (`THREAT_MODEL.md` v1, with the transfer fraud section) — runtime controls it identifies remain PLANNED/gated | Written in the foundation subset |
 | D3. Fraud model | BLOCKED | **Documented** (THREAT_MODEL §6); runtime enforcement remains gated on A2 authorization | ibid. |
@@ -518,3 +519,42 @@ requirement for a defined sub-surface, which would make that sub-surface — and
 implementable); legal APPROVED (with evidence) on L06, L07, L09 and a counsel ruling on
 L16's applicability; then a pre-public Opus review and independent audit of the actual
 implementation.
+
+---
+
+## J. Option C implementation exists on branch `ida4-option-c` — pending review (2026-08-19)
+
+Following the A5 decision recorded in §I's updated row, an implementation of the
+owner-approved Option C surface has been built on branch `ida4-option-c`: IVID issuance
+(`reference/ivid-issuance.js`), a new migration adding `idauto_vehicles.ivid`
+(`database/migrations/ida4-option-c-ivid.sql`), and the first and only unauthenticated route,
+`GET /public/passport/:ivid`, in `reference/api.js` — IVID-only resolution, no plate path
+anywhere on the surface, a format gate before any database touch, its own rate-limit bucket
+(`config/idauto.example.json`'s `public_resolution` section), scope hardcoded to `public`
+with SQL-level `access_scope='public'` defense-in-depth, and a `qr.payload === ivid`
+assertion before every response. Test suite: the live-database suite in
+`tests/ida4-option-c-test.js` (0 failures at every run to date). An Opus architecture
+review (APPROVE-WITH-FINDINGS) subsequently found and this branch fixed eleven defects —
+a fact-key deny-list independent of stored `access_scope`, issuance wired into the
+authenticated vehicle-creation write path, a previously-dead rate-limit kill-switch now
+wired, and several test/documentation hygiene fixes (`docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md`
+§13–§14 has the full list).
+
+**This closes no gate above.** It is an implementation of the sub-surface §H's "arguable"
+paragraph and §H's "what would flip it to YES" note already anticipated — a defined
+sub-surface with no account requirement — but it does not itself constitute the "pre-public
+Opus review and independent audit" §H names as still required, nor does it touch legal
+review (§B) at all, since the surface it implements was chosen specifically to avoid
+collecting citizen PII or requiring L06/L07/L09/L16 to be answered.
+
+**The open owner question this branch surfaced (A5-PLATE, see the row above) has since been
+DECIDED by a revised owner ruling, 2026-08-19.** May the already-resolved public passport
+display its `plate_number`? Answered: no, not on the anonymous surface, ever — but yes, on
+an authenticated internal surface, which this branch now also implements
+(`GET /api/passport/:ivid`) specifically because the ruling approved it. The FINAL RULE is
+quoted in full in the A5-PLATE row above.
+
+**Explicitly unchanged by this branch:** `CITIZEN_FACING_IDA4_READY` stays **NO**.
+`PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays **NO**. No deployment occurred; no production
+activation occurred; every legal gate above remains exactly as recorded in §B and §I. This
+branch is engineering work product awaiting review, not a readiness change.
