@@ -4,7 +4,7 @@
   "title": "Anomaly",
   "description": "A machine-detected signal about a claim or a set of records. An Anomaly describes an OBSERVATION about records; it never states a CONCLUSION about people. AI may produce anomalies; AI MUST NOT declare fraud, assert legal guilt, raise a trust level, or be the sole basis for an adverse decision about a person.",
   "type": "object",
-  "required": ["type", "severity", "detected_at", "detector"],
+  "required": ["type", "severity", "statement", "detected_at", "detector"],
   "additionalProperties": false,
   "properties": {
     "type": {

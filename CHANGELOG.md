@@ -6,7 +6,108 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
+
+PR stack merged to main (merge commits; pin provenance verified). docs-only additions: legal gate matrix (16 OPEN), counsel review package, readiness recheck §I — CITIZEN_FACING_IDA4_READY = NO. A5: owner decision required, recommended default option C. No implementation.
+
 ## [Unreleased]
+
+### Added — GATE-CLOSURE Phase 7-8: IDA-4 legal gate matrix + counsel review package (2026-08-19)
+
+docs(legal): IDA-4 legal gate matrix + counsel review package — 16 items, all OPEN.
+Docs-only. No legal advice; engineering facts and classifications only. No item is
+`APPROVED` — approval requires legal evidence that does not exist yet.
+
+- **[`docs/IDA4_LEGAL_GATE_MATRIX.md`](docs/IDA4_LEGAL_GATE_MATRIX.md)** — every one of the
+  16 `LEGAL-REVIEW-REQUIRED` items found by `docs/IDA4_READINESS_AUDIT.md` §B (renumbered
+  `L01`–`L16` in the audit's own order), each with feature, legal question, affected
+  data/users, jurisdiction, current status, required decision, evidence, owner and
+  dependency. Status vocabulary: `OPEN` / `UNDER_REVIEW` / `APPROVED` / `REJECTED` /
+  `NOT_APPLICABLE` / `OWNER_DECISION` — engineering can never set `APPROVED`.
+- **[`docs/IDA4_LEGAL_REVIEW_PACKAGE.md`](docs/IDA4_LEGAL_REVIEW_PACKAGE.md)** — the
+  counsel-facing engineering-facts package: what IDauto is, the full data inventory per
+  record type, data flows (ingestion, review queue, media storage, off-host backup),
+  public/private visibility mechanics, consent & rights mechanics (specified vs
+  implemented), per-topic fact sheets mapped to the matrix, and what engineering needs back
+  from counsel.
+- All 16 items are `OPEN`. **Four block the citizen-facing IDA-4 surface directly**: `L06`
+  (data correction/deletion rights), `L07` (retention periods, all categories), `L09`
+  (operator super-admin access governance policy), `L16` (owner identity processing) — this
+  is verified against `docs/IDA4_READINESS_AUDIT.md` §B's own mapping (items `#6`, `#7`,
+  `#9`, `#16`), not merely asserted.
+- `docs/RISK_REGISTER.md` gains `R-S08` (the 16-item legal gate) and `R-S09` (the A5 owner
+  decision, still pending).
+
+### Added — Stage preparation verification, IDA-5 through IDA-9 + Part Identity (2026-08-19)
+
+docs: verify stages IDA-5..IDA-9 + part-identity preparation state. A documentation-only
+preparation/verification pass for master-mission Stages 8–12 — no implementation, no schema
+change. Adds [`docs/STAGE_PREPARATION_IDA5_TO_IDA9.md`](docs/STAGE_PREPARATION_IDA5_TO_IDA9.md),
+which classifies every required element of IDA-5 (professional issuers), IDA-7 (VC/DID),
+IDA-8 (anchoring), IDA-9 (open protocol) and Part Identity as PREPARED / PARTIAL / OPEN, each
+with a file+section citation. Incorporates the IDA-4 architecture review's binding findings,
+and records one correction to it: the review's untyped `credentials.items: {}` placeholder
+gap is attributed to `issuer.schema.json`, which has no such field — the actual placeholder
+is `passport.schema.json`'s `credentials` array. The onboarding-process gap for professional
+issuers (who verifies a garage is a garage) is recorded as the top open item for Stage 8.
+
+### Added — IDA-4 gate-free foundation subset (2026-08-19)
+
+feat(ida4): gate-free foundation subset — IVID library, protocol artifacts, passport
+assembly, threat model. Implements exactly the architecture review's approved subset of
+IDA-4: no reachable write path, no person data, no legal question answered or presupposed.
+The citizen-facing surface remains BLOCKED on the authentication and legal gates recorded in
+`docs/IDA4_READINESS_AUDIT.md`.
+
+- **Schema fixes** (`protocol/schemas/`, additive/clarifying only): `passport.schema.json`
+  and `anomaly.schema.json` required-field additions (`completeness_note`/`qr`,
+  `statement`); `ownership-transfer.schema.json` gains an optional `supersedes` field,
+  mirroring `fact.schema.json`'s; the `ivid` pattern's payload bound is `{16,}` → `{16,30}`,
+  so the maximum IVID string fits `internal_ref VARCHAR(40)` exactly; `protocol/README.md`
+  gains a dated subsection reconciling `additionalProperties: false` against OVIP §13's
+  round-trip preservation duty, cross-referenced from OVIP §13 itself.
+- **`reference/ivid.js`** — IVID issuance/validation library (Crockford base32, no I/L/O/U;
+  ≥5 pinned check-symbol test vectors; `generate`/`validate`/`parse`/`checkSymbols`). Pure,
+  no persistence.
+- **Two new protocol artifacts** — `protocol/schemas/holder-ref.schema.json` (the opaque
+  holder-reference boundary; forbids person fields; person store explicitly out of protocol
+  scope) and `protocol/schemas/tombstone.schema.json` (erasure record per
+  `PRIVACY_ARCHITECTURE.md` §6 / OVIP §10.3, without retaining erased content). MAPPING.md
+  updated.
+- **`reference/passport-assembly.js`** — pure Digital Vehicle Passport assembly function:
+  scope filtering (public/professional/mythos_private), `trust_summary` with a separate
+  `anchored` count (never a T4 key), an always-present `completeness_note`, and a `qr`
+  payload that is always exactly the vehicle's IVID.
+- **`docs/IVID_MIGRATION_PLAN.md`** + **`database/migrations/ivid-migration-dry-run.js`** —
+  the plan (PLAN ONLY, NOT EXECUTED) and its dry-run tool, which refuses to run if any
+  `IDAUTO_DB_*` environment variable is set and takes no database connection.
+- **`docs/THREAT_MODEL.md`** — version 1 system-wide threat model, including the
+  ownership-transfer fraud model (stolen-vehicle laundering, coerced transfer, fake seller,
+  replay, backdated `effective_at`, supersession abuse), an honest-gaps section, and the AI
+  boundary (detection routes to review; never declares fraud).
+- **`tests/ida4-foundation-test.js`** — 130 offline, env-free assertions.
+- **Docs pass:** `BLOCKCHAIN_ARCHITECTURE.md` §8 backup-status correction; `MAPPING.md`'s
+  `subject_ref` note aligned with `ROADMAP.md` IDA-7 ("scheduled deliberately"); `ROADMAP.md`
+  IDA-4 section gains a dated note naming exactly what is IMPLEMENTED versus what remains
+  BLOCKED — IDA-4 itself is NOT marked implemented.
+
+Validated: `tests/ida4-foundation-test.js` 130/0; `tests/identity-conformance-test.js` 81/0
+(unchanged); `tests/ida-2a-schema-and-plate-validation-test.js` 44/0 (unchanged); the three
+`protocol/vocabularies/*.json` digests unchanged.
+
+### Added — IDA-4 readiness audit (2026-08-19)
+
+docs(audit): IDA-4 readiness audit — every gate classified with evidence in
+`docs/IDA4_READINESS_AUDIT.md`; docs-only, no implementation. Verdict: citizen-facing IDA-4
+write path BLOCKED on real authentication (IDA-2E→IDA-7) and 16 distinct legal-review items
+(4 of them roadmap-attributed to IDA-4 directly); reconciles this audit's own enumeration
+(16 distinct items) against `docs/ROADMAP.md`'s stated 15.
+
+### Added — identity vocabularies (2026-08-18)
+
+feat(protocol): publish identity vocabularies — actor-type.v1, org-role.v1,
+actor-identifier.v1; schema conformance suite tests/identity-conformance-test.js; no schema
+change, no runtime change.
 
 ### Published — 2026-08-18
 
@@ -18,6 +119,7 @@ from the published lockfile, a freshly created PostgreSQL 16 database, and **13 
 
 This repository is now the canonical home of IDauto. The duplicated source in
 `othoth77/mythos-prod` is removed by a separate draft pull request there.
+
 
 ### Added — standalone repository and Open Vehicle Identity Protocol (2026-08-18)
 

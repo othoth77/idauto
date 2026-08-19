@@ -4,7 +4,7 @@
   "title": "DigitalVehiclePassport",
   "description": "The lifecycle record of one vehicle: what it is, what has happened to it, and what backs each statement. An AGGREGATE VIEW, not a stored document — it is assembled per request and filtered to the caller's access scope, so two callers legitimately see two different passports for the same vehicle. Modelled as a W3C credential SUBJECT, never as a credential: a passport aggregates many claims from many issuers over time, whereas a VC is one issuer's signed statement at one time.",
   "type": "object",
-  "required": ["protocol_version", "ivid", "generated_at", "scope", "facts"],
+  "required": ["protocol_version", "ivid", "generated_at", "scope", "facts", "completeness_note", "qr"],
   "additionalProperties": false,
   "properties": {
     "protocol_version": { "type": "string", "const": "0.1.0-draft" },

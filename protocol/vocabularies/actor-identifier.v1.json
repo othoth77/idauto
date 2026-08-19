@@ -1,0 +1,33 @@
+{
+  "protocol": "OVIP",
+  "vocabulary": "actor_identifier",
+  "version": 1,
+  "revision": 1,
+  "canonical_id": "https://idauto.org/protocol/vocabularies/actor-identifier.v1.json",
+  "status": "stable",
+  "published_at": "2026-08-18",
+  "description": "Width, form and placement of the external actor references IDauto stores. The value space is opaque to IDauto; the forms conform to the external contract named in conforms_to.",
+  "max_length": 64,
+  "storage": "VARCHAR(64)",
+  "null_means": "anonymous — an identifier is never invented for an unauthenticated caller",
+  "forms": [
+    { "name": "user", "prefix": "usr_", "pattern": "^usr_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", "note": "UUIDv7, lowercase hex, RFC variant enforced" },
+    { "name": "service", "prefix": "svc_", "pattern": "^svc_[a-z0-9][a-z0-9._-]{0,40}$" }
+  ],
+  "examples": {
+    "valid": ["usr_0193f4a2-7c31-7890-b4e2-1a2b3c4d5e6f", "svc_idauto-api"],
+    "invalid": ["usr_0193F4A2-7C31-7890-B4E2-1A2B3C4D5E6F", "usr_0193f4a2-7c31-4890-b4e2-1a2b3c4d5e6f", "svc_IDAUTO", "org_0193f4a2-7c31-7890-b4e2-1a2b3c4d5e6f", "Bearer abc123", ""]
+  },
+  "columns": [
+    { "table": "idauto_contributors", "column": "mythos_user_id", "forms": ["user"] },
+    { "table": "idauto_submissions", "column": "actor_ref", "forms": ["user", "service"], "nullable": true },
+    { "table": "idauto_user_roles", "column": "mythos_user_id", "forms": ["user"] },
+    { "table": "idauto_audit_log", "column": "actor_ref", "forms": ["user", "service"], "nullable": true }
+  ],
+  "never_contains": ["bearer token", "credential", "session identifier", "email address", "any personal data"],
+  "conforms_to": {
+    "contract": "Mythos platform identifier contract",
+    "document": "othoth77/mythos-prod docs/MYTHOS_IDENTITY_ARCHITECTURE.md §2",
+    "authority": "external"
+  }
+}

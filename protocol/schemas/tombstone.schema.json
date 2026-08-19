@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://idauto.org/protocol/0.1.0/tombstone.schema.json",
+  "title": "Tombstone",
+  "description": "The record an erasure leaves behind, WITHOUT retaining the erased content. Grounded in docs/OPEN_VEHICLE_IDENTITY_PROTOCOL.md §4 item 4 ('Deletion is permitted only for erasure obligations under data-protection law (§10.3), and an erasure MUST leave a tombstone recording that an erasure occurred, its legal basis, and its date — never a silent gap') and §10 item 3 ('Erasure. Personal data must be erasable without destroying the vehicle record... erasure removes a holder record and leaves a tombstone'), and docs/PRIVACY_ARCHITECTURE.md §6 item 4 ('A tombstone records that an erasure occurred, its legal basis and its date. Never a silent gap — a history with an invisible hole is a history that cannot be trusted.'). A Tombstone is deliberately the opposite of a backup: it proves something was removed, and states why and when, while carrying none of what was removed. A Tombstone that reproduced the erased content would defeat the erasure it exists to record.",
+  "type": "object",
+  "required": ["protocol_version", "id", "record_kind", "erased_record_ref", "legal_basis", "erased_at", "actor_ref", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "string", "const": "0.1.0-draft" },
+    "id": { "type": "string" },
+    "record_kind": {
+      "description": "Which kind of record the erasure applies to. 'holder' covers docs/PRIVACY_ARCHITECTURE.md §6 item 2 ('Erasing a person removes the person record and the holder association'); 'evidence' and 'document' cover §6 item 5 ('Content-addressed evidence attributable to the erased person is removed from the media store; the evidence record survives as a tombstone'), matching evidence.schema.json's own per-artefact 'erased' field — this Tombstone is the standalone, queryable record of that same event, not a duplicate mechanism. 'observation' and 'fact' are included because OVIP §4 item 4's erasure permission is stated generally, across any consequential record, not narrowed to holders and evidence alone.",
+      "type": "string",
+      "enum": ["holder", "evidence", "document", "observation", "fact"]
+    },
+    "erased_record_ref": {
+      "description": "An opaque reference to the record that was erased or suppressed — e.g. a HolderRef string, or an Evidence/Document/Observation/Fact id. Resolves to nothing after erasure: the reference is retained so the shape of history (that something existed here, and was removed) stays visible, exactly as OVIP §9.3 describes a from_holder_ref becoming 'a dangling non-resolving reference' while the surrounding record survives. This field MUST NOT itself carry personal data — a HolderRef is already opaque by construction (see holder-ref.schema.json), and an Evidence/Document/Observation/Fact id is an internal identifier, not the artefact's content.",
+      "type": "string"
+    },
+    "legal_basis": {
+      "description": "The right or basis under which the erasure was performed. Deliberately a provisional, open-set vocabulary: docs/ROADMAP.md 'LEGAL-REVIEW-REQUIRED — open items' lists 'Data correction / deletion rights for individuals' as blocking IDA-4 specifically, and docs/IDA4_READINESS_AUDIT.md §B item #6 confirms no source resolves it yet. This field records WHICH basis a deployment invoked, once legal review authorises invoking one — it does not itself authorise anything, and 'other' plus basis_note exists precisely so an unreviewed or jurisdiction-specific basis is never forced into a value that overstates its legal grounding.",
+      "type": "string",
+      "enum": ["data_subject_erasure_request", "consent_withdrawn", "legal_obligation", "regulatory_order", "data_correction_superseded_by_erasure", "other"]
+    },
+    "basis_note": {
+      "description": "Free-text elaboration of legal_basis, e.g. a case/ticket reference or a citation to the specific legal provision relied on. MUST NOT restate or reproduce any erased personal data — a note that leaked the erased content back into the tombstone would defeat the erasure this record exists to prove happened.",
+      "type": ["string", "null"]
+    },
+    "erased_at": {
+      "description": "When the erasure was performed. Server-derived: the operational timestamp of the erasure transaction, not a caller-supplied date, so a tombstone cannot be backdated to make an erasure appear to predate a record it should have covered.",
+      "type": "string",
+      "format": "date-time",
+      "x-serverDerived": true
+    },
+    "actor_ref": {
+      "description": "Opaque reference to who or what performed the erasure (an operator identity, or a service identity per docs/IDENTITY_ARCHITECTURE.md's actor_ref convention). Server-derived from the resolved caller identity, never from the payload — mirrors provenance-envelope.schema.json's issuer/source discipline.",
+      "type": "string",
+      "x-serverDerived": true
+    },
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+  }
+}

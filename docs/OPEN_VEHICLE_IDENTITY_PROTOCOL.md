@@ -341,7 +341,12 @@ signed statement at one time.
 - Every protocol document and schema carries an explicit version.
 - A conforming implementation **MUST** state which protocol version it implements and which
   optional capabilities (anchoring, VC issuance, part identity) it supports.
-- Unknown fields **MUST** be preserved on round-trip, not dropped.
+- Unknown fields **MUST** be preserved on round-trip, not dropped. This duty binds
+  implementations (transport, storage and relay layers) rather than the canonical
+  `additionalProperties: false` validators in `protocol/schemas/`, which are deliberately
+  closed so an invalid record fails loudly at the authoring boundary; see
+  [`../protocol/README.md`](../protocol/README.md) "Closed canonical schemas vs. OVIP §13
+  round-trip preservation" for the full reconciliation.
 - Governance of protocol changes is in [`../GOVERNANCE.md`](../GOVERNANCE.md).
 
 ---
