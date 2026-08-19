@@ -227,6 +227,15 @@ async function validKnownIvid() {
 
   var withPlateQuery = await request('GET', '/public/passport/' + encodeURIComponent(fixtureIvid) + '?plate=123TUN4567');
   ok(withPlateQuery.status === 200 && withPlateQuery.body.qr.payload === fixtureIvid, '?plate= query parameter is ignored — same passport is returned');
+
+  // Phase 3 prep: A5 forbids any citizen-PII surface. The vehicle/facts
+  // shape checks above already prove specific fields are absent; this is
+  // a broader sweep of the whole raw body for PII-shaped substrings, so a
+  // future field addition anywhere in the response trips this too.
+  ok(res.raw.length > 200, 'precondition: raw response body is non-trivially sized (non-vacuous substring sweep)');
+  ['email', 'phone', 'address', 'national_id', 'cin', 'owner_name', 'holder'].forEach(function (needle) {
+    ok(res.raw.toLowerCase().indexOf(needle) === -1, 'raw response body contains no "' + needle + '" substring (case-insensitive)');
+  });
 }
 
 async function unknownValidFormatIvid() {
@@ -340,6 +349,83 @@ async function noAuthorizationHeaderAnywhere() {
   ok(res.status === 200, 'public route succeeds again with zero Authorization header, confirmed directly');
 }
 
+// §10. A5 PROHIBITION GUARDS — no person store, no citizen-PII surface.
+//
+// Phase 3 prep found no test that would fail if a person/citizen store
+// were introduced (the only related check anywhere was
+// holder-ref.schema.json's structural not-block, which guards the
+// PROTOCOL schema only — nothing guarded the live database, the
+// migrations directory, or the public response body). This section is
+// that missing guard: it fails loudly the moment any of the three ever
+// changes.
+//
+// KNOWN, VERIFIED, LEGITIMATE EXCEPTION: idauto_user_roles matches the
+// naive /person|citizen|account|user|identity|holder/i pattern (via
+// "user") but is NOT a citizen/person PII store — it is a professional-
+// organisation role-assignment table keyed by an opaque mythos_user_id,
+// explicitly commented "[NO PII] name/email resolved from Mythos OS auth
+// at runtime" in database/schema.sql, predating this stage entirely (it
+// is IDA-2's professional-subscription tier mechanism, not IDA-4's
+// citizen surface). It is the ONLY one of the 24 live tables that
+// matches; every other table name was checked by hand against this
+// pattern before writing this guard. Excluding it by exact name (not by
+// loosening the pattern) keeps the guard strict against anything NEW.
+var KNOWN_LEGITIMATE_NON_CITIZEN_TABLES = ['idauto_user_roles'];
+
+async function a5ProhibitionGuards() {
+  console.log('\n10. A5 prohibition guards: no person store, no citizen PII surface');
+
+  // 1. Live database: no person/citizen/account/identity/holder-shaped
+  // table exists, other than the one verified, documented exception above.
+  var tableResult = await db.query(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"
+  );
+  var tableNames = tableResult.rows.map(function (r) { return r.table_name; });
+  ok(tableNames.length >= 24, 'precondition: the live schema has at least 24 tables (non-vacuous — got ' + tableNames.length + ')');
+  var suspiciousTables = tableNames.filter(function (name) {
+    return /person|citizen|account|user|identity|holder/i.test(name) && KNOWN_LEGITIMATE_NON_CITIZEN_TABLES.indexOf(name) === -1;
+  });
+  ok(suspiciousTables.length === 0, 'no person/citizen/account/identity/holder-shaped table exists beyond the one verified, documented exception — got ' + JSON.stringify(suspiciousTables));
+  ok(tableNames.indexOf('idauto_user_roles') !== -1, 'precondition: the one documented exception table actually exists (the exclusion isn\'t vacuously excluding nothing)');
+
+  // 2. Migrations directory: no migration ever CREATEs a person/citizen/
+  // account table.
+  var migrationsDir = path.join(BASE, 'database', 'migrations');
+  var migrationFiles = fs.readdirSync(migrationsDir);
+  ok(migrationFiles.length >= 1, 'precondition: at least one file exists in database/migrations/ (non-vacuous)');
+  var ddlFiles = migrationFiles.filter(function (name) {
+    var contents = fs.readFileSync(path.join(migrationsDir, name), 'utf8');
+    return /CREATE\s+TABLE|ALTER\s+TABLE/i.test(contents);
+  });
+  ok(ddlFiles.length >= 1, 'precondition: at least one migration file contains CREATE TABLE or ALTER TABLE (non-vacuous — got ' + JSON.stringify(ddlFiles) + ')');
+  var offendingMigrations = [];
+  migrationFiles.forEach(function (name) {
+    var contents = fs.readFileSync(path.join(migrationsDir, name), 'utf8');
+    if (/CREATE\s+TABLE[^;]*(person|citizen|account)/i.test(contents)) offendingMigrations.push(name);
+  });
+  ok(offendingMigrations.length === 0, 'no migration file CREATEs a person/citizen/account table — got ' + JSON.stringify(offendingMigrations));
+
+  // 3. Public response body PII sweep — covered directly in validKnownIvid()
+  // (§3 above), where the real response body and its non-vacuity
+  // precondition already live; not duplicated here.
+
+  // 4. api.js source: the ROUTES table (the authenticated dispatch table)
+  // carries no /public/ pattern at all — /public/ is handled by exactly
+  // one dedicated, pre-auth branch, and the passport-specific regex
+  // inside handlePublicPassportRoute() is the only place that actually
+  // matches a /public/ path shape.
+  var apiSource = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
+  var routesMatch = /var ROUTES = \[[\s\S]*?\n\];/.exec(apiSource);
+  ok(!!routesMatch, 'precondition: the ROUTES table is found in api.js source (non-vacuous — extraction itself succeeded)');
+  if (routesMatch) {
+    ok(routesMatch[0].toLowerCase().indexOf('/public') === -1, 'the authenticated ROUTES table contains no /public/ pattern of any kind');
+  }
+  var coarseDispatchOccurrences = (apiSource.match(/pathname\.indexOf\('\/public\/'\)\s*===\s*0/g) || []).length;
+  ok(coarseDispatchOccurrences === 1, 'exactly one pre-auth /public/ dispatch branch exists in api.js, got ' + coarseDispatchOccurrences);
+  var passportPatternOccurrences = (apiSource.match(/\/\^\\\/public\\\/passport\\\/\(\[\^\/\]\+\)\$\//g) || []).length;
+  ok(passportPatternOccurrences === 1, 'exactly one /public/passport/:ivid route pattern exists in api.js, got ' + passportPatternOccurrences);
+}
+
 (async function main() {
   server = api.createServer();
   await new Promise(function (resolve) { server.listen(0, '127.0.0.1', resolve); });
@@ -355,6 +441,7 @@ async function noAuthorizationHeaderAnywhere() {
     await burstAndRecovery();
     await adminRouteStillAuthenticated();
     await noAuthorizationHeaderAnywhere();
+    await a5ProhibitionGuards();
   } finally {
     await cleanupFixture();
     if (server) await new Promise(function (resolve) { server.close(resolve); });
