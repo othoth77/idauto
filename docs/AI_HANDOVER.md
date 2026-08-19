@@ -27,7 +27,16 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
-## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, OPUS-REVIEWED (APPROVE-WITH-FINDINGS), FINDINGS FIXED
+## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, OPUS FINAL VERDICT: APPROVE, HAIKU AUDIT: ACCEPT-WITH-FINDINGS
+
+**Final review outcome (2026-08-19, end of stage):** after two Opus fix rounds, Opus's
+final verdict at `4ffa446` is **APPROVE**; the independent Haiku A–Q audit at the same
+commit is **ACCEPT-WITH-FINDINGS** (three informational items, all already documented in
+the implementation report §14). Both verdicts are recorded in
+`docs/IDA4_OPTION_C_REVIEW_VERDICTS.md`. Deployment remains NOT AUTHORIZED; both
+readiness flags remain NO; L01–L16 remain OPEN; the **A5-PLATE** owner question
+(`docs/IDA4_READINESS_AUDIT.md` §I) remains OPEN with plate_number deny-listed
+default-closed in the interim.
 
 **Branch:** `ida4-option-c` @ this commit (on top of `main`, not merged). **Type:**
 Implementation — the owner-approved A5 OPTION C surface, per the owner decision excerpted
