@@ -27,6 +27,18 @@ the owner decision verbatim, new §J), `docs/ROADMAP.md` (dated note), `docs/THR
 stays NO. `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays NO. No deployment, no production
 activation, no legal gate touched.
 
+- **Fix (Chef Phase-1 audit, follow-up commit):** the public passport's `vehicle` object was
+  the raw `idauto_vehicles` row, leaking `internal_ref` (the internal identifier the IVID
+  exists to avoid exposing) and bypassing the fact-level `access_scope` filter at the column
+  level (`seats`, `gross_weight_kg`, `engine_cc` passed through verbatim even though
+  `engine_cc` is professional-scope as a Fact). `reference/api.js` now builds a
+  `protocol/schemas/vehicle.schema.json`-conformant object instead —
+  `{protocol_version, ivid, status, created_at, observation_count, summary}` only, `status`
+  a direct passthrough of `fiche_status` (its allowed set is an exact subset of the
+  protocol's status enum), `current_plate_ref` and `merged_into` omitted. Extended
+  `tests/ida4-option-c-test.js` §3 accordingly; suites re-run: ida4-option-c 66/0,
+  ida4-foundation 130/0, identity-conformance 81/0.
+
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 
 PR stack merged to main (merge commits; pin provenance verified). docs-only additions: legal gate matrix (16 OPEN), counsel review package, readiness recheck §I — CITIZEN_FACING_IDA4_READY = NO. A5: owner decision required, recommended default option C. No implementation.

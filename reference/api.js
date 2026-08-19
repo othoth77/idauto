@@ -280,10 +280,14 @@ async function handlePublicPassportRoute(req, res, pathname) {
 
   // 5. Lookup by ivid only — never by plate, internal_ref, or any other
   // identifier. No plate parameter exists to read in the first place
-  // (the query string is never parsed by this handler).
+  // (the query string is never parsed by this handler). internal_ref,
+  // seats, gross_weight_kg, engine_cc and fiche_status's raw column name
+  // are deliberately NOT selected here at all — see the protocol-shaping
+  // block below for what replaces fiche_status and why the others are
+  // never public.
   var vehicleResult = await db.query(
-    'SELECT internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, ' +
-    'gross_weight_kg, engine_cc, category_code, fiche_status, ivid ' +
+    'SELECT ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
+    'fiche_status, created_at, observation_count ' +
     'FROM idauto_vehicles WHERE ivid = $1',
     [candidate]
   );
@@ -299,8 +303,45 @@ async function handlePublicPassportRoute(req, res, pathname) {
     [candidate, 'public']
   );
 
+  // Chef Phase-1 audit fix (follow-up to e220213): the raw idauto_vehicles
+  // row must never reach a public response — it carries internal_ref (the
+  // internal admin identifier the IVID exists specifically to avoid
+  // exposing) and non-public columns (seats, gross_weight_kg, engine_cc)
+  // that bypass the fact-level access_scope filter entirely. Build a
+  // protocol/schemas/vehicle.schema.json-conformant object instead
+  // (additionalProperties:false — only these properties are legal).
+  //
+  // status: idauto_vehicles.fiche_status's full allowed set (chk_vehicle_status,
+  // database/schema.sql: initial|pending_review|verified|conflict|merged|archived)
+  // is an EXACT SUBSET of the protocol's status enum (which adds only
+  // 'closed', unused by any DB row today) — so this is a direct, documented
+  // passthrough of an already-public lifecycle field, not an invented
+  // mapping. 'closed' cannot occur since no DB constraint permits it yet.
+  //
+  // current_plate_ref is omitted entirely — it is optional in the schema,
+  // and A5 forbids plate exposure on this route regardless. merged_into is
+  // omitted because idauto_vehicles has no such column (a merge is not yet
+  // implemented — docs/IDA4_READINESS_AUDIT.md).
+  var publicVehicle = {
+    protocol_version: '0.1.0-draft',
+    ivid: vehicleRow.ivid,
+    status: vehicleRow.fiche_status,
+    created_at: vehicleRow.created_at instanceof Date ? vehicleRow.created_at.toISOString() : vehicleRow.created_at,
+    observation_count: vehicleRow.observation_count,
+    summary: {
+      make: vehicleRow.make,
+      model: vehicleRow.model,
+      variant: vehicleRow.variant,
+      year: vehicleRow.year,
+      body_type: vehicleRow.body_type,
+      fuel_type: vehicleRow.fuel_type,
+      colour: vehicleRow.colour,
+      category_code: vehicleRow.category_code
+    }
+  };
+
   var passport = passportAssembly.assemblePassport({
-    vehicle: vehicleRow,
+    vehicle: publicVehicle,
     facts: factsResult.rows.map(factRowToPassportFact),
     scope: 'public', // HARDCODED — never caller-influenced.
     now: new Date()

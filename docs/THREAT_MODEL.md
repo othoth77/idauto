@@ -116,7 +116,7 @@ are now real code, not only planned:
 - **Identical 404s:** confirmed directly by `tests/ida4-option-c-test.js` §4/§5/§6 — a
   well-formed unissued IVID, a malformed IVID, and a plate-shaped path segment all return
   the same `{"error":"not found"}` shape.
-- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 287); no route
+- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 291); no route
   under `/public/` accepts a plate value, and a `?plate=` query parameter is never read by
   the handler at all (the query string is never parsed). `tests/ida4-option-c-test.js` §6
   covers a plate-shaped path segment, `/public/plate/...`, and an ignored `?plate=` parameter.

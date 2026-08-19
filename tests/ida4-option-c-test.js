@@ -85,13 +85,20 @@ async function scalar(sql, params) {
 var FIXTURE_PREFIX = 'IDA4OPTIONC-TEST-';
 var fixtureVehicleId = null;
 var fixtureIvid = null;
+var fixtureInternalRef = null;
 
 async function insertFixture() {
   var internalRef = FIXTURE_PREFIX + Date.now() + '-' + crypto.randomBytes(4).toString('hex');
+  fixtureInternalRef = internalRef;
+  ok(typeof fixtureInternalRef === 'string' && fixtureInternalRef.length > 0, 'precondition: fixture internal_ref is a non-empty string (non-vacuous for the leakage check below)');
+  // seats and engine_cc are given real, non-null values here specifically so
+  // the "these columns are absent from the public response" assertions in
+  // validKnownIvid() are non-vacuous — a null column would pass that check
+  // even if the column were still selected and merely happened to be null.
   var vehicle = await db.query(
-    "INSERT INTO idauto_vehicles (internal_ref, make, model, variant, year, body_type, fuel_type, colour, fiche_status) " +
-    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, internal_ref",
-    [internalRef, 'IDA4OptionCFixture', 'TestModel', null, 2026, 'sedan', 'petrol', 'blue', 'initial']
+    "INSERT INTO idauto_vehicles (internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, engine_cc, fiche_status) " +
+    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, internal_ref",
+    [internalRef, 'IDA4OptionCFixture', 'TestModel', null, 2026, 'sedan', 'petrol', 'blue', 5, 1600, 'initial']
   );
   fixtureVehicleId = vehicle.rows[0].id;
 
@@ -188,6 +195,35 @@ async function validKnownIvid() {
   ok(res.headers['content-security-policy'] !== undefined, 'CSP header is applied to the public response');
   ok(res.headers['x-content-type-options'] === 'nosniff', 'X-Content-Type-Options header is applied');
   ok(res.headers['cache-control'] === 'no-store', 'Cache-Control: no-store is applied');
+
+  // Chef Phase-1 audit fix (follow-up to e220213): the vehicle object must
+  // be protocol-conformant, not the raw DB row — no internal_ref, no
+  // non-public columns.
+  var vehicle = res.body && res.body.vehicle;
+  ok(!!vehicle, 'response has a vehicle object');
+  ok(vehicle.internal_ref === undefined, 'vehicle.internal_ref key is absent from the public response');
+  ok(res.raw.indexOf(fixtureInternalRef) === -1, 'the fixture internal_ref STRING appears nowhere in the raw response body');
+  ok(vehicle.seats === undefined, 'seats key is absent (fixture had a real, non-null seats value — non-vacuous)');
+  ok(vehicle.engine_cc === undefined, 'engine_cc key is absent (fixture had a real, non-null engine_cc value — non-vacuous)');
+  ok(vehicle.gross_weight_kg === undefined, 'gross_weight_kg key is absent');
+  ok(vehicle.fiche_status === undefined, 'the raw fiche_status key name is absent (replaced by the protocol status field)');
+  ok(vehicle.current_plate_ref === undefined, 'current_plate_ref is omitted entirely (A5: never expose plate on this route)');
+  ok(vehicle.merged_into === undefined, 'merged_into is omitted (no such column exists in idauto_vehicles)');
+
+  var expectedKeys = ['protocol_version', 'ivid', 'status', 'created_at', 'observation_count', 'summary'];
+  var actualKeys = Object.keys(vehicle).sort();
+  ok(JSON.stringify(actualKeys) === JSON.stringify(expectedKeys.slice().sort()), 'vehicle object has exactly the expected protocol-conformant key set, got ' + JSON.stringify(actualKeys));
+  ok(vehicle.protocol_version === '0.1.0-draft', 'vehicle.protocol_version matches the schema const');
+  ok(vehicle.ivid === fixtureIvid, 'vehicle.ivid matches the resolved ivid');
+  var VEHICLE_STATUS_ENUM = ['initial', 'pending_review', 'verified', 'conflict', 'merged', 'archived', 'closed'];
+  ok(VEHICLE_STATUS_ENUM.indexOf(vehicle.status) !== -1, 'vehicle.status is a member of the protocol status enum, got ' + vehicle.status);
+  ok(vehicle.status === 'initial', 'vehicle.status is the direct passthrough of the fixture\'s fiche_status (initial)');
+  ok(typeof vehicle.created_at === 'string' && vehicle.created_at.length > 0 && !isNaN(Date.parse(vehicle.created_at)), 'vehicle.created_at is present and a parseable ISO 8601 string');
+  ok(typeof vehicle.observation_count === 'number', 'vehicle.observation_count is present and numeric');
+  var summaryKeys = Object.keys(vehicle.summary || {}).sort();
+  var expectedSummaryKeys = ['make', 'model', 'variant', 'year', 'body_type', 'fuel_type', 'colour', 'category_code'].sort();
+  ok(JSON.stringify(summaryKeys) === JSON.stringify(expectedSummaryKeys), 'summary object has exactly the schema\'s full public-safe field set, got ' + JSON.stringify(summaryKeys));
+  ok(vehicle.summary.make === 'IDA4OptionCFixture' && vehicle.summary.colour === 'blue', 'summary carries the fixture\'s actual public-safe values');
 
   var withPlateQuery = await request('GET', '/public/passport/' + encodeURIComponent(fixtureIvid) + '?plate=123TUN4567');
   ok(withPlateQuery.status === 200 && withPlateQuery.body.qr.payload === fixtureIvid, '?plate= query parameter is ignored — same passport is returned');
