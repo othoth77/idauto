@@ -95,7 +95,35 @@ retrofitting it after.
 |---|---|---|
 | **Citizen registration** | Real per-person accounts, the first actor class beyond "admin" and "anonymous contributor" | Requires real authentication (`docs/IDA4_READINESS_AUDIT.md` §A — BLOCKED). Introduces account-takeover and multi-account (Sybil) fraud as live threats for the first time — `docs/IDA4_READINESS_AUDIT.md` §D2: "no citizen-specific abuse model... because no real accounts exist yet to abuse." This document does not invent one prematurely; it names the gap as a precondition of the surface opening, not a detail to sort out after |
 | **Ownership transfer** | Citizen-initiated `OwnershipTransfer` records | Full fraud model in §6 below |
-| **QR resolution** | A public endpoint resolving a passport's `qr.payload` (the IVID) to a public-scope passport view | Enumeration risk if resolution is unauthenticated and IVIDs are treated as guessable — they are not (80 bits of entropy, `reference/ivid.js`), but the RESOLUTION ENDPOINT itself, once built, needs its own rate-limiting design independent of the identifier's unguessability, since rate-limit-free resolution would let an attacker distinguish "exists" from "does not exist" at volume even without ever guessing a valid one |
+| **QR resolution** | A public endpoint resolving a passport's `qr.payload` (the IVID) to a public-scope passport view | Enumeration risk if resolution is unauthenticated and IVIDs are treated as guessable — they are not (80 bits of entropy, `reference/ivid.js`), but the RESOLUTION ENDPOINT itself, once built, needs its own rate-limiting design independent of the identifier's unguessability, since rate-limit-free resolution would let an attacker distinguish "exists" from "does not exist" at volume even without ever guessing a valid one. **IMPLEMENTED — IDA-4 Option C, A5 OPTION C, 2026-08-19** (see below) |
+
+**Implementation note (IDA-4 Option C, `ida4-option-c` branch, not yet merged/deployed —
+`docs/IDA4_READINESS_AUDIT.md` §J).** The four controls this row's threat implication names
+are now real code, not only planned:
+
+- **Format gate before any database touch:** `reference/api.js`, `handlePublicPassportRoute()`
+  (~line 245) calls `reference/ivid.js`'s `validate()` (~line 270) BEFORE any `db.query()` in
+  the function — a malformed IVID never reaches the database, and gets the identical 404
+  shape an unknown-but-valid IVID gets, so response shape alone cannot distinguish the two
+  cases. `tests/ida4-option-c-test.js` §5 spies on `db.query` and asserts a call count of
+  exactly zero for a malformed IVID.
+- **Rate limiting, this route's own bucket:** `reference/api.js`'s `enforcePublicResolutionLimit()`
+  (~line 210) reuses `reference/rate-limit.js`'s `bucketKey()`/`atomicStatement` primitives
+  with dimension `public_resolution:window` — a bucket no other route's rate limiting ever
+  writes to — configured via `config/idauto.example.json`'s `public_resolution` section.
+  `tests/ida4-option-c-test.js` §7 proves burst -> 429 with `Retry-After`, then recovery
+  after the configured window, in an isolated child process.
+- **Identical 404s:** confirmed directly by `tests/ida4-option-c-test.js` §4/§5/§6 — a
+  well-formed unissued IVID, a malformed IVID, and a plate-shaped path segment all return
+  the same `{"error":"not found"}` shape.
+- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 287); no route
+  under `/public/` accepts a plate value, and a `?plate=` query parameter is never read by
+  the handler at all (the query string is never parsed). `tests/ida4-option-c-test.js` §6
+  covers a plate-shaped path segment, `/public/plate/...`, and an ignored `?plate=` parameter.
+
+This implementation note does not change this table's PLANNED marking for **Citizen
+registration**, **Ownership transfer**, or **Anchoring** — none of those three exist yet, and
+Option C deliberately does not touch any of them.
 | **Anchoring** | Blockchain commitment of Merkle-batched record hashes | `docs/BLOCKCHAIN_ARCHITECTURE.md` §8's six-condition implementation gate is the threat-relevant control here: anchoring an incomplete or unverified record set early "produces permanent, publicly checkable evidence of a system that was not ready." Independent verifier security (§8 below) is one of the six gate conditions and is itself BLOCKED |
 
 ---

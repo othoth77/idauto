@@ -32,17 +32,32 @@
 // other mutation. The read (like every other GET in this file) still
 // excludes mythos_private-scope rows — unchanged policy, not relaxed by
 // adding a new resource type.
+//
+// A5 OPTION C, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §A5 — owner
+// decision recorded verbatim there): IDA-4 Option C adds
+// GET /public/passport/:ivid — this file's FIRST unauthenticated route.
+// It is reached BEFORE requireAuth() below, deliberately: it is not an
+// admin route with auth accidentally skipped, it is the one route this
+// server intentionally serves with no bearer token at all, scoped
+// narrowly to IVID-only public-passport resolution. See
+// handlePublicPassportRoute()'s own header for the full control chain.
+// Every route below this comment remains authenticated exactly as
+// before — requireAuth() still gates the entire ROUTES table.
 // =====================================================
 
 var http = require('http');
 var url = require('url');
 var fs = require('fs');
 var path = require('path');
+var crypto = require('crypto');
 var db = require('./db.js');
 var writes = require('./writes.js');
 var identity = require('./identity.js');
 var storage = require('./storage.js');
 var ingestion = require('./ingestion.js');
+var ivid = require('./ivid.js');
+var passportAssembly = require('./passport-assembly.js');
+var rateLimit = require('./rate-limit.js');
 
 function requireAuth(req, res) {
   var header = req.headers['authorization'] || '';
@@ -102,6 +117,208 @@ function serveAdminAsset(req, res, pathname) {
     res.end(content);
   });
   return true;
+}
+
+// =====================================================
+// IDA-4 Option C — GET /public/passport/:ivid
+// A5 OPTION C, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §A5)
+//
+// This is the repository's ONLY unauthenticated route. It exists to
+// resolve an IVID QR code (reference/ivid.js) to a public-scope Digital
+// Vehicle Passport (reference/passport-assembly.js) with NO account, NO
+// citizen PII, and NO plate-based lookup anywhere on the path — the
+// owner's binding constraints. Control chain, in the order implemented
+// below (order is itself a security requirement — see the numbered
+// comments inline):
+//
+//   1. Path/method gate — only GET /public/passport/:ivid exists. Any
+//      other path under /public/ (including a hypothetical
+//      /public/plate/...) is 404, identically to an unknown route
+//      elsewhere in this file. A non-GET method on the matched path is
+//      405, matching this file's existing convention.
+//   2. FORMAT GATE BEFORE ANY DATABASE TOUCH — reference/ivid.js's
+//      validate() runs first. A malformed IVID gets the SAME response
+//      shape (404, {"error":"not found"}) as a well-formed-but-unknown
+//      IVID, so a caller cannot distinguish "no such IVID" from
+//      "malformed input" by response shape — and, more importantly, no
+//      query ever reaches the database for malformed input.
+//   3. Per-IP rate limiting — its own bucket
+//      (enforcePublicResolutionLimit() below), independent of every
+//      other bucket reference/rate-limit.js's enforce() computes
+//      elsewhere (anon:*, ip:*, media_bytes:*). Configured in
+//      config/idauto.example.json's public_resolution section.
+//   4. No plate parameter is ever read. The query string is never
+//      parsed by this handler — only pathname is used — so a ?plate=...
+//      parameter is inert by construction, not filtered after the fact.
+//   5. Lookup is by ivid only (WHERE ivid = $1), never by plate/internal
+//      ref/anything else. scope is HARDCODED to 'public' in the
+//      assemblePassport() call — never caller-influenced — and the SQL
+//      fact query additionally filters access_scope = 'public' as
+//      defense-in-depth, so even a future bug in assemblePassport's own
+//      scope filter could not leak a non-public fact through this route.
+//   6. qr.payload === the requested ivid is asserted before the
+//      response is sent (assemblePassport already enforces this
+//      internally and throws otherwise; this route asserts it again at
+//      its own boundary, matching the codebase's "structural, not just
+//      hoped-for" style — see passport-assembly.js's own qr comment).
+//   7. The existing CSP/security-header set (identical to
+//      serveAdminAsset()'s) is applied to the response.
+// =====================================================
+
+// IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH lets a test point this route at a
+// small, fast-cycling config file (short window, low limit) instead of
+// the real config/idauto.example.json, so burst/recovery behaviour can
+// be exercised in real (not simulated) time without a slow test run —
+// see tests/ida4-option-c-test.js. Unset in every real deployment, which
+// falls back to the real config file exactly as before.
+var PUBLIC_RESOLUTION_CONFIG_PATH = process.env.IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH ||
+  path.join(__dirname, '..', 'config', 'idauto.example.json');
+var _publicResolutionConfigCache = null;
+
+// Reads config/idauto.example.json's public_resolution.rate_limit
+// section once per process (cached, same pattern as
+// reference/plate-validator.js's loadFormats()). Falls back to a safe
+// default if the section is absent so this route never silently runs
+// unlimited.
+function loadPublicResolutionConfig() {
+  if (_publicResolutionConfigCache) return _publicResolutionConfigCache;
+  var section = {};
+  try {
+    var raw = fs.readFileSync(PUBLIC_RESOLUTION_CONFIG_PATH, 'utf8');
+    var config = JSON.parse(raw);
+    section = (config.public_resolution && config.public_resolution.rate_limit) || {};
+  } catch (_) { /* fall through to defaults below */ }
+  _publicResolutionConfigCache = {
+    limit: typeof section.limit === 'number' && section.limit > 0 ? section.limit : 30,
+    window_seconds: typeof section.window_seconds === 'number' && section.window_seconds > 0 ? section.window_seconds : 60
+  };
+  return _publicResolutionConfigCache;
+}
+
+function floorPublicResolutionWindow(now, windowSeconds) {
+  var size = windowSeconds * 1000;
+  return new Date(Math.floor(now.getTime() / size) * size);
+}
+
+// Its OWN rate-limit bucket — dimension 'public_resolution:window' is
+// used nowhere else in this codebase, so this route's counters can never
+// collide with reference/rate-limit.js's ingestion buckets (anon:*,
+// ip:*, media_bytes:*) even though both ultimately share the same
+// idauto_rate_limit_counters table and the same bucketKey()/UPSERT
+// primitives from reference/rate-limit.js — reused deliberately, not
+// reimplemented.
+async function enforcePublicResolutionLimit(ipHash, now) {
+  var cfg = loadPublicResolutionConfig();
+  var nowDate = now || new Date();
+  var windowStart = floorPublicResolutionWindow(nowDate, cfg.window_seconds);
+  var key = rateLimit.bucketKey('public_resolution:window', ipHash);
+  var result = await db.query(rateLimit.atomicStatement, [key, windowStart, 1]);
+  var count = Number(result.rows[0].count);
+  if (count > cfg.limit) {
+    return { allowed: false, retry_at: new Date(windowStart.getTime() + cfg.window_seconds * 1000) };
+  }
+  return { allowed: true };
+}
+
+function clientIpHash(req) {
+  var ip = (req.socket && req.socket.remoteAddress) || '';
+  return crypto.createHash('sha256').update(ip).digest('hex');
+}
+
+// Maps one idauto_vehicle_facts row (already filtered to access_scope =
+// 'public' by the caller's SQL) into the protocol-shaped fact object
+// reference/passport-assembly.js expects (provenance.access_scope, per
+// its own header comment) — a pure reshape, no additional filtering
+// decision made here.
+function factRowToPassportFact(row) {
+  return {
+    id: 'fact-' + row.id,
+    fact_key: row.fact_key,
+    fact_value: row.fact_value,
+    fact_value_normalized: row.fact_value_normalized,
+    confidence_score: row.confidence_score,
+    verification_status: row.verification_status,
+    provenance: { access_scope: row.access_scope }
+  };
+}
+
+async function handlePublicPassportRoute(req, res, pathname) {
+  // 1. Path gate: only exactly this shape exists under /public/. Any
+  // other path (e.g. /public/plate/xyz, /public/, /public/passport/)
+  // is 404 regardless of method — matching this file's existing
+  // path-then-method dispatch order.
+  var m = /^\/public\/passport\/([^/]+)$/.exec(pathname);
+  if (!m) return notFound(res);
+
+  // 1. Method gate.
+  if (req.method !== 'GET') {
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'GET' });
+    return res.end(JSON.stringify({ error: 'method not allowed' }));
+  }
+
+  // 2. FORMAT GATE BEFORE ANY DATABASE TOUCH. A decode failure is
+  // treated as a format failure too (same 404 shape, still zero DB
+  // touch) rather than surfaced as a distinct 400 — this route's only
+  // job is IVID resolution, and an undecodable path segment cannot be a
+  // well-formed IVID either way.
+  var candidate;
+  try {
+    candidate = decodeURIComponent(m[1]);
+  } catch (_) {
+    return notFound(res);
+  }
+  if (!ivid.validate(candidate).ok) {
+    return notFound(res);
+  }
+
+  // 3. Per-IP rate limit, this route's own bucket.
+  var limitResult = await enforcePublicResolutionLimit(clientIpHash(req));
+  if (!limitResult.allowed) {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSeconds(limitResult.retry_at)) });
+    return res.end(JSON.stringify({ error: 'rate limit exceeded' }));
+  }
+
+  // 5. Lookup by ivid only — never by plate, internal_ref, or any other
+  // identifier. No plate parameter exists to read in the first place
+  // (the query string is never parsed by this handler).
+  var vehicleResult = await db.query(
+    'SELECT internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, ' +
+    'gross_weight_kg, engine_cc, category_code, fiche_status, ivid ' +
+    'FROM idauto_vehicles WHERE ivid = $1',
+    [candidate]
+  );
+  if (vehicleResult.rows.length === 0) return notFound(res);
+  var vehicleRow = vehicleResult.rows[0];
+
+  // Defense-in-depth: access_scope = 'public' filtered in SQL, in
+  // addition to assemblePassport()'s own scope filter below.
+  var factsResult = await db.query(
+    'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
+    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 AND is_active = TRUE ' +
+    'ORDER BY fact_key',
+    [candidate, 'public']
+  );
+
+  var passport = passportAssembly.assemblePassport({
+    vehicle: vehicleRow,
+    facts: factsResult.rows.map(factRowToPassportFact),
+    scope: 'public', // HARDCODED — never caller-influenced.
+    now: new Date()
+  });
+
+  // 6. Structural assertion, not just hoped for.
+  if (passport.qr.payload !== candidate) {
+    throw new Error('handlePublicPassportRoute: internal invariant violated — qr.payload must equal the requested ivid');
+  }
+
+  // 7. Existing CSP/security header set, identical to serveAdminAsset().
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+  });
+  res.end(JSON.stringify(passport));
 }
 
 // GET /api/vehicles/:internal_ref
@@ -550,6 +767,20 @@ function createServer() {
     var pathname = parsed.pathname;
 
     if (serveAdminAsset(req, res, pathname)) return;
+
+    // A5 OPTION C, 2026-08-19 — the one unauthenticated route, reached
+    // BEFORE requireAuth() deliberately. Every path under /public/ is
+    // handled here and NEVER falls through to the authenticated ROUTES
+    // table below.
+    if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
+      Promise.resolve().then(function () { return handlePublicPassportRoute(req, res, pathname); }).catch(function (err) {
+        if (err && err.httpStatus) return sendJson(res, err.httpStatus, { error: err.message });
+        var mapped = writes.mapDbError(err);
+        sendJson(res, mapped.status, { error: mapped.error });
+      });
+      return;
+    }
+
     if (!requireAuth(req, res)) return;
 
     var matchedPath = ROUTES.filter(function (r) { return r.pattern.test(pathname); });

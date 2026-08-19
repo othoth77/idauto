@@ -495,7 +495,7 @@ original table is listed; unchanged gates are not restated.
 
 | Gate | Was | Now | Why |
 |---|---|---|---|
-| A5 admin-stub vs public path | OWNER DECISION | **OWNER DECISION — evaluated, decision text recorded** | The architecture review evaluated options A (wait for IDA-7), B1/B2/B3 (interim auth variants; B3 dominated and ruled out), and C (the zero-account half: IVID issuance, passport assembly, IVID-only public QR resolution — no PII, no legal trigger). Verdict: *owner decision required* — hold citizen PII and answer L06/L07/L09/L16 now for a citizen write path two stages early (B, recommended variant B1 magic-link), or keep zero PII and wait for IDA-7 (A). **Recommended default: authorize option C first**, with two attached conditions: QR resolution by IVID only, never by plate (else L03 applies); and if B is ever chosen, the credential-is-never-the-identifier guardrail plus the A2 authorization model are in scope from the start |
+| A5 admin-stub vs public path | OWNER DECISION | **DECIDED — 2026-08-19** | The owner decision text, recorded verbatim: *"APPROVE OPTION C. Proceed with the zero-account IDA-4 public passport surface: IVID issuance, passport assembly, IVID-only QR resolution, never resolve by plate, no citizen PII, credential is never the vehicle/person identifier, apply the approved rate limiting and threat-model controls."* This closes the A5 decision gate itself — it does not by itself flip §E (public endpoint readiness) or `CITIZEN_FACING_IDA4_READY`, both of which remain gated on legal review (§B) independent of A5. See §J for the resulting branch. |
 | B. Legal | LEGAL REVIEW (enumerated) | **LEGAL REVIEW — matrix + counsel package exist; 16/16 OPEN, 0 APPROVED** | `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, full field set) and `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts for counsel). The four citizen-surface blockers: **L06, L07, L09, L16** (L16 by the §B.3 argument, not by the roadmap table — stated in the matrix) |
 | D1. Threat model | BLOCKED / TECH DEBT (no doc) | **Document exists** (`THREAT_MODEL.md` v1, with the transfer fraud section) — runtime controls it identifies remain PLANNED/gated | Written in the foundation subset |
 | D3. Fraud model | BLOCKED | **Documented** (THREAT_MODEL §6); runtime enforcement remains gated on A2 authorization | ibid. |
@@ -518,3 +518,30 @@ requirement for a defined sub-surface, which would make that sub-surface — and
 implementable); legal APPROVED (with evidence) on L06, L07, L09 and a counsel ruling on
 L16's applicability; then a pre-public Opus review and independent audit of the actual
 implementation.
+
+---
+
+## J. Option C implementation exists on branch `ida4-option-c` — pending review (2026-08-19)
+
+Following the A5 decision recorded in §I's updated row, an implementation of the
+owner-approved Option C surface has been built on branch `ida4-option-c`: IVID issuance
+(`reference/ivid-issuance.js`), a new migration adding `idauto_vehicles.ivid`
+(`database/migrations/ida4-option-c-ivid.sql`), and the first and only unauthenticated route,
+`GET /public/passport/:ivid`, in `reference/api.js` — IVID-only resolution, no plate path
+anywhere on the surface, a format gate before any database touch, its own rate-limit bucket
+(`config/idauto.example.json`'s `public_resolution` section), scope hardcoded to `public`
+with SQL-level `access_scope='public'` defense-in-depth, and a `qr.payload === ivid`
+assertion before every response. Test suite: `tests/ida4-option-c-test.js` (live database,
+47 assertions, 0 failures at last run).
+
+**This closes no gate above.** It is an implementation of the sub-surface §H's "arguable"
+paragraph and §H's "what would flip it to YES" note already anticipated — a defined
+sub-surface with no account requirement — but it does not itself constitute the "pre-public
+Opus review and independent audit" §H names as still required, nor does it touch legal
+review (§B) at all, since the surface it implements was chosen specifically to avoid
+collecting citizen PII or requiring L06/L07/L09/L16 to be answered.
+
+**Explicitly unchanged by this branch:** `CITIZEN_FACING_IDA4_READY` stays **NO**.
+`PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays **NO**. No deployment occurred; no production
+activation occurred; every legal gate above remains exactly as recorded in §B and §I. This
+branch is engineering work product awaiting review, not a readiness change.

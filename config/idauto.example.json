@@ -391,6 +391,15 @@
     "contributor_sessions_days": null
   },
 
+  "public_resolution": {
+    "_comment": "IDA-4 Option C (A5 OPTION C, 2026-08-19) — GET /public/passport/:ivid, reference/api.js's first and only unauthenticated route. IVID-only resolution: no plate lookup, no citizen PII. Its own rate-limit bucket, independent of every ingestion bucket in reference/rate-limit.js.",
+    "enabled": true,
+    "rate_limit": {
+      "limit": 30,
+      "window_seconds": 60
+    }
+  },
+
   "public_search": {
     "enabled": false,
     "rate_limit": {

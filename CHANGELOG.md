@@ -6,6 +6,27 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-19 — ida4-option-c: IVID issuance + the IVID-only public passport surface
+
+A5 OPTION C, owner-approved. Implements the zero-account IDA-4 public passport surface on
+branch `ida4-option-c` (not merged to `main`, not deployed): IVID issuance
+(`reference/ivid-issuance.js`, permanent once issued, `system`-actor audit rows), a new
+migration (`database/migrations/ida4-option-c-ivid.sql`, adds `idauto_vehicles.ivid`), and
+`reference/api.js`'s first and only unauthenticated route, `GET /public/passport/:ivid` —
+IVID-only lookup (never plate), a format gate before any database touch, its own rate-limit
+bucket (`config/idauto.example.json`'s `public_resolution` section), scope hardcoded to
+`public` with SQL-level `access_scope='public'` defense-in-depth, and a
+`qr.payload === ivid` assertion before every response. `tests/ida4-option-c-test.js`: 47
+live-database assertions, 0 failures; `tests/ida4-foundation-test.js` remains 130/0;
+`tests/identity-conformance-test.js` remains 81/0. All 86 existing vehicles in the live
+database now carry a permanent IVID (`issueMissing()`), applied as part of this stage's own
+test run, per the task's explicit allowance to add the column and issue IVIDs against real
+operational data. Docs updated: `docs/IDA4_READINESS_AUDIT.md` (A5 row -> DECIDED, quoting
+the owner decision verbatim, new §J), `docs/ROADMAP.md` (dated note), `docs/THREAT_MODEL.md`
+(§5 QR-resolution row marked IMPLEMENTED with file/line references). `CITIZEN_FACING_IDA4_READY`
+stays NO. `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays NO. No deployment, no production
+activation, no legal gate touched.
+
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 
 PR stack merged to main (merge commits; pin provenance verified). docs-only additions: legal gate matrix (16 OPEN), counsel review package, readiness recheck §I — CITIZEN_FACING_IDA4_READY = NO. A5: owner decision required, recommended default option C. No implementation.
