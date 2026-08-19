@@ -683,6 +683,19 @@ async function a5ProhibitionGuards() {
   var policySource = fs.readFileSync(path.join(BASE, 'reference', 'public-surface-policy.js'), 'utf8');
   ok(/var ANONYMOUS_SURFACE_DENIED_FACT_KEYS = \['vin', 'plate_number'\];/.test(policySource),
     'reference/public-surface-policy.js still declares exactly [\'vin\', \'plate_number\'] as the anonymous-surface deny-list');
+
+  // 7. Q4 (Opus review, 2026-08-19): pin the private route's two scope
+  // layers structurally, mirroring item 5's pin for the public route —
+  // a mutation removing either layer must fail this suite even though
+  // privateModePassport()'s own value-level assertions (§13) are the
+  // primary behavioral proof. Restricted to a window starting at
+  // getPrivatePassport()'s own declaration so a coincidental match
+  // elsewhere in the file (several other routes also filter
+  // access_scope != $2) cannot satisfy this pin by accident.
+  var privateRouteSource = apiSource.slice(apiSource.indexOf('async function getPrivatePassport'));
+  var privateRouteWindow = privateRouteSource.slice(0, 3000);
+  ok(/access_scope != \$2/.test(privateRouteWindow), 'getPrivatePassport()\'s facts query still excludes access_scope != $2 (mythos_private) in SQL');
+  ok(/scope: 'professional'/.test(privateRouteWindow), 'getPrivatePassport()\'s assemblePassport() call still passes scope: \'professional\'');
 }
 
 // F2 (Opus review, 2026-08-19): before this fix, nothing in production
@@ -745,6 +758,12 @@ async function privateModePassport() {
   var res = await request('GET', '/api/passport/' + encodeURIComponent(fixtureIvid), { 'Authorization': 'Bearer ' + ADMIN_TOKEN });
   ok(res.status === 200, 'GET /api/passport/:ivid (authenticated) -> 200');
   ok(res.body && res.body.ivid === fixtureIvid, 'the private passport resolves to the correct vehicle (ivid matches)');
+  // Q4 (Opus review, 2026-08-19), behavioral half of the scope pin —
+  // mirrors validKnownIvid()'s own res.body.scope === 'public' assertion
+  // for the public route: assert the ACTUAL value assemblePassport()
+  // normalizes 'professional' to in the response, not merely that the
+  // call site passes it in (that half is pinned structurally in §10).
+  ok(res.body && res.body.scope === 'professional', 'private passport scope is \'professional\' in the actual response (not mythos_private/restricted)');
 
   // P2 (Opus review, 2026-08-19): the private route's vehicle object
   // must be protocol/schemas/vehicle.schema.json-conformant too, built
@@ -755,6 +774,12 @@ async function privateModePassport() {
   ok(JSON.stringify(privateVehicleKeys) === JSON.stringify(expectedVehicleKeys), 'the private route\'s vehicle object has exactly the same protocol-conformant key set as the public route\'s, got ' + JSON.stringify(privateVehicleKeys));
   ok(res.body.vehicle.internal_ref === undefined && res.body.vehicle.seats === undefined && res.body.vehicle.gross_weight_kg === undefined && res.body.vehicle.engine_cc === undefined,
     'no raw/internal columns (internal_ref, seats, gross_weight_kg, engine_cc) leak onto the private vehicle object either');
+  // Q5 (Opus review, 2026-08-19): value-level drift guard between the
+  // two buildProtocolConformantVehicle() call sites — proves the private
+  // route's builder call produces the actual fixture VALUES, not merely
+  // the same key SET the check above already covers.
+  ok(res.body.vehicle.ivid === fixtureIvid, 'private vehicle.ivid matches the fixture\'s actual ivid exactly');
+  ok(res.body.vehicle.status === 'initial', 'private vehicle.status matches the fixture\'s actual fiche_status (initial) exactly');
 
   ok(Array.isArray(res.body && res.body.plates) && res.body.plates.length === 1,
     'precondition: exactly one plate record is present (non-vacuous — matches the fixture\'s single linked plate)');

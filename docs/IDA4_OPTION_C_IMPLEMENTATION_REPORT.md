@@ -226,12 +226,20 @@ header. Mutation 5 (auth removal) fails the suite.
 
 ## 11. Tests
 
-`tests/ida4-option-c-test.js`: **128 passed / 0 failed** (123 when the environment-dependent
-`issueMissing()` section takes its safe-skip branch instead — see §2/F5's own note; not an
-invariant count either way — final verified run, post-P1/P2-fix; run
-twice consecutively), live database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up
-(zero leftovers verified, including the new linked-plate fixture).
-Full repository pass (all 16 suites, run by the Chef directly, not taken on trust):
+`tests/ida4-option-c-test.js`: **133 passed / 0 failed** when `issueMissing()` (§2/F5) takes
+its normal branch, **128 passed / 0 failed** when it takes its safe-skip branch instead
+(5 fewer assertions in that branch — see §2/F5's own note; NEITHER count is invariant —
+which branch runs depends on whether any OTHER suite's own direct-SQL fixture vehicles
+happen to be sitting in the live database ivid-less at the moment this suite runs). Run
+twice consecutively at this commit, both green (128/0, 128/0 — the skip branch, since
+`ida-3b`/`ida-3e`'s own fixtures were present in the database at the time); a separate
+run immediately after manually backfilling those strays confirmed the non-skip count is
+genuinely 133/0. Live database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up (zero
+leftovers verified, including the linked-plate fixture).
+
+Full repository pass (all 16 suites, run by the Chef directly at this commit, not taken
+on trust — corrected here after the report's own prior full-green claim was found false
+at `7bc4ff9`, see the regressions paragraph below):
 
 | Suite | Result |
 |---|---|
@@ -250,16 +258,29 @@ Full repository pass (all 16 suites, run by the Chef directly, not taken on trus
 | idauto-storage-ops | 73/0 |
 | identity-conformance | 81/0 |
 | ida4-foundation (env-free) | 130/0 |
-| ida4-option-c | 128/0 (123/0 if the safe-skip branch is taken — see above) |
+| ida4-option-c | 128/0 (safe-skip branch this run) or 133/0 (normal branch) — see above, both verified at this commit |
 
-One regression was found and fixed during Phase 2: `ida-3d`'s structural guard
-("api.js contains no rate-limit or counter implementation") tripped on the first
-implementation, which hosted bucket logic in `api.js`. Classified OPTION-C REGRESSION
-(0 matches for the guard tokens on baseline `0044d57`). Resolution preserved the
-guard's teeth: the limiter moved into `reference/rate-limit.js`; only the
-require-prohibition was narrowed (commit `1d50368`), with the counter-machinery
-prohibitions intact — and still mutation-enforced. No pre-existing failure exists
-anywhere in this repository's suites.
+Two regressions were found and fixed. **Phase 2:** `ida-3d`'s structural guard ("api.js
+contains no rate-limit or counter implementation") tripped on the first implementation,
+which hosted bucket logic in `api.js`. Classified OPTION-C REGRESSION (0 matches for the
+guard tokens on baseline `0044d57`). Resolution preserved the guard's teeth: the limiter
+moved into `reference/rate-limit.js`; only the require-prohibition was narrowed (commit
+`1d50368`), with the counter-machinery prohibitions intact — and still mutation-enforced.
+**This commit's immediate predecessor (`7bc4ff9`):** new prose comments (added to explain
+P1/P2's own fixes) tripped TWO structural guards that scan `api.js`'s source text for
+specific substrings — `ida-2c`'s `/DROP\s+/i` write-verb scan (25/1: one comment's "…
+instruction to drop\n    fields…" line-wrapped into a false match) and `ida-3e`'s
+`/public[^\n]*review|anonymous[^\n]*review/i` scan (47/1: two separate comments each
+paired "public"/"anonymous" with "review" on one line). Neither guard was touched — both
+were rewritten to describe the same facts without the trigger substrings ("the one
+audited artifact", "P2/Opus audit", "instruction to omit"). **This report's own prior
+claim of a full 16/16 green pass at `7bc4ff9` was therefore false** — the table above is
+the corrected, actually re-run count at the current commit. **Standing rule, going
+forward: any commit that touches a COMMENT in `reference/api.js` — not only its code —
+must re-run `ida-2c`, `ida-3d`, and `ida-3e` before claiming green.** All three contain
+prose-scanning structural guards (`DROP`, `anonymous...route`, `public...review`
+respectively) that a purely explanatory comment can trip with zero functional change,
+and none of the other thirteen suites scan `api.js`'s comment text this way.
 
 ## 12. Mutation testing
 
@@ -299,7 +320,8 @@ All on `ida4-option-c`, base `0044d57` (= `origin/main`):
 9. `4ffa446` docs+fix(ida4): register the plate-exposure owner question in the decision register; deny-list empty guard; minor review notes
 10. `79fb471` docs(ida4): record Opus APPROVE and Haiku ACCEPT-WITH-FINDINGS verdicts; close the Option C stage entry
 11. `b80b00d` feat(ida4): A5-PLATE revised ruling — public-surface policy module, private passport surface, tested phase gate
-12. (this commit) fix(ida4): private passport surface — professional scope with restricted-fact exclusion, protocol-conformant vehicle and plate objects
+12. `7bc4ff9` fix(ida4): private passport surface — professional scope with restricted-fact exclusion, protocol-conformant vehicle and plate objects
+13. (this commit) fix(ida4): reword prose that tripped ida-2c/ida-3e structural guards; pin the private-route scope layers; correct the report's suite table
 
 `c003029` fixes three Chef-audit findings in the first implementation (public exposure
 of `internal_ref`; non-public columns passing through at the column level; protocol
@@ -344,6 +366,18 @@ label ("owner decision pending" → "per the A5-PLATE ruling"). Test suite grew 
 assertions), run twice consecutively, both green; ida-3d, ida-2d, ida4-foundation,
 identity-conformance all re-verified unchanged. This commit's work is also PENDING
 RE-REVIEW.
+
+Commit 13 fixes the two prose-tripped structural-guard regressions Opus found in commit
+12 (`ida-2c` 25/1, `ida-3e` 47/1 — see §11's own account) by rewording three comments
+(Q1, Q2), never by touching either guard. It also pins the private route's two scope
+layers structurally (Q4, mirroring commit 5's public-route pin) and adds a value-level
+drift guard proving the two `buildProtocolConformantVehicle()` call sites produce
+identical values for the same vehicle, not just the same key set (Q5); parameterizes
+`'mythos_private'` in the private facts query to match this file's own binding
+convention (Q6); and corrects this report's own §11 table, which had claimed a false
+16/16 green pass at `7bc4ff9`. Test suite grew from 128 to 133 assertions in the normal
+branch (128 in the safe-skip branch — see §11). All 16 suites re-run and verified green
+at this commit (§11's table). This commit's work is also PENDING RE-REVIEW.
 
 ## 14. Known limitations
 

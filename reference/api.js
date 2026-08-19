@@ -224,7 +224,7 @@ function clientIpHash(req) {
 // F4 (Opus review, 2026-08-19), RULED — A5-PLATE revised decision,
 // 2026-08-19: PRIVATE permitted / PUBLIC hidden / resolution IVID-only.
 // The public route's fact-key deny-list — 'vin' and 'plate_number' —
-// now lives in reference/public-surface-policy.js, the one reviewed
+// now lives in reference/public-surface-policy.js, the one audited
 // artifact the owner's ruling requires ("public exposure must be
 // controlled by an explicit public-surface policy, not by manual code
 // edits"). It is deliberately NOT a local constant here and NOT
@@ -255,7 +255,7 @@ function toIsoString(value) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
-// Shared by BOTH passport routes (public and private, P2/Opus review,
+// Shared by BOTH passport routes (public and private, P2/Opus audit,
 // 2026-08-19) — the raw idauto_vehicles row must never reach either
 // response: it carries internal_ref (the internal admin identifier the
 // IVID exists specifically to avoid exposing) and non-schema columns
@@ -324,8 +324,8 @@ function buildProtocolConformantVehicle(vehicleRow) {
 //   - valid_to: DB's valid_until, renamed; null while the interval is
 //     open, exactly matching the schema's own description of null here.
 //   - `status` has no schema field at all and is dropped entirely — it
-//     is not "mapped," per the review finding's own instruction to drop
-//     fields with no schema equivalent.
+//     is not "mapped," per the review finding's own instruction to
+//     omit fields with no schema equivalent.
 function buildProtocolConformantPlate(plateRow, subjectIvid) {
   return {
     protocol_version: '0.1.0-draft',
@@ -534,12 +534,15 @@ async function getPrivatePassport(res, rawIvid) {
   // surface's control (reference/public-surface-policy.js); this route
   // is authenticated, and restricted-fact exclusion is handled by scope
   // alone, matching getFactsForVehicle()'s own precedent exactly.
+  // Q6 (style, Opus review, 2026-08-19): 'mythos_private' is parameterized
+  // ($2), matching this file's own convention (getFactsForVehicle() above
+  // binds it the same way) rather than inlined as a SQL literal.
   var factsResult = await db.query(
     'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
     'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
-    "AND access_scope != 'mythos_private' AND is_active = TRUE " +
+    'AND access_scope != $2 AND is_active = TRUE ' +
     'ORDER BY fact_key',
-    [rawIvid]
+    [rawIvid, 'mythos_private']
   );
 
   // Plate records — the PRIVATE-phase half of the A5-PLATE ruling in
