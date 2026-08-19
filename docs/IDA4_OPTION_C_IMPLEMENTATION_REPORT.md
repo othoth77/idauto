@@ -34,30 +34,48 @@ sessions, or recovery flows, any plate-based public resolution.
 Added:
 - `database/migrations/ida4-option-c-ivid.sql` — the only schema change.
 - `reference/ivid-issuance.js` — the only writer of `idauto_vehicles.ivid`.
-- `tests/ida4-option-c-test.js` — 104-assertion live-database suite (99 when the
-  environment-dependent `issueMissing()` section in §2 takes its safe-skip branch — see
-  §11 for what determines which).
+- `reference/public-surface-policy.js` — A5-PLATE REVISED RULING (2026-08-19): the one
+  reviewed public-surface-policy artifact the owner's ruling requires. Declares the
+  PUBLIC-phase fact-key deny-list (`vin`, `plate_number`) as data, NOT config-toggleable —
+  changing the policy means changing this one file.
+- `tests/ida4-option-c-test.js` — live-database suite (exact count in §11 — not restated
+  here as a fixed number, since it grows with each fix).
 - `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` — this report.
 
 Modified:
-- `reference/api.js` — the public route and its control chain.
+- `reference/api.js` — the public route and its control chain; NEW authenticated route
+  `GET /api/passport/:ivid` (the A5-PLATE PRIVATE-phase internal surface — see §3/§6).
+- `reference/writes.js` — `createVehicle()` now issues an ivid inside its own transaction
+  (F2).
 - `reference/rate-limit.js` — new exported `enforcePublicResolution()` /
   `floorPublicResolutionWindow()` (the public-resolution bucket lives in the
   rate-limiting module, not in `api.js`).
-- `config/idauto.example.json` — new `public_resolution` section (limit 30 / 60 s).
-- `tests/ida-3d-private-ingest-route-test.js` — one structural guard narrowed (see §11).
-- `docs/IDA4_READINESS_AUDIT.md` (A5 → DECIDED, owner text excerpted; new §J),
-  `docs/THREAT_MODEL.md` (§5 QR-resolution controls marked IMPLEMENTED),
-  `docs/ROADMAP.md`, `docs/AI_HANDOVER.md`, `CHANGELOG.md`.
+- `config/idauto.example.json` — new `public_resolution` section (limit 30 / 60 s,
+  `enabled` — now the A5-PLATE PRIVATE/PUBLIC phase gate, see §8).
+- `tests/ida-3d-private-ingest-route-test.js` — structural guards narrowed/extended (see
+  §11).
+- `docs/IDA4_READINESS_AUDIT.md` (A5 → DECIDED, owner text excerpted; A5-PLATE → DECIDED,
+  revised ruling quoted in full; new §J), `docs/THREAT_MODEL.md` (§5 QR-resolution
+  controls marked IMPLEMENTED; plate-exclusion note updated to RULED), `docs/ROADMAP.md`,
+  `docs/AI_HANDOVER.md`, `CHANGELOG.md`.
 
 ## 3. Routes
 
-- `GET /public/passport/:ivid` — NEW; the repository's first and only unauthenticated
+- `GET /public/passport/:ivid` — the repository's only unauthenticated
   route, dispatched before `requireAuth()` deliberately and commented as such
   (A5 OPTION C, 2026-08-19). Any other path under `/public/` → 404. Non-GET on the
-  matched path → 405.
+  matched path → 405. This is the PUBLIC-phase surface under the A5-PLATE ruling.
+- `GET /api/passport/:ivid` — NEW (A5-PLATE REVISED RULING, 2026-08-19): the
+  authenticated PRIVATE-phase internal passport surface, in the ordinary `ROUTES`
+  table, behind `requireAuth()` exactly like every other route below it. IVID-only
+  lookup (no new plate-resolution path — internal plate lookup already existed at
+  `GET /api/plates/:plate_number` and is unchanged). Assembles at scope
+  `mythos_private` via `assemblePassport()`, INCLUDING the vehicle's plate records
+  (`idauto_plates.vehicle_id`, a direct FK — the same join `getPlate()` already uses,
+  joined here through the resolved vehicle's id instead of a plate number). This is
+  where the ruling's PRIVATE-phase plate display is implemented.
 - Every pre-existing route (the entire `ROUTES` table, `/health` included) remains
-  behind `requireAuth()` exactly as before — test-asserted (§8 of the suite).
+  behind `requireAuth()` exactly as before — test-asserted (§10 of the suite).
 
 ## 4. Database changes
 
@@ -102,12 +120,21 @@ requirement):
 2. FORMAT GATE BEFORE ANY DATABASE TOUCH — `ivid.validate()`; malformed (or
    undecodable) → 404 with the identical shape a well-formed-but-unknown IVID gets;
    spy-asserted zero `db.query` calls.
+2.5. PHASE GATE (A5-PLATE REVISED RULING, 2026-08-19) — before the format gate even
+   resolves, `config/idauto.example.json`'s `public_resolution.enabled` is checked
+   (`loadPublicResolutionConfig().enabled`): `false` = PRIVATE phase, this whole route
+   returns the identical 404 shape for every method, before any database touch, no
+   exception. `true` = PUBLIC phase, proceed with the deny-list applied (below).
 3. Per-IP rate limit — `rateLimit.enforcePublicResolution()`, dedicated dimension
    `public_resolution:window`; exceeded → 429 + `Retry-After`.
 4. The query string is never parsed — `?plate=` is inert by construction.
 5. Lookup `WHERE ivid = $1` only. Scope HARDCODED `'public'` in the
    `assemblePassport()` call; the facts SQL additionally filters
-   `access_scope = 'public'` as defense-in-depth.
+   `access_scope = 'public'` AND excludes `reference/public-surface-policy.js`'s
+   deny-listed fact_keys (`vin`, `plate_number`) as defense-in-depth — the deny-list is
+   the one reviewed policy artifact, deliberately NOT a local constant in `api.js` and
+   NOT config-toggleable, per the A5-PLATE ruling's "controlled by an explicit
+   public-surface policy, not by manual code edits."
 6. `qr.payload === ivid` asserted at the route boundary (the assembler also enforces it).
 7. Existing CSP/security-header set; `Cache-Control: no-store`.
 
@@ -145,6 +172,20 @@ unlimited). Evidence is behavioral, not documentation: the suite's §7 proves bu
 429 with `Retry-After` ≥ 1 s, then recovery after the window, over real HTTP against
 the live database in an isolated child process.
 
+**A5-PLATE phase gate (2026-08-19).** The same config section's `enabled` flag — until
+now a documented kill-switch with no policy meaning beyond "on/off" — is the owner
+ruling's required "tested configuration/policy gate" for the PRIVATE→PUBLIC transition:
+`false` = PRIVATE phase (the anonymous `GET /public/passport/:ivid` surface is off
+entirely; the authenticated `GET /api/passport/:ivid` surface is the only passport
+resolution reachable, and per the ruling it may show `plate_number`); `true` = PUBLIC
+phase (the anonymous surface is on, with `reference/public-surface-policy.js`'s
+deny-list always applied). The gate itself is config (an operational switch); the
+deny-list it does not affect is an owner ruling in reviewed code — the two are
+deliberately not the same mechanism, so a config edit can never relax what the owner
+decided. The suite's §11 proves both halves from the identical config state in one
+child process: the anonymous route 404s with zero DB queries while the authenticated
+private route simultaneously returns 200 with `plate_number` present.
+
 ## 9. Threat-model controls
 
 All four controls the THREAT_MODEL §5 QR-resolution row required are implemented and
@@ -164,11 +205,11 @@ header. Mutation 5 (auth removal) fails the suite.
 
 ## 11. Tests
 
-`tests/ida4-option-c-test.js`: **104 passed / 0 failed** (99 when the environment-dependent
+`tests/ida4-option-c-test.js`: **118 passed / 0 failed** (113 when the environment-dependent
 `issueMissing()` section takes its safe-skip branch instead — see §2/F5's own note; not an
-invariant count either way — final verified run, post-Opus-review fixes; run twice
-consecutively), live database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up (zero
-leftovers verified).
+invariant count either way — final verified run, post-A5-PLATE-ruling implementation; run
+twice consecutively), live database, fixtures marked `IDA4OPTIONC-TEST-%` and cleaned up
+(zero leftovers verified, including the new linked-plate fixture).
 Full repository pass (all 16 suites, run by the Chef directly, not taken on trust):
 
 | Suite | Result |
@@ -188,7 +229,7 @@ Full repository pass (all 16 suites, run by the Chef directly, not taken on trus
 | idauto-storage-ops | 73/0 |
 | identity-conformance | 81/0 |
 | ida4-foundation (env-free) | 130/0 |
-| ida4-option-c | 104/0 (99/0 if the safe-skip branch is taken — see above) |
+| ida4-option-c | 118/0 (113/0 if the safe-skip branch is taken — see above) |
 
 One regression was found and fixed during Phase 2: `ida-3d`'s structural guard
 ("api.js contains no rate-limit or counter implementation") tripped on the first
@@ -233,7 +274,10 @@ All on `ida4-option-c`, base `0044d57` (= `origin/main`):
 5. `1bfdd9c` test(ida4): pin the SQL access_scope defense-in-depth layer; isolate the burst test's rate-limit window
 6. `74fc3d3` docs(ida4): Option C implementation report — IMPLEMENTATION COMPLETE, deployment not authorized
 7. `421bb08` fix(ida4): Opus review follow-up — deny-list, issuance wiring, kill-switch, error hygiene
-8. (this commit) docs(ida4): Opus review follow-up — doc corrections, F1/F10/F11a, report update
+8. `9480b16` docs(ida4): Opus review follow-up — doc corrections, F1/F10/F11a, report update
+9. `4ffa446` docs+fix(ida4): register the plate-exposure owner question in the decision register; deny-list empty guard; minor review notes
+10. `79fb471` docs(ida4): record Opus APPROVE and Haiku ACCEPT-WITH-FINDINGS verdicts; close the Option C stage entry
+11. (this commit) feat(ida4): A5-PLATE revised ruling — public-surface policy module, private passport surface, tested phase gate
 
 `c003029` fixes three Chef-audit findings in the first implementation (public exposure
 of `internal_ref`; non-public columns passing through at the column level; protocol
@@ -256,6 +300,18 @@ documented limitations plus one documentation fix in §14 below (F6/F8). Test su
 from 86 to 104 (99 in the safe-skip case — not a fixed count either way, see above);
 `tests/ida4-option-c-test.js` was run twice consecutively,
 both green.
+
+Commits 9–10 registered and then closed the open A5-PLATE owner question in the decision
+register and recorded both independent review verdicts (Opus **APPROVE**, Haiku
+**ACCEPT-WITH-FINDINGS** — `docs/IDA4_OPTION_C_REVIEW_VERDICTS.md`). Commit 11 implements
+the owner's subsequent REVISED A5-PLATE ruling (§17): the `reference/public-surface-policy.js`
+policy module, the authenticated `GET /api/passport/:ivid` private surface, and the
+`public_resolution.enabled` phase gate — see §2/§3/§6/§8/§17 above. Test suite grew from
+104 to 118 assertions, run twice consecutively, both green; ida-3d, ida-2d,
+ida4-foundation, and identity-conformance all re-verified unchanged or expected-changed
+(ida-3d 74/0, unchanged from commit 8's count — one new false-positive self-trip from this
+commit's own prose was caught and rephrased before commit, not left for a reviewer to
+find). **This commit's work is PENDING RE-REVIEW** — it postdates both verdicts above.
 
 ## 14. Known limitations
 
@@ -322,17 +378,24 @@ conditions — none of which this report satisfies by itself.
 
 ## 17. Open owner items
 
-Standing register of decisions this branch surfaced but defaulted closed rather than
-answered, so they are not findable only in code comments, `docs/THREAT_MODEL.md`, a
-CHANGELOG entry, or a test — they now also have a named row in the actual decision
-register, `docs/IDA4_READINESS_AUDIT.md` (§I, the **A5-PLATE** row, and §J) (Opus review
-R1):
+Standing register of owner decisions this branch surfaced or received, with each item's
+current state — findable here, not only in code comments, `docs/THREAT_MODEL.md`, a
+CHANGELOG entry, or a test. Named row in the actual decision register:
+`docs/IDA4_READINESS_AUDIT.md` (§I, the **A5-PLATE** row, and §J).
 
-- **A5-PLATE — OPEN.** May an anonymous public passport
-  (`GET /public/passport/:ivid`) display a `plate_number` fact? A5 decided plate
-  **resolution** (never look up a passport BY plate) — it did not rule on plate
-  **exposure** on an already-resolved public passport. **Interim behaviour today:
-  excluded.** `reference/api.js`'s `PUBLIC_FACT_KEY_DENY_LIST` includes `plate_number` as
-  a default-closed exclusion, independent of a fact's stored `access_scope`, until the
-  owner rules either way. Unblocking this requires an explicit owner decision, not an
-  engineering one.
+- **A5-PLATE — RULED, 2026-08-19 (was OPEN, registered by Opus review R1 the same day the
+  revised ruling arrived).** May an anonymous public passport
+  (`GET /public/passport/:ivid`) display a `plate_number` fact? **Answered: no, never, on
+  the anonymous surface — but yes, on an authenticated internal surface.** Owner ruling,
+  quoted in full in `docs/IDA4_READINESS_AUDIT.md`'s A5-PLATE row; FINAL RULE: "PRIVATE:
+  plate_number = permitted. PUBLIC: plate_number = hidden. PUBLIC RESOLUTION: IVID only."
+  **Implemented, this branch:** `reference/public-surface-policy.js` (the required
+  reviewed policy artifact, not config-toggleable) carries the PUBLIC-phase deny-list;
+  `reference/api.js`'s new `GET /api/passport/:ivid` is the authenticated PRIVATE-phase
+  surface, plate included; `config/idauto.example.json`'s `public_resolution.enabled` is
+  the tested PRIVATE/PUBLIC phase gate (`tests/ida4-option-c-test.js` §11 proves both
+  phases from one config state, one child process). `plate_number` was not deleted from
+  the database; no plate-based public lookup exists anywhere, including on the new
+  private route; the A5 IVID-only public resolution decision is unchanged. This item is
+  CLOSED — no further owner action needed on A5-PLATE itself, though the implementation
+  remains subject to re-review before any deployment consideration.

@@ -76,6 +76,39 @@ activation, no legal gate touched.
   grew from 86 to 104 assertions, run twice consecutively (both green); also re-verified:
   ida-3d 74/0, ida-2d 39/0 (unchanged — the F2 wiring preserves its exact
   one-audit-row-per-write assertion), ida4-foundation 130/0, identity-conformance 81/0.
+- **Review verdicts recorded (follow-up commit, no code change):** Opus's three-pass
+  architecture review reached a FINAL VERDICT of **APPROVE**; an independent Haiku audit
+  reached **ACCEPT-WITH-FINDINGS** (three informational items, all already in
+  `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §14). Recorded in the new
+  `docs/IDA4_OPTION_C_REVIEW_VERDICTS.md`. Deployment remained NOT AUTHORIZED; both
+  readiness flags remained NO; the open **A5-PLATE** owner question was the sole
+  outstanding item.
+- **A5-PLATE REVISED OWNER RULING received and implemented (2026-08-19):** the owner
+  ruled on the open plate-exposure question — quoted in full in
+  `docs/IDA4_READINESS_AUDIT.md`'s A5-PLATE row; FINAL RULE: "PRIVATE: plate_number =
+  permitted. PUBLIC: plate_number = hidden. PUBLIC RESOLUTION: IVID only." Implemented:
+  **`reference/public-surface-policy.js`** (NEW) — the one reviewed public-surface-policy
+  artifact the ruling requires, deliberately NOT config-toggleable, declaring the
+  PUBLIC-phase deny-list (`vin`, `plate_number`); `reference/api.js`'s public route now
+  consumes it via `deniedFactKeys()` instead of a local constant (which no longer
+  exists). **`GET /api/passport/:ivid`** (NEW) — the authenticated PRIVATE-phase internal
+  passport surface, in the ordinary `ROUTES` table behind `requireAuth()`, IVID-only
+  lookup, assembled at scope `mythos_private` INCLUDING the vehicle's plate records
+  (`idauto_plates.vehicle_id`, the same direct-FK join `getPlate()` already uses).
+  **`config/idauto.example.json`'s `public_resolution.enabled`** is now the owner-required
+  tested PRIVATE/PUBLIC phase gate, not merely a kill-switch. `plate_number` was not
+  deleted from the database; no plate-based public lookup was added, anywhere, including
+  on the new private route; the A5 IVID-only public resolution decision is unchanged.
+  `tests/ida4-option-c-test.js` grew to 118 assertions (new §11 phase-gate proof in one
+  child process — anonymous 404/zero-queries and authenticated 200/plate-present from the
+  identical PRIVATE-phase config state — and new §13 PRIVATE MODE tests, plus updated §10
+  structural pins), run twice consecutively, both green; also re-verified: ida-3d 74/0,
+  ida-2d 39/0, ida4-foundation 130/0 (env-free), identity-conformance 81/0. Docs updated:
+  `docs/IDA4_READINESS_AUDIT.md` (A5-PLATE row OPEN → DECIDED, ruling quoted in full; §J
+  cross-ref updated), `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` (§17 A5-PLATE moved
+  from open to ruled; §2/§3/§6/§8 updated for the policy module, private surface, and
+  phase-gate semantics; FINAL STATUS unchanged), `docs/THREAT_MODEL.md` (plate-exclusion
+  note updated to RULED; private surface documented).
 
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 

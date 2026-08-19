@@ -26,6 +26,27 @@
 //   8. a pre-existing admin route still returns 401 with no auth
 //   9. the public route itself works with no Authorization header at all
 //      (true of every request this suite makes against it)
+//   10. A5 prohibition guards (no person store, no citizen-PII surface),
+//       plus structural pins for the SQL access_scope filter and the
+//       reviewed public-surface-policy.js deny-list
+//   11. A5-PLATE phase gate (config public_resolution.enabled): PRIVATE
+//       phase (disabled) -> anonymous surface off (404, zero DB queries)
+//       WHILE the authenticated private surface still serves the
+//       passport with plate_number, proving the gate separates the two
+//       surfaces rather than disabling passport resolution altogether
+//   12. issuance wired into the authenticated POST /api/vehicles path
+//   13. A5-PLATE PRIVATE MODE: authenticated GET /api/passport/:ivid ->
+//       200 with plate_number present (fixture carries a real linked
+//       plate record); 401 without auth; no plate-based lookup exists
+//       on this route either
+//
+// A5-PLATE, REVISED OWNER RULING, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md
+// §I): PRIVATE phase permits plate display to authorized internal users;
+// PUBLIC phase hides plate_number unconditionally; IVID remains the only
+// public RESOLUTION identifier in both phases. reference/public-surface-policy.js
+// is the one reviewed artifact encoding the PUBLIC-phase deny-list;
+// reference/api.js's new GET /api/passport/:ivid is the authenticated
+// PRIVATE surface. See §11/§13 above.
 //
 // Test fixtures inserted here are clearly marked (internal_ref prefixed
 // IDA4OPTIONC-TEST-) and deleted in a finally block. The one intentional,
@@ -104,6 +125,7 @@ var FIXTURE_PREFIX = 'IDA4OPTIONC-TEST-';
 var fixtureVehicleId = null;
 var fixtureIvid = null;
 var fixtureInternalRef = null;
+var fixturePlateNumber = null;
 
 async function insertFixture() {
   var internalRef = FIXTURE_PREFIX + Date.now() + '-' + crypto.randomBytes(4).toString('hex');
@@ -148,6 +170,19 @@ async function insertFixture() {
     [fixtureVehicleId]
   );
   ok(Number(publicScopedDeniedCount) === 2, 'precondition: exactly 2 facts are stored access_scope=public AND deny-listed by fact_key (non-vacuous for the deny-list check below)');
+
+  // A5-PLATE revised ruling (2026-08-19): a real, linked plate record —
+  // idauto_plates.vehicle_id is a direct FK, the same linkage
+  // reference/api.js's new getPrivatePassport() joins on. Non-vacuous
+  // for the PRIVATE-mode "plate_number is present" assertion below: an
+  // active-status plate with a real, distinctive plate_number.
+  fixturePlateNumber = (Date.now() % 900 + 100) + ' TUN ' + (Date.now() % 9000 + 1000) + '-' + crypto.randomBytes(2).toString('hex');
+  await db.query(
+    "INSERT INTO idauto_plates (plate_number, format_code, vehicle_id, status) VALUES ($1,$2,$3,$4)",
+    [fixturePlateNumber, 'TUN_STD', fixtureVehicleId, 'active']
+  );
+  var plateCount = await scalar('SELECT count(*) AS c FROM idauto_plates WHERE vehicle_id = $1', [fixtureVehicleId]);
+  ok(Number(plateCount) === 1, 'precondition: fixture vehicle has exactly 1 linked plate record (non-vacuous)');
 }
 
 // R4 (Opus review, 2026-08-19): §12's secondary fixture (the vehicle
@@ -161,10 +196,16 @@ var secondaryFixtureVehicleId = null;
 
 async function cleanupFixture() {
   if (fixtureVehicleId != null) {
+    // Plates and facts first — idauto_plates.vehicle_id and
+    // idauto_vehicle_facts.vehicle_id are plain REFERENCES (no ON DELETE
+    // CASCADE), so the vehicle row cannot be deleted while either still
+    // points at it.
+    await db.query('DELETE FROM idauto_plates WHERE vehicle_id = $1', [fixtureVehicleId]);
     await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [fixtureVehicleId]);
     await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [fixtureVehicleId]);
   }
   if (secondaryFixtureVehicleId != null) {
+    await db.query('DELETE FROM idauto_plates WHERE vehicle_id = $1', [secondaryFixtureVehicleId]);
     await db.query('DELETE FROM idauto_vehicle_facts WHERE vehicle_id = $1', [secondaryFixtureVehicleId]);
     await db.query('DELETE FROM idauto_vehicles WHERE id = $1', [secondaryFixtureVehicleId]);
   }
@@ -446,8 +487,20 @@ async function burstAndRecovery() {
 // process is the cleanest way to prove the disabled route never
 // initializes a pool connection at all, not just "never queries with
 // this particular already-open client."
-async function killSwitchDisabled() {
-  console.log('\n11. F3 kill-switch: public_resolution.enabled=false -> 404 everywhere under /public/, zero DB queries');
+// F3 kill-switch, relabelled/extended as the A5-PLATE PHASE GATE test
+// (Opus review R-round + owner's revised A5-PLATE ruling, 2026-08-19):
+// public_resolution.enabled is the PRIVATE/PUBLIC phase gate — false
+// means the ANONYMOUS surface is off entirely (PRIVATE phase), true
+// means it's on WITH the policy deny-list applied (PUBLIC phase). This
+// single child process, with enabled=false, now proves BOTH halves of
+// that claim at once, in the identical config state: the anonymous
+// route 404s a known-good ivid with zero DB queries (unchanged from the
+// original kill-switch proof), AND the authenticated PRIVATE surface
+// (GET /api/passport/:ivid) still serves the passport, plate_number
+// included — i.e. the gate genuinely separates the two surfaces rather
+// than disabling passport resolution altogether.
+async function phaseGateSeparatesSurfaces() {
+  console.log('\n11. A5-PLATE phase gate: public_resolution.enabled=false -> PRIVATE phase (anonymous surface off, zero DB queries; authenticated private surface still serves plate_number)');
   var cfgPath = path.join(os.tmpdir(), 'ida4-option-c-disabled-' + crypto.randomBytes(6).toString('hex') + '.json');
   fs.writeFileSync(cfgPath, JSON.stringify({ public_resolution: { enabled: false, rate_limit: { limit: 30, window_seconds: 60 } } }));
   var childScript = path.join(os.tmpdir(), 'ida4-option-c-disabled-child-' + crypto.randomBytes(6).toString('hex') + '.js');
@@ -466,15 +519,23 @@ async function killSwitchDisabled() {
     "  await new Promise(function (resolve) { server.listen(0, '127.0.0.1', resolve); });",
     "  var port = server.address().port;",
     "  var knownGoodIvid = ivid.generate();",
-    "  var result = await new Promise(function (resolve, reject) {",
+    "  var publicResult = await new Promise(function (resolve, reject) {",
     "    http.get({ hostname: '127.0.0.1', port: port, path: '/public/passport/' + encodeURIComponent(knownGoodIvid) }, function (res) {",
     "      var chunks = [];",
     "      res.on('data', function (c) { chunks.push(c); });",
     "      res.on('end', function () { resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }); });",
     "    }).on('error', reject);",
     "  });",
+    "  var publicOnlyQueryCalls = queryCalls;", // snapshot BEFORE the private request runs — the private route legitimately queries the DB, and must not be counted against the anonymous route's zero-query proof.
+    "  var privateResult = await new Promise(function (resolve, reject) {",
+    "    http.get({ hostname: '127.0.0.1', port: port, path: '/api/passport/' + encodeURIComponent(" + JSON.stringify(fixtureIvid) + "), headers: { 'Authorization': 'Bearer ' + " + JSON.stringify(ADMIN_TOKEN) + " } }, function (res) {",
+    "      var chunks = [];",
+    "      res.on('data', function (c) { chunks.push(c); });",
+    "      res.on('end', function () { resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }); });",
+    "    }).on('error', reject);",
+    "  });",
     "  await new Promise(function (r) { server.close(r); });",
-    "  console.log(JSON.stringify({ status: result.status, body: result.body, queryCalls: queryCalls }));",
+    "  console.log(JSON.stringify({ status: publicResult.status, body: publicResult.body, queryCalls: publicOnlyQueryCalls, privateStatus: privateResult.status, privateBody: privateResult.body }));",
     "  process.exit(0);",
     "})().catch(function (e) { console.error('CHILD_FATAL: ' + e.message); process.exit(1); });"
   ].join('\n');
@@ -484,10 +545,15 @@ async function killSwitchDisabled() {
     var output = childProcess.execFileSync(process.execPath, [childScript], { env: env, timeout: 15000 }).toString('utf8');
     var lastLine = output.trim().split('\n').pop();
     var parsed = JSON.parse(lastLine);
-    ok(parsed.status === 404, 'with public_resolution.enabled=false, a well-formed, format-valid ivid still resolves 404');
+    ok(parsed.status === 404, 'PRIVATE phase (enabled=false): a well-formed, format-valid ivid on the ANONYMOUS route still resolves 404');
     var parsedBody = null; try { parsedBody = JSON.parse(parsed.body); } catch (_) {}
-    ok(parsedBody && typeof parsedBody.error === 'string', 'the disabled-route 404 has the standard error shape (identical to every other 404 on this route)');
-    ok(parsed.queryCalls === 0, 'zero database queries occurred while the kill-switch was engaged (spied db.query call count is exactly zero), got ' + parsed.queryCalls);
+    ok(parsedBody && typeof parsedBody.error === 'string', 'the disabled anonymous-route 404 has the standard error shape (identical to every other 404 on this route)');
+    ok(parsed.queryCalls === 0, 'zero database queries occurred on the anonymous route while the phase gate was PRIVATE (spied db.query call count is exactly zero), got ' + parsed.queryCalls);
+    ok(parsed.privateStatus === 200, 'in the SAME PRIVATE-phase config state, the authenticated private surface (GET /api/passport/:ivid) still serves 200 — the gate separates the surfaces, it does not disable passport resolution altogether');
+    var privateBodyParsed = null; try { privateBodyParsed = JSON.parse(parsed.privateBody); } catch (_) {}
+    ok(privateBodyParsed && Array.isArray(privateBodyParsed.plates) && privateBodyParsed.plates.length === 1 &&
+      privateBodyParsed.plates[0].plate_number === fixturePlateNumber,
+      'the private surface response, in PRIVATE phase, still includes plate_number — proving PRIVATE phase permits plate display exactly as the A5-PLATE ruling requires');
   } finally {
     try { fs.unlinkSync(childScript); } catch (_) {}
     try { fs.unlinkSync(cfgPath); } catch (_) {}
@@ -584,6 +650,13 @@ async function a5ProhibitionGuards() {
   var passportPatternOccurrences = (apiSource.match(/\/\^\\\/public\\\/passport\\\/\(\[\^\/\]\+\)\$\//g) || []).length;
   ok(passportPatternOccurrences === 1, 'exactly one /public/passport/:ivid route pattern exists in api.js, got ' + passportPatternOccurrences);
 
+  // A5-PLATE: the new authenticated private surface resolves by ivid
+  // only too — no plate-shaped path parameter exists there either.
+  var privateRoutePatternOccurrences = (apiSource.match(/\/\^\\\/api\\\/passport\\\/\(\[\^\/\]\+\)\$\//g) || []).length;
+  ok(privateRoutePatternOccurrences === 1, 'exactly one /api/passport/:ivid route pattern exists in api.js, got ' + privateRoutePatternOccurrences);
+  ok(/getPrivatePassport[\s\S]{0,200}ivid\.validate\(rawIvid\)/.test(apiSource),
+    'getPrivatePassport() validates the path segment as an ivid before doing anything else (format gate, same discipline as the anonymous route)');
+
   // 5. SQL defense-in-depth pin (mutation-verified 2026-08-19, Phase 3):
   // a mutation replacing `AND access_scope = $2` with `AND $2 = $2` in the
   // facts query left every behavioral assertion in this suite green,
@@ -597,12 +670,19 @@ async function a5ProhibitionGuards() {
   ok(/access_scope = \$2/.test(apiSource), 'the facts query in api.js still filters access_scope = $2 in SQL (defense-in-depth, not just in assemblePassport())');
   ok(/\[candidate, 'public'\]/.test(apiSource), 'the facts query still binds $2 to the literal string \'public\' (not a caller-influenced or looser value)');
 
-  // 6. F4 deny-list structural pin (Opus review, 2026-08-19): a mutation
-  // shrinking or removing PUBLIC_FACT_KEY_DENY_LIST, or dropping the SQL
-  // exclusion that applies it, must fail this suite even though the
-  // primary behavioral proof lives in §3 above.
-  ok(/var PUBLIC_FACT_KEY_DENY_LIST = \['vin', 'plate_number'\];/.test(apiSource), 'PUBLIC_FACT_KEY_DENY_LIST is exactly [\'vin\', \'plate_number\'] in api.js source');
+  // 6. F4/A5-PLATE deny-list structural pin (Opus review + the owner's
+  // revised A5-PLATE ruling, 2026-08-19): a mutation shrinking or
+  // removing the policy module's deny-list, dropping the SQL exclusion
+  // that applies it, or reintroducing a LOCAL deny-list literal in
+  // api.js (bypassing the one reviewed policy artifact the owner's
+  // ruling requires) must fail this suite even though the primary
+  // behavioral proof lives in §3 above.
+  ok(/require\(['"]\.\/public-surface-policy\.js['"]\)/.test(apiSource), 'api.js requires ./public-surface-policy.js');
+  ok(apiSource.indexOf('PUBLIC_FACT_KEY_DENY_LIST') === -1, 'api.js no longer contains a local PUBLIC_FACT_KEY_DENY_LIST literal — the deny-list lives only in the reviewed policy module');
   ok(/fact_key NOT IN \(/.test(apiSource), 'the facts query in api.js still applies a fact_key NOT IN (...) exclusion');
+  var policySource = fs.readFileSync(path.join(BASE, 'reference', 'public-surface-policy.js'), 'utf8');
+  ok(/var ANONYMOUS_SURFACE_DENIED_FACT_KEYS = \['vin', 'plate_number'\];/.test(policySource),
+    'reference/public-surface-policy.js still declares exactly [\'vin\', \'plate_number\'] as the anonymous-surface deny-list');
 }
 
 // F2 (Opus review, 2026-08-19): before this fix, nothing in production
@@ -650,6 +730,37 @@ async function issuanceWiredIntoWriteAPI() {
   // suite's own finally-based path, see main()), not inline here.
 }
 
+// A5-PLATE revised ruling, 2026-08-19: PRIVATE MODE. The authenticated
+// private passport surface (GET /api/passport/:ivid, reference/api.js's
+// getPrivatePassport()) is the "authorized internal users" surface the
+// ruling's PRIVATE-phase half approves plate display on. Proves it
+// directly against the fixture's own linked plate record, and proves
+// the route is still gated by requireAuth() exactly like every other
+// authenticated route.
+async function privateModePassport() {
+  console.log('\n13. A5-PLATE PRIVATE MODE: authenticated GET /api/passport/:ivid -> 200 with plate_number present; 401 without auth');
+  var noAuth = await request('GET', '/api/passport/' + encodeURIComponent(fixtureIvid));
+  ok(noAuth.status === 401, 'GET /api/passport/:ivid without Authorization -> 401 (same requireAuth() gate as every other route in the authenticated ROUTES table)');
+
+  var res = await request('GET', '/api/passport/' + encodeURIComponent(fixtureIvid), { 'Authorization': 'Bearer ' + ADMIN_TOKEN });
+  ok(res.status === 200, 'GET /api/passport/:ivid (authenticated) -> 200');
+  ok(res.body && res.body.ivid === fixtureIvid, 'the private passport resolves to the correct vehicle (ivid matches)');
+  ok(Array.isArray(res.body && res.body.plates) && res.body.plates.length === 1,
+    'precondition: exactly one plate record is present (non-vacuous — matches the fixture\'s single linked plate)');
+  ok(res.body.plates[0].plate_number === fixturePlateNumber,
+    'plate_number IS present and correct in the private surface response — PRIVATE phase permits plate display, per the A5-PLATE ruling');
+  var factKeys = res.body.facts.map(function (f) { return f.fact_key; });
+  ok(factKeys.indexOf('vin') !== -1, 'the private surface also shows the mythos_private-scope vin fact — this route is the internal surface, not the anonymous one (assembled at scope mythos_private)');
+
+  // No new plate-RESOLUTION path: this route takes an ivid, never a
+  // plate, in its own path segment — confirmed structurally alongside
+  // the source checks in a5ProhibitionGuards() §10, and behaviorally
+  // here: requesting by a plate-shaped value 404s exactly like the
+  // anonymous route does (still resolves by ivid only).
+  var plateAsIvid = await request('GET', '/api/passport/' + encodeURIComponent(fixturePlateNumber), { 'Authorization': 'Bearer ' + ADMIN_TOKEN });
+  ok(plateAsIvid.status === 404, 'a plate-shaped value as the private route\'s path segment resolves 404 — no plate-based lookup exists here either');
+}
+
 (async function main() {
   server = api.createServer();
   await new Promise(function (resolve) { server.listen(0, '127.0.0.1', resolve); });
@@ -666,8 +777,9 @@ async function issuanceWiredIntoWriteAPI() {
     await adminRouteStillAuthenticated();
     await noAuthorizationHeaderAnywhere();
     await a5ProhibitionGuards();
-    await killSwitchDisabled();
+    await phaseGateSeparatesSurfaces();
     await issuanceWiredIntoWriteAPI();
+    await privateModePassport();
   } finally {
     await cleanupFixture();
     if (server) await new Promise(function (resolve) { server.close(resolve); });

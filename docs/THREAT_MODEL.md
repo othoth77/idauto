@@ -122,17 +122,35 @@ implication names are now real code, not only planned:
 - **Identical 404s:** confirmed directly by `tests/ida4-option-c-test.js` §4/§5/§6 — a
   well-formed unissued IVID, a malformed IVID, and a plate-shaped path segment all return
   the same `{"error":"not found"}` shape.
-- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 277); no route
+- **No plate path:** `reference/api.js` looks up `WHERE ivid = $1` only (~line 310); no route
   under `/public/` accepts a plate value, and a `?plate=` query parameter is never read by
   the handler at all (the query string is never parsed). `tests/ida4-option-c-test.js` §6
   covers a plate-shaped path segment, `/public/plate/...`, and an ignored `?plate=` parameter.
-- **Fact-key deny-list and kill-switch, added post-Opus-review (2026-08-19):**
-  `PUBLIC_FACT_KEY_DENY_LIST` (`reference/api.js`) excludes `vin`
-  (`docs/PRIVACY_ARCHITECTURE.md` §3 "Restricted attributes") and, as an interim
-  default-closed exclusion pending an owner ruling, `plate_number` — independent of a fact's
-  stored `access_scope`, so a mis-scoped `public` fact still cannot reach this route.
-  `config/idauto.example.json`'s `public_resolution.enabled` kill-switch is now wired: when
-  `false`, the whole route returns the identical 404 shape before any database touch.
+- **Fact-key deny-list, RULED (A5-PLATE revised owner ruling, 2026-08-19).**
+  `reference/public-surface-policy.js` — the one reviewed public-surface-policy
+  artifact, deliberately NOT config-toggleable — declares the PUBLIC-phase deny-list:
+  `vin` (`docs/PRIVACY_ARCHITECTURE.md` §3 "Restricted attributes") and `plate_number`
+  (A5-PLATE FINAL RULE — "PUBLIC: plate_number = hidden," RULED, no longer pending).
+  Both are excluded independent of a fact's stored `access_scope`, so a mis-scoped
+  `public` fact still cannot reach this route. `reference/api.js`'s public route calls
+  `publicSurfacePolicy.deniedFactKeys()` — no local deny-list literal remains in
+  `api.js` (`tests/ida4-option-c-test.js` §10 pins this structurally).
+- **Phase gate (was "kill-switch"), A5-PLATE revised ruling, 2026-08-19:**
+  `config/idauto.example.json`'s `public_resolution.enabled` is now the owner-required
+  "tested configuration/policy gate" for the PRIVATE→PUBLIC transition, not merely an
+  on/off switch: `false` = PRIVATE phase, the anonymous route returns the identical 404
+  shape before any database touch for every method, and the authenticated PRIVATE
+  surface below is the only passport surface reachable; `true` = PUBLIC phase, the
+  anonymous route is on with the deny-list above always applied.
+- **PRIVATE surface, NEW (A5-PLATE revised ruling, 2026-08-19):**
+  `GET /api/passport/:ivid` (`reference/api.js`'s `getPrivatePassport()`, ~line 450) —
+  authenticated (`requireAuth()`, the ordinary `ROUTES` table, never under `/public/`),
+  IVID-only lookup (no new plate-resolution path — internal plate lookup already existed
+  at `GET /api/plates/:plate_number` and is unchanged), assembled at scope
+  `mythos_private` INCLUDING plate records via `idauto_plates.vehicle_id`. This is where
+  the ruling's PRIVATE-phase "plate_number = permitted" is implemented — the anonymous
+  route's threat surface above is unchanged by its existence, since it is never reachable
+  without a valid bearer token. `tests/ida4-option-c-test.js` §11 and §13 cover it.
 
 This implementation note does not change the table's PLANNED marking for **Citizen
 registration**, **Ownership transfer**, or **Anchoring** — none of those three exist yet, and

@@ -27,16 +27,35 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
-## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, OPUS FINAL VERDICT: APPROVE, HAIKU AUDIT: ACCEPT-WITH-FINDINGS
+## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, OPUS FINAL VERDICT: APPROVE, HAIKU AUDIT: ACCEPT-WITH-FINDINGS, A5-PLATE REVISED RULING IMPLEMENTED, PENDING RE-REVIEW
 
-**Final review outcome (2026-08-19, end of stage):** after two Opus fix rounds, Opus's
-final verdict at `4ffa446` is **APPROVE**; the independent Haiku A–Q audit at the same
-commit is **ACCEPT-WITH-FINDINGS** (three informational items, all already documented in
-the implementation report §14). Both verdicts are recorded in
-`docs/IDA4_OPTION_C_REVIEW_VERDICTS.md`. Deployment remains NOT AUTHORIZED; both
-readiness flags remain NO; L01–L16 remain OPEN; the **A5-PLATE** owner question
-(`docs/IDA4_READINESS_AUDIT.md` §I) remains OPEN with plate_number deny-listed
-default-closed in the interim.
+**A5-PLATE REVISED RULING addendum (2026-08-19, after both review verdicts below):** the
+owner subsequently issued a revised ruling on the previously-OPEN A5-PLATE question.
+FINAL RULE, quoted exactly: *"PRIVATE: plate_number = permitted. PUBLIC: plate_number =
+hidden. PUBLIC RESOLUTION: IVID only."* Full ruling quoted in
+`docs/IDA4_READINESS_AUDIT.md`'s A5-PLATE row. **Implemented on this branch:**
+`reference/public-surface-policy.js` (NEW) — the one reviewed public-surface-policy
+artifact the ruling requires, NOT config-toggleable, declaring the PUBLIC-phase deny-list
+(`vin`, `plate_number`); `GET /api/passport/:ivid` (NEW) — the authenticated PRIVATE-phase
+internal surface, plate included, assembled at scope `mythos_private`, IVID-only lookup
+(no new plate-resolution path, internal or otherwise); `config/idauto.example.json`'s
+`public_resolution.enabled` is now the owner-required tested PRIVATE/PUBLIC phase gate.
+`plate_number` was not deleted from the database; no plate-based public lookup was added
+anywhere; the A5 IVID-only public resolution decision is unchanged. Suite grew to 118
+assertions (new phase-gate and private-mode sections), run twice consecutively, both
+green; ida-3d 74/0, ida-2d 39/0, ida4-foundation 130/0, identity-conformance 81/0 all
+re-verified. **This work is PENDING RE-REVIEW** — the Opus APPROVE / Haiku
+ACCEPT-WITH-FINDINGS verdicts below predate the ruling and this implementation of it, and
+do not cover it.
+
+**Final review outcome (2026-08-19, end of stage, PRE-DATES the A5-PLATE revised ruling
+above):** after two Opus fix rounds, Opus's final verdict at `4ffa446` is **APPROVE**; the
+independent Haiku A–Q audit at the same commit is **ACCEPT-WITH-FINDINGS** (three
+informational items, all already documented in the implementation report §14). Both
+verdicts are recorded in `docs/IDA4_OPTION_C_REVIEW_VERDICTS.md`. Deployment remains NOT
+AUTHORIZED; both readiness flags remain NO; L01–L16 remain OPEN; the **A5-PLATE** owner
+question (`docs/IDA4_READINESS_AUDIT.md` §I) — OPEN at the time of this verdict — has
+since been DECIDED; see the addendum above.
 
 **Branch:** `ida4-option-c` @ this commit (on top of `main`, not merged). **Type:**
 Implementation — the owner-approved A5 OPTION C surface, per the owner decision excerpted

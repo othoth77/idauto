@@ -58,6 +58,7 @@ var ingestion = require('./ingestion.js');
 var ivid = require('./ivid.js');
 var passportAssembly = require('./passport-assembly.js');
 var rateLimit = require('./rate-limit.js');
+var publicSurfacePolicy = require('./public-surface-policy.js');
 
 function requireAuth(req, res) {
   var header = req.headers['authorization'] || '';
@@ -220,39 +221,19 @@ function clientIpHash(req) {
   return crypto.createHash('sha256').update(ip).digest('hex');
 }
 
-// F4 (Opus review, 2026-08-19) — fact-key deny-list for the public
-// route. writes.js:245 (reviewFact acceptance) sets access_scope =
-// 'public' UNCONDITIONALLY, and writes.js:284 (createFact) DEFAULTS
-// access_scope to 'public' when a caller omits it — so a single admin
-// call that forgets to set access_scope could publish a fact this
-// route's SQL-level access_scope filter alone would not catch, since
-// that filter only checks the STORED scope, not the fact_key. This
-// deny-list excludes specific fact_keys from the public route
-// REGARDLESS of their stored access_scope, as a second, independent
-// layer.
+// F4 (Opus review, 2026-08-19), RULED — A5-PLATE revised decision,
+// 2026-08-19: PRIVATE permitted / PUBLIC hidden / resolution IVID-only.
+// The public route's fact-key deny-list — 'vin' and 'plate_number' —
+// now lives in reference/public-surface-policy.js, the one reviewed
+// artifact the owner's ruling requires ("public exposure must be
+// controlled by an explicit public-surface policy, not by manual code
+// edits"). It is deliberately NOT a local constant here and NOT
+// config-toggleable — see that module's own header for the full ruling
+// text and why. writes.js:245/284 can still set or default a fact's
+// access_scope to 'public' regardless of its fact_key; this deny-list
+// remains the independent second layer that catches that regardless of
+// the SQL-level access_scope filter.
 //
-// Derived from docs/PRIVACY_ARCHITECTURE.md §3's "Never public" table,
-// cross-referenced against database/schema.sql's fact_key vocabulary
-// (colour|make|model|variant|year|body_type|fuel_type|seats|engine_cc|
-// category_code|vin|gross_weight_kg|plate_number — the only fact_keys
-// that exist at all): of that vocabulary, exactly one key falls under a
-// "Never public" category — 'vin' ("Restricted attributes: VIN, engine
-// number"; engine_cc is engine DISPLACEMENT, a normal public technical
-// spec already in the protocol summary set, not "engine number" — an
-// engine's serial/identifying number, which this fact_key vocabulary
-// has no separate key for). No other "Never public" category (owner
-// identity, sensitive documents, precise movement/location, raw
-// capture, contributor identity, internal signals) maps onto any
-// fact_key in this vocabulary at all — none of those things are ever
-// stored as a Fact.
-//
-// 'plate_number' is added as a SEPARATE, INTERIM, default-closed
-// exclusion — OWNER DECISION PENDING: A5 decided plate RESOLUTION (never
-// look up a passport by plate), not plate EXPOSURE on this anonymous
-// surface. Until the owner rules on whether an already-resolved public
-// passport may display its plate, it is excluded by default here (2026-08-19).
-var PUBLIC_FACT_KEY_DENY_LIST = ['vin', 'plate_number'];
-
 // Maps one idauto_vehicle_facts row (already filtered to access_scope =
 // 'public' by the caller's SQL) into the protocol-shaped fact object
 // reference/passport-assembly.js expects (provenance.access_scope, per
@@ -333,27 +314,28 @@ async function handlePublicPassportRoute(req, res, pathname) {
   var vehicleRow = vehicleResult.rows[0];
 
   // Defense-in-depth: access_scope = 'public' filtered in SQL, in
-  // addition to assemblePassport()'s own scope filter below. PLUS
-  // PUBLIC_FACT_KEY_DENY_LIST (F4, see that constant's own comment) —
-  // a fact_key-level exclusion independent of the stored access_scope,
-  // so a mis-scoped fact (e.g. a vin fact accidentally stored 'public')
-  // still never reaches this route.
+  // addition to assemblePassport()'s own scope filter below. PLUS the
+  // reviewed deny-list from reference/public-surface-policy.js (A5-PLATE
+  // ruling) — a fact_key-level exclusion independent of the stored
+  // access_scope, so a mis-scoped fact (e.g. a vin fact accidentally
+  // stored 'public') still never reaches this route.
   // R2 (Opus review, 2026-08-19): guard against an empty deny-list. An
   // empty `NOT IN ()` is a Postgres SYNTAX ERROR, not a no-op — the whole
   // query would fail (closed: no facts leak) but OPAQUELY (a 500
   // instead of an intentional, understood "no deny-list configured"
-  // outcome). PUBLIC_FACT_KEY_DENY_LIST is non-empty today and is not
-  // expected to ever be emptied, but this keeps that assumption from
+  // outcome). The policy module's deny-list is non-empty today and is
+  // not expected to ever be emptied, but this keeps that assumption from
   // becoming a silent landmine if it ever is.
-  var denyClause = PUBLIC_FACT_KEY_DENY_LIST.length
-    ? 'AND fact_key NOT IN (' + PUBLIC_FACT_KEY_DENY_LIST.map(function (_, i) { return '$' + (i + 3); }).join(', ') + ') '
+  var denyList = publicSurfacePolicy.deniedFactKeys();
+  var denyClause = denyList.length
+    ? 'AND fact_key NOT IN (' + denyList.map(function (_, i) { return '$' + (i + 3); }).join(', ') + ') '
     : '';
   var factsResult = await db.query(
     'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
     'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 ' +
     denyClause + 'AND is_active = TRUE ' +
     'ORDER BY fact_key',
-    [candidate, 'public'].concat(PUBLIC_FACT_KEY_DENY_LIST)
+    [candidate, 'public'].concat(denyList)
   );
 
   // Chef Phase-1 audit fix (follow-up to e220213): the raw idauto_vehicles
@@ -441,6 +423,77 @@ async function getPlate(res, plateNumber) {
   );
   if (result.rows.length === 0) return notFound(res);
   sendJson(res, 200, result.rows[0]);
+}
+
+// GET /api/passport/:ivid — the PRIVATE, authenticated passport surface.
+// A5-PLATE REVISED RULING, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §I):
+// "PRIVATE PHASE: plate_number may be displayed / stored normally / used
+// by authorized internal users according to the existing authorization
+// model." This route is that authorized internal display — it lives in
+// the ordinary, authenticated ROUTES table below (behind requireAuth(),
+// exactly like every other route in this section), NEVER under /public/.
+//
+// IVID-ONLY LOOKUP, matching GET /public/passport/:ivid's own discipline
+// above — the owner's ruling approves plate DISPLAY, not plate-based
+// LOOKUP, anywhere, including here. No new plate-resolution path is
+// added: internal plate lookup already exists and stays exactly as it
+// was, at GET /api/plates/:plate_number above.
+//
+// Assembles at scope 'mythos_private' — this codebase's admin-identity
+// model (reference/identity.js) is single-tier (an authenticated caller
+// is "admin," full stop; there is no finer-grained internal role today),
+// so 'mythos_private' is the correct (and only) internal scope to
+// assemble at. Unlike the public surface above, the vehicle object here
+// is the raw internal row (matching getVehicle()'s own shape convention
+// above) and plate records ARE included via assemblePassport()'s
+// `plates` input — the whole reason this route exists.
+async function getPrivatePassport(res, rawIvid) {
+  if (!ivid.validate(rawIvid).ok) return notFound(res);
+
+  var vehicleResult = await db.query(
+    'SELECT internal_ref, ivid, make, model, variant, year, body_type, fuel_type, colour, seats, ' +
+    'gross_weight_kg, engine_cc, category_code, fiche_status, first_seen_at, last_seen_at, ' +
+    'observation_count, created_at ' +
+    'FROM idauto_vehicles WHERE ivid = $1',
+    [rawIvid]
+  );
+  if (vehicleResult.rows.length === 0) return notFound(res);
+  var vehicleRow = vehicleResult.rows[0];
+
+  // No access_scope filter here at all (unlike the public surface above) —
+  // this is the internal surface; every fact, at every scope including
+  // mythos_private, is visible to an authenticated caller, matching
+  // getFactsForVehicle()'s and getReviewObservation()'s own precedent
+  // elsewhere in this file for what an authenticated GET may return.
+  var factsResult = await db.query(
+    'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
+    'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND is_active = TRUE ' +
+    'ORDER BY fact_key',
+    [rawIvid]
+  );
+
+  // Plate records — the PRIVATE-phase half of the A5-PLATE ruling in
+  // effect: idauto_plates.vehicle_id is a direct FK to idauto_vehicles,
+  // the same join pattern getPlate() above already uses (joined once
+  // more here through the vehicle's ivid rather than its plate_number,
+  // since this route resolves by ivid only).
+  var platesResult = await db.query(
+    'SELECT p.plate_number, p.format_code, g.name_fr AS governorate_name, p.status, ' +
+    'p.valid_from, p.valid_until ' +
+    'FROM idauto_plates p LEFT JOIN idauto_governorates g ON g.id = p.governorate_id ' +
+    'WHERE p.vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
+    'ORDER BY p.id',
+    [rawIvid]
+  );
+
+  var passport = passportAssembly.assemblePassport({
+    vehicle: vehicleRow,
+    facts: factsResult.rows.map(factRowToPassportFact),
+    plates: platesResult.rows,
+    scope: 'mythos_private',
+    now: new Date()
+  });
+  sendJson(res, 200, passport);
 }
 
 // GET /api/observations/:id
@@ -847,6 +900,7 @@ var ROUTES = [
   { method: 'POST', pattern: /^\/api\/vehicles$/, handler: function (req, res) { return postVehicle(req, res); } },
   { method: 'GET', pattern: /^\/api\/plates\/([^/]+)$/, handler: function (req, res, m) { return getPlate(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/plates$/, handler: function (req, res) { return postPlate(req, res); } },
+  { method: 'GET', pattern: /^\/api\/passport\/([^/]+)$/, handler: function (req, res, m) { return getPrivatePassport(res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return getObservationMedia(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/ingest\/observations$/, handler: function (req, res) { return postIngestObservation(req, res); } },
   { method: 'POST', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return postObservationMedia(req, res, decodePathSegment(m[1])); } },
