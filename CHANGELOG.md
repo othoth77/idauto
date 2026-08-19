@@ -8,6 +8,14 @@ The protocol is versioned separately from the implementation; see
 
 ## [Unreleased]
 
+### Added — IDA-4 readiness audit (2026-08-19)
+
+docs(audit): IDA-4 readiness audit — every gate classified with evidence in
+`docs/IDA4_READINESS_AUDIT.md`; docs-only, no implementation. Verdict: citizen-facing IDA-4
+write path BLOCKED on real authentication (IDA-2E→IDA-7) and 16 distinct legal-review items
+(4 of them roadmap-attributed to IDA-4 directly); reconciles this audit's own enumeration
+(16 distinct items) against `docs/ROADMAP.md`'s stated 15.
+
 ### Added — identity vocabularies (2026-08-18)
 
 feat(protocol): publish identity vocabularies — actor-type.v1, org-role.v1,

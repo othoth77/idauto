@@ -27,6 +27,36 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+## IDA4-READINESS-AUDIT — GATE AUDIT BEFORE IDA-4 IMPLEMENTATION (2026-08-19) — DOCS-ONLY
+
+**Branch:** `ida4-readiness` @ `350792b` (two commits ahead of `main` @ `bdfec2c`, not
+merged). **Read-only audit; no implementation.** Deliverable:
+[`IDA4_READINESS_AUDIT.md`](IDA4_READINESS_AUDIT.md) — every IDA-4 prerequisite gate
+(authentication, legal review, privacy, security, public-endpoint readiness,
+infrastructure) classified as READY / BLOCKED / LEGAL REVIEW / OWNER DECISION / TECHNICAL
+DEBT, each with a file+section citation.
+
+**Verdict:** citizen-facing IDA-4 implementation (self-registration, passport creation,
+holder association, erasure) is **BLOCKED**. Two REQUIRED gates are not READY: real
+authentication (IDA-2E, re-scoped to IDA-7 — unchanged since `docs/ROADMAP.md`) and legal
+review, specifically the 4 of 16 distinct LEGAL-REVIEW-REQUIRED items the roadmap itself
+attributes to IDA-4 (data correction/deletion rights, retention periods, super-admin
+governance, plus one item this audit's own enumeration recovers — "owner identity
+processing" from `docs/PRODUCT_SPEC.md` §12 — which is not carried into `docs/ROADMAP.md`'s
+consolidated 15-item table). Schema/protocol groundwork that creates no reachable write path
+is arguable and explicitly not pre-judged either way.
+
+**Discrepancy found, recorded rather than resolved:** this audit's enumeration of distinct
+LEGAL-REVIEW-REQUIRED items totals **16**, one more than `docs/ROADMAP.md`'s stated 15 (also
+independently claimed by `docs/MIGRATION_FROM_MYTHOS_PROD.md` line 197). The extra item is
+`docs/PRODUCT_SPEC.md` §12's "Owner identity processing" row, present since IDA-1
+(2026-08-05) and apparently dropped, not resolved, during the roadmap's later
+consolidation. No document was edited to fix this — it is recorded as a finding.
+
+**No implementation occurred.** No schema, API, or runtime change. `main` untouched.
+
+---
+
 ## IDA-DECOUPLE-3 — PUBLISH IDENTITY VOCABULARIES (IDauto side) (2026-08-18) — PASS
 
 **What was published.** Three vocabulary data documents under `protocol/vocabularies/` —
