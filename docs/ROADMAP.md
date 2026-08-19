@@ -187,22 +187,49 @@ connected to the right host.
 
 ## IDA-4 — Citizen Vehicle Passport
 
-**Status: SPECIFIED.** Blocked on IDA-2E (auth), IDA-3F (off-host backup) and
-LEGAL-REVIEW-REQUIRED items.
+**Status: SPECIFIED.** Blocked on IDA-2E (auth), IDA-3F (off-host backup — database leg
+CLOSED, schedule/media leg still open) and LEGAL-REVIEW-REQUIRED items. **IDA-4 itself is NOT
+IMPLEMENTED** — see the dated note below for exactly what subset is.
 
 | Deliverable | Status |
 |---|---|
-| Formal IVID format and issuance (OVIP §2.1) | **SPECIFIED** |
-| Migration of `internal_ref` to the IVID format | **SPECIFIED** |
-| Citizen self-registration | **SPECIFIED** — requires real auth |
-| Digital Vehicle Passport assembly, scope-filtered | **SPECIFIED** |
-| QR representation (public-scope reference only, no token, no personal data) | **SPECIFIED** |
-| Passport sharing | **SPECIFIED** |
-| Citizen data export | **SPECIFIED** |
-| Person store, separated from the vehicle store | **SPECIFIED** |
-| Holder association and ownership transfer | **SPECIFIED** |
-| Erasure with tombstones | **SPECIFIED** |
-| 50+ automated tests | Required to close the stage |
+| Formal IVID format and issuance (OVIP §2.1) | **IMPLEMENTED** (foundation) — `reference/ivid.js`, gate-free (no persistence, no reachable write path) |
+| Migration of `internal_ref` to the IVID format | **PLANNED, dry-run tooling IMPLEMENTED** — `docs/IVID_MIGRATION_PLAN.md` + `database/migrations/ivid-migration-dry-run.js`; execution against the live database is explicitly NOT done and requires an owner order |
+| Citizen self-registration | **SPECIFIED** — requires real auth (BLOCKED, `docs/IDA4_READINESS_AUDIT.md` §A) |
+| Digital Vehicle Passport assembly, scope-filtered | **IMPLEMENTED** (foundation) — `reference/passport-assembly.js`, a pure function with no route wired to it |
+| QR representation (public-scope reference only, no token, no personal data) | **IMPLEMENTED** (foundation) — enforced in `reference/passport-assembly.js` and `protocol/schemas/passport.schema.json`'s now-required `qr` field |
+| Passport sharing | **SPECIFIED** — no surface exists to share from |
+| Citizen data export | **SPECIFIED** — no citizen account exists to export from |
+| Person store, separated from the vehicle store | **SPECIFIED** — `protocol/schemas/holder-ref.schema.json` (this stage) specifies the REFERENCE boundary only; the person store itself remains unbuilt and out of protocol scope by design |
+| Holder association and ownership transfer | **SPECIFIED**; `ownership-transfer.schema.json`'s `supersedes` field added (this stage) for correction-by-supersession |
+| Erasure with tombstones | **SPECIFIED**; `protocol/schemas/tombstone.schema.json` added (this stage) — no erasure code path exists yet |
+| 50+ automated tests | **130** (`tests/ida4-foundation-test.js`, this stage's foundation subset only — not a claim that IDA-4 overall has closed its own 50-test bar) |
+
+**Dated note, 2026-08-19, branch `ida4-foundation`.** A gate-free foundation subset of the
+above is **IMPLEMENTED** as of this date, per the architecture review's approved scope
+(`docs/IDA4_READINESS_AUDIT.md` §H: schema/protocol groundwork that creates no reachable
+write path, processes no real person's data, and answers no legal question). Exactly seven
+items:
+
+1. Schema-defect fixes (`protocol/schemas/`: `passport`/`anomaly` required-field additions,
+   `ownership-transfer.supersedes`, the IVID pattern bound, the OVIP §13 closed-schema note).
+2. `reference/ivid.js` — IVID issuance/validation library (pure, no persistence).
+3. Two new protocol artifacts — `holder-ref.schema.json`, `tombstone.schema.json`.
+4. `reference/passport-assembly.js` — pure passport-assembly function, no I/O.
+5. `docs/IVID_MIGRATION_PLAN.md` + `database/migrations/ivid-migration-dry-run.js` (dry run
+   only — refuses to run against any environment with an `IDAUTO_DB_*` variable set).
+6. `docs/THREAT_MODEL.md` — system-wide threat model, including the ownership-transfer fraud
+   model.
+7. `tests/ida4-foundation-test.js` — 130 offline, env-free assertions covering all of the
+   above.
+
+**The citizen-facing surface itself remains BLOCKED**, unchanged by this subset, on the same
+two REQUIRED gates `docs/IDA4_READINESS_AUDIT.md` §G names: **gate A** (real authentication —
+BLOCKED, plus the **A5** owner decision on which path IDA-4 takes: wait for IDA-7, or an
+IDA-4-scoped interim mechanism) and **gate B** (legal review of the 16 enumerated
+LEGAL-REVIEW-REQUIRED items, specifically #6/#7/#9/#16 which the roadmap itself attributes to
+IDA-4). Nothing in this subset creates a route, a database write path, a citizen account, or
+processes a real person's data — it does not move either gate, and is not claimed to.
 
 ---
 

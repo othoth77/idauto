@@ -19,6 +19,10 @@
     "effective_at": { "type": "string", "format": "date-time" },
     "recorded_at": { "type": "string", "format": "date-time" },
     "evidence_refs": { "type": "array", "items": { "type": "string" }, "default": [] },
-    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" }
+    "provenance": { "$ref": "https://idauto.org/protocol/0.1.0/provenance-envelope.schema.json" },
+    "supersedes": {
+      "description": "The id of a prior OwnershipTransfer record this one corrects. A transfer recorded in error (wrong holder, wrong date, wrong type) is corrected by recording a new transfer that supersedes it, never by deleting or editing the original — OVIP §9.3 forbids a new holder (or anyone else) deleting, hiding, editing or resetting prior history, and §4 forbids silently overwriting any historical fact. The superseded record MUST remain retrievable.",
+      "type": ["string", "null"]
+    }
   }
 }

@@ -1,6 +1,6 @@
 # Protocol ↔ implementation mapping
 
-**Protocol version `0.1.0-draft` · Last updated 2026-08-18**
+**Protocol version `0.1.0-draft` · Last updated 2026-08-19**
 
 The protocol schemas in this directory are a **draft specification**. The live PostgreSQL
 schema in [`../../database/schema.sql`](../../database/schema.sql) and the reference
@@ -33,6 +33,8 @@ target. Convergence is an IDA-7 task.
 | `BlockchainAnchor` | — | **Does not exist.** No chain code. |
 | `Part`, `PartFitment` | — | **Does not exist.** See [`../../docs/PART_IDENTITY.md`](../../docs/PART_IDENTITY.md). |
 | `Anomaly` | — | **Does not exist.** Conflicts are recorded; anomaly detection is not implemented. |
+| `HolderRef` | — | **Does not exist in live schema — introduced for IDA-4** (`protocol/schemas/holder-ref.schema.json`). The opaque holder-reference boundary only; the person store it points at is out of protocol scope and does not exist in this repository. |
+| `Tombstone` | — | **Does not exist in live schema — introduced for IDA-4** (`protocol/schemas/tombstone.schema.json`). Specifies the erasure record OVIP §4/§10 and `PRIVACY_ARCHITECTURE.md` §6 require; no erasure code path or table exists yet to populate one — see `docs/IDA4_READINESS_AUDIT.md` §C ("Deletion/correction mechanics... SPECIFIED / BLOCKED"). |
 
 Supporting tables with no protocol counterpart (they are implementation concerns, not
 protocol concepts): `idauto_plate_formats`, `idauto_governorates`, `idauto_capture_sources`,
@@ -54,7 +56,8 @@ protocol concepts): `idauto_plate_formats`, `idauto_governorates`, `idauto_captu
 | `Fact.supersedes` | `is_active BOOLEAN` | Implementation marks supersession without an explicit link to the superseding row. Adding the link is additive. |
 | `Vehicle.summary` (derived) | direct columns on `idauto_vehicles` | Implementation stores denormalised summary columns alongside facts. |
 | `Evidence.content_hash` | `image_hash` / content-addressed storage key | Aligned in substance: SHA-256 of content, used as the storage key. |
-| contributor identity | `mythos_user_id VARCHAR(64)` | An **opaque external identity reference**, not a Mythos-only dependency — any external identity provider can populate it. Renaming to a neutral `subject_ref` is an IDA-7 candidate; it is a breaking migration and is not scheduled. |
+| contributor identity | `mythos_user_id VARCHAR(64)` | An **opaque external identity reference**, not a Mythos-only dependency — any external identity provider can populate it. Renaming to a neutral `subject_ref` is a breaking migration, **scheduled deliberately at IDA-7** (`docs/ROADMAP.md` IDA-7 section: "the `mythos_user_id` → neutral `subject_ref` rename... scheduled deliberately, not opportunistically"). **Correction, 2026-08-19:** this row previously read "it is a breaking migration and is not scheduled," which understated ROADMAP.md's own, later, governing statement that the rename IS scheduled (at IDA-7) — only the migration's *execution* is future work, not its place on the roadmap. |
+| IVID payload length bound | `internal_ref VARCHAR(40)` | `vehicle.schema.json`'s `ivid` pattern bounds the payload to `{16,30}` symbols specifically so the maximum full IVID string (7-char prefix + up to 30-char payload + 3-char suffix = 40 chars) fits this column exactly. See `reference/ivid.js` and `docs/IVID_MIGRATION_PLAN.md`. |
 
 ---
 

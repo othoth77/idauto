@@ -8,6 +8,63 @@ The protocol is versioned separately from the implementation; see
 
 ## [Unreleased]
 
+### Added — Stage preparation verification, IDA-5 through IDA-9 + Part Identity (2026-08-19)
+
+docs: verify stages IDA-5..IDA-9 + part-identity preparation state. A documentation-only
+preparation/verification pass for master-mission Stages 8–12 — no implementation, no schema
+change. Adds [`docs/STAGE_PREPARATION_IDA5_TO_IDA9.md`](docs/STAGE_PREPARATION_IDA5_TO_IDA9.md),
+which classifies every required element of IDA-5 (professional issuers), IDA-7 (VC/DID),
+IDA-8 (anchoring), IDA-9 (open protocol) and Part Identity as PREPARED / PARTIAL / OPEN, each
+with a file+section citation. Incorporates the IDA-4 architecture review's binding findings,
+and records one correction to it: the review's untyped `credentials.items: {}` placeholder
+gap is attributed to `issuer.schema.json`, which has no such field — the actual placeholder
+is `passport.schema.json`'s `credentials` array. The onboarding-process gap for professional
+issuers (who verifies a garage is a garage) is recorded as the top open item for Stage 8.
+
+### Added — IDA-4 gate-free foundation subset (2026-08-19)
+
+feat(ida4): gate-free foundation subset — IVID library, protocol artifacts, passport
+assembly, threat model. Implements exactly the architecture review's approved subset of
+IDA-4: no reachable write path, no person data, no legal question answered or presupposed.
+The citizen-facing surface remains BLOCKED on the authentication and legal gates recorded in
+`docs/IDA4_READINESS_AUDIT.md`.
+
+- **Schema fixes** (`protocol/schemas/`, additive/clarifying only): `passport.schema.json`
+  and `anomaly.schema.json` required-field additions (`completeness_note`/`qr`,
+  `statement`); `ownership-transfer.schema.json` gains an optional `supersedes` field,
+  mirroring `fact.schema.json`'s; the `ivid` pattern's payload bound is `{16,}` → `{16,30}`,
+  so the maximum IVID string fits `internal_ref VARCHAR(40)` exactly; `protocol/README.md`
+  gains a dated subsection reconciling `additionalProperties: false` against OVIP §13's
+  round-trip preservation duty, cross-referenced from OVIP §13 itself.
+- **`reference/ivid.js`** — IVID issuance/validation library (Crockford base32, no I/L/O/U;
+  ≥5 pinned check-symbol test vectors; `generate`/`validate`/`parse`/`checkSymbols`). Pure,
+  no persistence.
+- **Two new protocol artifacts** — `protocol/schemas/holder-ref.schema.json` (the opaque
+  holder-reference boundary; forbids person fields; person store explicitly out of protocol
+  scope) and `protocol/schemas/tombstone.schema.json` (erasure record per
+  `PRIVACY_ARCHITECTURE.md` §6 / OVIP §10.3, without retaining erased content). MAPPING.md
+  updated.
+- **`reference/passport-assembly.js`** — pure Digital Vehicle Passport assembly function:
+  scope filtering (public/professional/mythos_private), `trust_summary` with a separate
+  `anchored` count (never a T4 key), an always-present `completeness_note`, and a `qr`
+  payload that is always exactly the vehicle's IVID.
+- **`docs/IVID_MIGRATION_PLAN.md`** + **`database/migrations/ivid-migration-dry-run.js`** —
+  the plan (PLAN ONLY, NOT EXECUTED) and its dry-run tool, which refuses to run if any
+  `IDAUTO_DB_*` environment variable is set and takes no database connection.
+- **`docs/THREAT_MODEL.md`** — version 1 system-wide threat model, including the
+  ownership-transfer fraud model (stolen-vehicle laundering, coerced transfer, fake seller,
+  replay, backdated `effective_at`, supersession abuse), an honest-gaps section, and the AI
+  boundary (detection routes to review; never declares fraud).
+- **`tests/ida4-foundation-test.js`** — 130 offline, env-free assertions.
+- **Docs pass:** `BLOCKCHAIN_ARCHITECTURE.md` §8 backup-status correction; `MAPPING.md`'s
+  `subject_ref` note aligned with `ROADMAP.md` IDA-7 ("scheduled deliberately"); `ROADMAP.md`
+  IDA-4 section gains a dated note naming exactly what is IMPLEMENTED versus what remains
+  BLOCKED — IDA-4 itself is NOT marked implemented.
+
+Validated: `tests/ida4-foundation-test.js` 130/0; `tests/identity-conformance-test.js` 81/0
+(unchanged); `tests/ida-2a-schema-and-plate-validation-test.js` 44/0 (unchanged); the three
+`protocol/vocabularies/*.json` digests unchanged.
+
 ### Added — IDA-4 readiness audit (2026-08-19)
 
 docs(audit): IDA-4 readiness audit — every gate classified with evidence in

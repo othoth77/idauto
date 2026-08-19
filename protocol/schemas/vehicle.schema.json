@@ -9,9 +9,9 @@
   "properties": {
     "protocol_version": { "type": "string", "const": "0.1.0-draft" },
     "ivid": {
-      "description": "IDauto Vehicle ID. Independent of VIN, plate and owner identity; not derived from any of them. >=80 bits of entropy plus a check symbol. Survives re-plating, resale, re-registration, export and import. Never reused.",
+      "description": "IDauto Vehicle ID. Independent of VIN, plate and owner identity; not derived from any of them. >=80 bits of entropy plus a check symbol. Survives re-plating, resale, re-registration, export and import. Never reused. Payload length is bounded to 16-30 symbols so the maximum full IVID string (7-char 'ivid:1:' prefix + up to 30-char payload + 3-char ':'+check = 40 chars) fits the live idauto_vehicles.internal_ref VARCHAR(40) column exactly. v1 issues 26-char IVIDs (16-symbol payload, 80 bits of entropy from crypto.randomBytes(10)); the upper bound of 30 leaves room for a future higher-entropy issuance without a column migration.",
       "type": "string",
-      "pattern": "^ivid:[0-9]+:[0-9A-HJKMNP-TV-Z]{16,}:[0-9A-HJKMNP-TV-Z]{2}$"
+      "pattern": "^ivid:[0-9]+:[0-9A-HJKMNP-TV-Z]{16,30}:[0-9A-HJKMNP-TV-Z]{2}$"
     },
     "status": {
       "type": "string",
