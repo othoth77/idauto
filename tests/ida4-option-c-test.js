@@ -59,6 +59,7 @@ var db = require(path.join(BASE, 'reference', 'db.js'));
 var ivid = require(path.join(BASE, 'reference', 'ivid.js'));
 var ividIssuance = require(path.join(BASE, 'reference', 'ivid-issuance.js'));
 var api = require(path.join(BASE, 'reference', 'api.js'));
+var rateLimit = require(path.join(BASE, 'reference', 'rate-limit.js'));
 
 var server, port;
 function request(method, requestPath, headers) {
@@ -319,6 +320,26 @@ async function burstAndRecovery() {
   ].join('\n');
   fs.writeFileSync(childScript, childSource);
 
+  // Phase 3 mutation-run finding (flaked ~3% of runs): this suite's own
+  // earlier requests (§3/§9, real 60-second window) and the child's tiny
+  // 2-second-window requests below both write into the SAME bucket row —
+  // bucketKey('public_resolution:window', sha256('127.0.0.1')) is
+  // identical either way, since only the dimension+IP are hashed, never
+  // the window size. They differ only in window_start (floored to 60s vs
+  // 2s), so this only collides when the child's floor-to-2s window
+  // happens to fall in the same window_start bucket as the parent's
+  // floor-to-60s window — i.e. any burst starting within 2s after a real
+  // minute boundary — but when it does, the child inherits the parent's
+  // count and its first two (should-be-allowed) requests spuriously 429.
+  // Fixed here, in the TEST only: delete this exact bucket's own counter
+  // rows before the child starts, scoped to precisely the
+  // public_resolution:window/127.0.0.1 bucket key — never any other
+  // dimension's rows, and never anything but a counter row this suite
+  // itself could have written.
+  var publicResolutionIpHash = crypto.createHash('sha256').update('127.0.0.1').digest('hex');
+  var publicResolutionBucketKey = rateLimit.bucketKey('public_resolution:window', publicResolutionIpHash);
+  await db.query('DELETE FROM idauto_rate_limit_counters WHERE bucket_key = $1', [publicResolutionBucketKey]);
+
   try {
     var env = Object.assign({}, process.env, { IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH: cfgPath });
     var output = childProcess.execFileSync(process.execPath, [childScript], { env: env, timeout: 15000 }).toString('utf8');
@@ -424,6 +445,19 @@ async function a5ProhibitionGuards() {
   ok(coarseDispatchOccurrences === 1, 'exactly one pre-auth /public/ dispatch branch exists in api.js, got ' + coarseDispatchOccurrences);
   var passportPatternOccurrences = (apiSource.match(/\/\^\\\/public\\\/passport\\\/\(\[\^\/\]\+\)\$\//g) || []).length;
   ok(passportPatternOccurrences === 1, 'exactly one /public/passport/:ivid route pattern exists in api.js, got ' + passportPatternOccurrences);
+
+  // 5. SQL defense-in-depth pin (mutation-verified 2026-08-19, Phase 3):
+  // a mutation replacing `AND access_scope = $2` with `AND $2 = $2` in the
+  // facts query left every behavioral assertion in this suite green,
+  // because assemblePassport()'s own scope filter (reference/passport-
+  // assembly.js) already removes any non-public fact before it reaches a
+  // response — the SQL-level filter is real defense-in-depth, but no
+  // BEHAVIORAL test can distinguish "SQL filtered it" from "the assembler
+  // filtered it after SQL returned everything," precisely because the
+  // assembler's primary filter masks the SQL layer. This structural
+  // assertion pins the SQL layer directly so it cannot silently rot.
+  ok(/access_scope = \$2/.test(apiSource), 'the facts query in api.js still filters access_scope = $2 in SQL (defense-in-depth, not just in assemblePassport())');
+  ok(/\[candidate, 'public'\]/.test(apiSource), 'the facts query still binds $2 to the literal string \'public\' (not a caller-influenced or looser value)');
 }
 
 (async function main() {
