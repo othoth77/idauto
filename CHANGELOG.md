@@ -6,6 +6,10 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
+
+PR stack merged to main (merge commits; pin provenance verified). docs-only additions: legal gate matrix (16 OPEN), counsel review package, readiness recheck §I — CITIZEN_FACING_IDA4_READY = NO. A5: owner decision required, recommended default option C. No implementation.
+
 ## [Unreleased]
 
 ### Added — GATE-CLOSURE Phase 7-8: IDA-4 legal gate matrix + counsel review package (2026-08-19)

@@ -27,6 +27,30 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+## GATE-CLOSURE — PR STACK MERGED; A5 EVALUATED; LEGAL MATRIX FILED; READINESS RECOMPUTED = NO (2026-08-19)
+
+The PR stack is merged into `main` by merge commits — #2 (`27a35b9`), #3 (`1d508e1`),
+#4 (`24a28dd`) — pin provenance verified (`42e8546` remains an ancestor; the three vocabulary
+digests on `main` equal the mythos-prod pins byte-for-byte). mythos-prod #16 merged
+(`91131eb`); #14 auto-resolved as merged by containment.
+
+This branch (`gate-closure`) adds: `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, all **OPEN**, four
+citizen-surface blockers L06/L07/L09/L16), `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts
+for counsel — no legal advice), risk-register rows, and the readiness recheck
+(`IDA4_READINESS_AUDIT.md` §I): **CITIZEN_FACING_IDA4_READY = NO**;
+`PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` = NO.
+
+**A5 evaluated, not closed:** owner decision required — B1 magic-link now (hold PII, answer
+L06/L07/L09/L16 early) vs A wait-for-IDA-7 (zero PII), with **recommended default option C**:
+the zero-account half (IVID issuance, passport assembly, IVID-only public QR resolution — by
+IVID only, never plate). Conditions on any future B: credential-is-never-the-identifier;
+A2 authorization in scope from the start.
+
+**Owner gates B1/B2/B3 formally owner-blocked** (no credential in any dev environment,
+re-verified; B2's cadence undefined in every policy document — an owner decision). Suites at
+this commit: ida4-foundation 130/0, identity-conformance 81/0. Nothing citizen-facing
+implemented.
+
 ## GATE-CLOSURE PHASE 7-8 — IDA-4 LEGAL GATE MATRIX + COUNSEL REVIEW PACKAGE (2026-08-19) — DOCS-ONLY
 
 **Branch:** `gate-closure` @ `24a28dd` (on top of the merged readiness audit, threat model,
