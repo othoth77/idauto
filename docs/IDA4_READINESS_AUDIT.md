@@ -484,3 +484,37 @@ of it processes a real person's data yet. Whether that counts as "IDA-4 implemen
 scoping question for whoever authorises Stage 5, not something this audit's evidence can
 settle either way. The one thing the evidence does settle is the citizen-facing surface:
 **that is BLOCKED**, on A and B, until the minimal unblock set above is worked through.
+
+---
+
+## I. Readiness recheck — 2026-08-19, post gate-closure mission (branch gate-closure)
+
+Recomputed after: the PR stack merge (main `24a28dd`), the A5 evaluation, the legal gate
+matrix (`IDA4_LEGAL_GATE_MATRIX.md`), and the backup-gate status pass. Every change from the
+original table is listed; unchanged gates are not restated.
+
+| Gate | Was | Now | Why |
+|---|---|---|---|
+| A5 admin-stub vs public path | OWNER DECISION | **OWNER DECISION — evaluated, decision text recorded** | The architecture review evaluated options A (wait for IDA-7), B1/B2/B3 (interim auth variants; B3 dominated and ruled out), and C (the zero-account half: IVID issuance, passport assembly, IVID-only public QR resolution — no PII, no legal trigger). Verdict: *owner decision required* — hold citizen PII and answer L06/L07/L09/L16 now for a citizen write path two stages early (B, recommended variant B1 magic-link), or keep zero PII and wait for IDA-7 (A). **Recommended default: authorize option C first**, with two attached conditions: QR resolution by IVID only, never by plate (else L03 applies); and if B is ever chosen, the credential-is-never-the-identifier guardrail plus the A2 authorization model are in scope from the start |
+| B. Legal | LEGAL REVIEW (enumerated) | **LEGAL REVIEW — matrix + counsel package exist; 16/16 OPEN, 0 APPROVED** | `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, full field set) and `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts for counsel). The four citizen-surface blockers: **L06, L07, L09, L16** (L16 by the §B.3 argument, not by the roadmap table — stated in the matrix) |
+| D1. Threat model | BLOCKED / TECH DEBT (no doc) | **Document exists** (`THREAT_MODEL.md` v1, with the transfer fraud section) — runtime controls it identifies remain PLANNED/gated | Written in the foundation subset |
+| D3. Fraud model | BLOCKED | **Documented** (THREAT_MODEL §6); runtime enforcement remains gated on A2 authorization | ibid. |
+| F1. DB backup | READY (ageing) | READY — **ageing further**; refresh is OWNER-GATE-B1 | No credential exists in any development environment (re-verified); B1/B2/B3 formally owner-blocked in mythos-prod `OFF_HOST_BACKUP_GATE.md` §8. B2's **cadence is itself undefined in every policy document** — an owner decision inside the owner gate |
+
+**A5 is a decision gate and it is now fully teed up: the exact decision text, the option
+analysis, and a recommended default are on file. It is not, and cannot be, closed by
+engineering.**
+
+### CITIZEN_FACING_IDA4_READY = **NO**
+
+Mandatory gates still open: **A** (no real authentication; A5 undecided) · **B** (L06, L07,
+L09, L16 all OPEN — zero legal evidence on file) · **E** follows from A+B.
+`PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` remains **NO**. Nothing in the merged stack, the
+matrix, or the evaluation changes this — partial completion does not infer readiness.
+
+**What would flip it to YES:** an owner decision on A5 that yields an implemented,
+reviewed authentication + authorization path (or option-C scoping that removes the account
+requirement for a defined sub-surface, which would make that sub-surface — and only it —
+implementable); legal APPROVED (with evidence) on L06, L07, L09 and a counsel ruling on
+L16's applicability; then a pre-public Opus review and independent audit of the actual
+implementation.

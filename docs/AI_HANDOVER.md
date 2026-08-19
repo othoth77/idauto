@@ -27,6 +27,100 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+## GATE-CLOSURE — PR STACK MERGED; A5 EVALUATED; LEGAL MATRIX FILED; READINESS RECOMPUTED = NO (2026-08-19)
+
+The PR stack is merged into `main` by merge commits — #2 (`27a35b9`), #3 (`1d508e1`),
+#4 (`24a28dd`) — pin provenance verified (`42e8546` remains an ancestor; the three vocabulary
+digests on `main` equal the mythos-prod pins byte-for-byte). mythos-prod #16 merged
+(`91131eb`); #14 auto-resolved as merged by containment.
+
+This branch (`gate-closure`) adds: `IDA4_LEGAL_GATE_MATRIX.md` (L01–L16, all **OPEN**, four
+citizen-surface blockers L06/L07/L09/L16), `IDA4_LEGAL_REVIEW_PACKAGE.md` (engineering facts
+for counsel — no legal advice), risk-register rows, and the readiness recheck
+(`IDA4_READINESS_AUDIT.md` §I): **CITIZEN_FACING_IDA4_READY = NO**;
+`PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` = NO.
+
+**A5 evaluated, not closed:** owner decision required — B1 magic-link now (hold PII, answer
+L06/L07/L09/L16 early) vs A wait-for-IDA-7 (zero PII), with **recommended default option C**:
+the zero-account half (IVID issuance, passport assembly, IVID-only public QR resolution — by
+IVID only, never plate). Conditions on any future B: credential-is-never-the-identifier;
+A2 authorization in scope from the start.
+
+**Owner gates B1/B2/B3 formally owner-blocked** (no credential in any dev environment,
+re-verified; B2's cadence undefined in every policy document — an owner decision). Suites at
+this commit: ida4-foundation 130/0, identity-conformance 81/0. Nothing citizen-facing
+implemented.
+
+## GATE-CLOSURE PHASE 7-8 — IDA-4 LEGAL GATE MATRIX + COUNSEL REVIEW PACKAGE (2026-08-19) — DOCS-ONLY
+
+**Branch:** `gate-closure` @ `24a28dd` (on top of the merged readiness audit, threat model,
+IDA-4 gate-free foundation subset, and IDA-5..IDA-9 preparation pass).
+**Type:** Documentation only — no code, no schema change, no implementation. Assembles
+engineering facts and classifications for the 16 `LEGAL-REVIEW-REQUIRED` items this
+repository already carries; answers no legal question and does not give legal advice.
+
+**Purpose.** `docs/IDA4_READINESS_AUDIT.md` §B enumerated 16 distinct legal questions (its
+own `#1`–`#16`), four of which the roadmap and the audit's own reasoning attribute directly
+to `IDA-4`'s citizen-facing surface. Nothing in this repository previously tracked those 16
+items individually, or gave counsel a single package to review them from. This stage produces
+both.
+
+**Produces:**
+- **[`docs/IDA4_LEGAL_GATE_MATRIX.md`](IDA4_LEGAL_GATE_MATRIX.md)** — renumbers the audit's
+  16 items `L01`–`L16` and tabulates, per item: Feature, Legal question (cited), Affected
+  data (columns/tables from `database/schema.sql` and `protocol/schemas/`), Affected users,
+  Jurisdiction (Tunisia as the primary market per `docs/PRODUCT_SPEC.md`, cross-border noted
+  where the item concerns it, `unstated — counsel to confirm` where sources give no further
+  detail), Current status, Required decision, Evidence, Owner, Dependency, and Engineering
+  consequence. Defines the status vocabulary (`OPEN` / `UNDER_REVIEW` / `APPROVED` /
+  `REJECTED` / `NOT_APPLICABLE` / `OWNER_DECISION`) and states the binding rule that
+  `APPROVED` requires actual legal evidence recorded in the Evidence column — engineering can
+  never set it. All 16 items are `OPEN` today; none has any legal evidence on file.
+- **[`docs/IDA4_LEGAL_REVIEW_PACKAGE.md`](IDA4_LEGAL_REVIEW_PACKAGE.md)** — the concise,
+  advice-free package for counsel: what IDauto is; a full data inventory (vehicle, plate,
+  observation, fact, evidence/media, submission, audit log, contributor, user_roles) with
+  fields, personal-data status, access scope and retention-as-specified; data flows
+  (ingestion consent posture, review queue, media/EXIF handling, off-host backup — now on
+  Cloudflare R2 over SigV4/HTTPS, superseding the earlier rsync/scp design note in
+  `docs/INGESTION_ARCHITECTURE.md` §11); the `access_scope` public/private mechanism and the
+  QR/IVID no-PII, no-bearer-token design (`protocol/schemas/passport.schema.json`); consent
+  and rights mechanics (specified vs implemented — correction/deletion via tombstone is
+  specified, not implemented); per-topic fact sheets mapped to the matrix IDs; and the
+  decision form (approve / approve-with-conditions / reject) plus where each answer gets
+  recorded.
+
+**Verified, not merely asserted.**
+- Independently re-derived the "four items block IDA-4 directly" claim from
+  `docs/PRODUCT_SPEC.md` §12, `docs/ROADMAP.md`'s open-items table, and
+  `docs/IDA4_READINESS_AUDIT.md` §B.3/§H, rather than taking the audit's summary on faith —
+  confirmed: `L06` (data correction/deletion rights), `L07` (retention periods, all
+  categories), `L09` (operator super-admin access governance policy), `L16` (owner identity
+  processing, tagged to IDA-4 only "arguably" by the audit's own reasoning, since it does not
+  appear in `docs/ROADMAP.md`'s 15-row consolidated table at all).
+- Confirmed the audit's own finding that item `#16`/`L16` is present in
+  `docs/PRODUCT_SPEC.md` §12 but absent from `docs/ROADMAP.md`'s 15-row "LEGAL-REVIEW-REQUIRED
+  — open items" table by reading both tables directly — the discrepancy is real, not an
+  audit artefact, and is reproduced (not resolved) in the matrix.
+- Corrected the live production-data claim rather than assuming a synthetic-only baseline:
+  the live VPS `idauto` database holds 24 tables / 2,551 rows of real operational data
+  (`docs/AI_HANDOVER.md` off-host-backup entries below), not merely test fixtures. What it
+  does *not* hold: any owner-PII column (test-enforced, `docs/PRIVACY_ARCHITECTURE.md` §1).
+  Contributor identifiers do exist, in `mythos_user_id` columns.
+
+**Updates:** `docs/RISK_REGISTER.md` gains `R-S08` (the 16-item legal gate, four blocking
+IDA-4) and `R-S09` (the A5 owner-decision, still pending) in §5.
+
+**Not done, deliberately.** No item was set to `APPROVED` — no legal evidence exists for any
+of the 16. No legal opinion is offered anywhere in either new document. No stage was
+implemented, closed, or advanced; both new documents are read-only tracking artefacts for a
+review process that has not yet begun.
+
+**Validation.** `node tests/ida4-foundation-test.js`: 130 passed, 0 failed. `node
+tests/identity-conformance-test.js`: 81 passed, 0 failed. Both run clean before and after
+this docs-only change, since neither touches code, schema, or protocol artifacts.
+
+---
+
 ## STAGE-PREPARATION-IDA5-TO-IDA9 — STAGES 8–12 PREPARATION VERIFICATION (2026-08-19) — DOCS-ONLY
 
 **Branch:** `ida4-foundation` @ `39d6bee` (on top of the gate-free foundation subset).

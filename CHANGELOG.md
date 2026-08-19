@@ -6,7 +6,37 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
+
+PR stack merged to main (merge commits; pin provenance verified). docs-only additions: legal gate matrix (16 OPEN), counsel review package, readiness recheck §I — CITIZEN_FACING_IDA4_READY = NO. A5: owner decision required, recommended default option C. No implementation.
+
 ## [Unreleased]
+
+### Added — GATE-CLOSURE Phase 7-8: IDA-4 legal gate matrix + counsel review package (2026-08-19)
+
+docs(legal): IDA-4 legal gate matrix + counsel review package — 16 items, all OPEN.
+Docs-only. No legal advice; engineering facts and classifications only. No item is
+`APPROVED` — approval requires legal evidence that does not exist yet.
+
+- **[`docs/IDA4_LEGAL_GATE_MATRIX.md`](docs/IDA4_LEGAL_GATE_MATRIX.md)** — every one of the
+  16 `LEGAL-REVIEW-REQUIRED` items found by `docs/IDA4_READINESS_AUDIT.md` §B (renumbered
+  `L01`–`L16` in the audit's own order), each with feature, legal question, affected
+  data/users, jurisdiction, current status, required decision, evidence, owner and
+  dependency. Status vocabulary: `OPEN` / `UNDER_REVIEW` / `APPROVED` / `REJECTED` /
+  `NOT_APPLICABLE` / `OWNER_DECISION` — engineering can never set `APPROVED`.
+- **[`docs/IDA4_LEGAL_REVIEW_PACKAGE.md`](docs/IDA4_LEGAL_REVIEW_PACKAGE.md)** — the
+  counsel-facing engineering-facts package: what IDauto is, the full data inventory per
+  record type, data flows (ingestion, review queue, media storage, off-host backup),
+  public/private visibility mechanics, consent & rights mechanics (specified vs
+  implemented), per-topic fact sheets mapped to the matrix, and what engineering needs back
+  from counsel.
+- All 16 items are `OPEN`. **Four block the citizen-facing IDA-4 surface directly**: `L06`
+  (data correction/deletion rights), `L07` (retention periods, all categories), `L09`
+  (operator super-admin access governance policy), `L16` (owner identity processing) — this
+  is verified against `docs/IDA4_READINESS_AUDIT.md` §B's own mapping (items `#6`, `#7`,
+  `#9`, `#16`), not merely asserted.
+- `docs/RISK_REGISTER.md` gains `R-S08` (the 16-item legal gate) and `R-S09` (the A5 owner
+  decision, still pending).
 
 ### Added — Stage preparation verification, IDA-5 through IDA-9 + Part Identity (2026-08-19)
 
