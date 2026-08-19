@@ -27,6 +27,37 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+## IDA-DECOUPLE-3 — PUBLISH IDENTITY VOCABULARIES (IDauto side) (2026-08-18) — PASS
+
+**What was published.** Three vocabulary data documents under `protocol/vocabularies/` —
+`actor-type.v1.json`, `org-role.v1.json`, `actor-identifier.v1.json` — publishing the
+`actor_type`, `org_role` and actor-identifier value spaces that were previously only
+expressible by reading `database/schema.sql` directly. They are data documents, not JSON
+Schemas (deliberately no `$schema`, no `$id`), status `stable` at `v1`, versioned
+independently of the OVIP `0.1.0-draft` protocol as a whole. A new offline, environment-free
+suite, `tests/identity-conformance-test.js`, asserts schema.sql and the artifacts agree:
+both named `actor_type` CHECK sites, every CHECK site identical, `chk_user_role`, all four
+`VARCHAR(64)` actor-reference columns (a failed lookup fails, never skips), storage widths,
+artifact byte hygiene, and the `identity.js` no-auth invariant moved here from `mythos-prod`
+behind an explicit non-emptiness precondition so it can never pass vacuously. Result:
+**77 passed, 0 failed**.
+
+**Why.** Stage `IDA-DECOUPLE-3`. The `mythos-prod` `MYTHOS-IDENTITY-CORE-0` contract test
+currently reads IDauto internals directly (`projects/idauto/database/schema.sql`,
+`projects/idauto/reference/identity.js`) across the repository boundary — the coupling this
+stage removes. With these artifacts published and pinned by version and SHA-256 of the raw
+file bytes, the Mythos side stops reading IDauto internals and drift now fails loudly on
+whichever side actually drifted, rather than silently on whichever side reads the other's
+files.
+
+**Classification.** Additive per `GOVERNANCE.md` §3 — new files, no existing field removed,
+renamed, or given new semantics. Reasoning recorded per `GOVERNANCE.md` §7.
+
+**No schema change. No API change. No runtime change.** `main` is untouched — this work is
+entirely on branch `protocol-identity-vocabularies`, pushed to origin; `main` advances only by pull request.
+
+---
+
 > **These five entries were added to the extraction on 2026-08-18 after an audit found them
 > missing.** They post-date the IDA-3F entries below and **supersede them**: they record that
 > the off-host destination was provisioned, that the S3 adapter's default transport was found

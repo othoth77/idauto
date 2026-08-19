@@ -9,6 +9,7 @@ This directory holds the machine-readable artefacts.
 ```
 protocol/
 ├── schemas/        JSON Schema for the canonical entities
+├── vocabularies/   closed-set value vocabularies asserted against the live schema
 ├── events/         the event vocabulary — what can happen to a vehicle
 ├── credentials/    W3C Verifiable Credentials profile and DID usage
 └── verification/   the verification specification — how a claim is checked
@@ -29,6 +30,49 @@ The mapping between the two is in [`schemas/MAPPING.md`](schemas/MAPPING.md). Wh
 disagree, `database/schema.sql` describes what runs and `protocol/schemas/` describes what
 is being converged toward. Neither is silently authoritative over the other, and the
 convergence is an IDA-7 task.
+
+---
+
+## Vocabularies
+
+[`vocabularies/`](vocabularies/) publishes the closed-set value vocabularies IDauto's live
+schema enforces — `actor_type`, `org_role`, `actor_identifier` — as machine-readable data.
+
+**These are vocabulary data documents, not JSON Schemas.** They deliberately carry no
+`$schema` and no `$id`: a JSON Schema describes the *shape* a document must have, while these
+files *are* the data being described — the value sets a `CHECK` constraint accepts today.
+Giving them `$id` would invite validating instances against them as if they were schemas,
+which is not what they are for.
+
+This inverts the relationship the rest of `protocol/` has with the running system. Per
+[Status](#status) above, `protocol/schemas/` describes what is being **converged toward** and
+may disagree with `database/schema.sql`. Vocabularies describe what **runs today**: each file
+names the exact `CHECK` constraint(s) and column(s) it publishes, and
+[`tests/identity-conformance-test.js`](../tests/identity-conformance-test.js) asserts —
+offline, on every run — that the artifact and `database/schema.sql` still agree. A vocabulary
+file that drifts from the schema is a test failure, not a documentation gap.
+
+The vocabularies are individually versioned and are currently `status: "stable"` at `v1`,
+independent of OVIP's own `0.1.0-draft` status — a stable vocabulary can exist inside a draft
+protocol because it describes something already deployed, not something being designed.
+
+**Versioning rule**, per [`GOVERNANCE.md`](../GOVERNANCE.md) §3:
+
+- The integer major version lives in both the filename (`actor-type.v1.json`) and the
+  document's `version` field. They must match.
+- `revision` increments for additive or editorial change (a new value, a clarified
+  description) without changing the value set's meaning.
+- A breaking change (removal, rename, or semantic change) is never made in place — it
+  produces a new `actor-type.v2.json`, and `v1` stays published with `status: "superseded"`.
+- A value stays present with `status: "deprecated"` for at least one major version before
+  removal, matching the deprecation rule for schema fields.
+
+**Consumer rule.** A consumer pins both the version *and* the SHA-256 digest of the raw file
+bytes — not just the version number, since a revision bump changes the bytes without changing
+the major version. This is exactly why the artifacts are required to be LF-only, UTF-8,
+BOM-free, with exactly one trailing newline, and why the [`vocabularies/.gitattributes`](vocabularies/.gitattributes)
+`text eol=lf` rule exist: a digest is computed over raw bytes, and any line-ending or encoding
+drift between systems would silently change the hash without changing a single value.
 
 ---
 

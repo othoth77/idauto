@@ -8,6 +8,12 @@ The protocol is versioned separately from the implementation; see
 
 ## [Unreleased]
 
+### Added — identity vocabularies (2026-08-18)
+
+feat(protocol): publish identity vocabularies — actor-type.v1, org-role.v1,
+actor-identifier.v1; schema conformance suite tests/identity-conformance-test.js; no schema
+change, no runtime change.
+
 ### Added — standalone repository and Open Vehicle Identity Protocol (2026-08-18)
 
 Extracted from `othoth77/mythos-prod` (`projects/idauto/`) into `othoth77/idauto` and

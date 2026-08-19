@@ -75,6 +75,12 @@ done
 
 **Expected total: 195 passed, 0 failed** — IDA-2A 44 · 2C 26 · 2D 39 · 2F 32 · 2G 17 · 2H 37.
 
+`tests/identity-conformance-test.js` (`IDA-DECOUPLE-3`) is **not** part of this live-suite
+total — it is offline and environment-free like IDA-2A, and is reported separately with its
+own count: `node tests/identity-conformance-test.js` → **81 passed, 0 failed**. Do not fold
+its count into the 195 above; the two totals cover different suite sets and mixing them makes
+a partial run look complete.
+
 Step 3 prints only `set` / `MISSING`. If any line says `MISSING`, stop and fix the environment — do **not** interpret the resulting test output.
 
 ### 3.1 Fallback if the `.env` is unavailable
@@ -98,8 +104,9 @@ export IDAUTO_DB_NAME=$(echo "$E" | grep '^POSTGRES_DB=' | cut -d= -f2-)
 | **IDA-2F** — object storage | Yes | **Yes** | **Yes** |
 | **IDA-2G** — admin manual entry UI | Yes | No | No |
 | **IDA-2H** — review queue UI | Yes | **Yes** (media metadata) | **Yes** |
+| **identity-conformance** — vocabulary artifact conformance | No | No | No |
 
-IDA-2A is pure static analysis — it reads `schema.sql` and `plate-validator.js` from disk and requires **no** environment at all. If IDA-2A fails, the cause is real; it cannot be an environment problem.
+IDA-2A is pure static analysis — it reads `schema.sql` and `plate-validator.js` from disk and requires **no** environment at all. If IDA-2A fails, the cause is real; it cannot be an environment problem. `identity-conformance` is the same kind of suite — it reads `schema.sql`, `reference/identity.js` and `protocol/vocabularies/*.json` from disk and requires no environment either.
 
 ## 5. Telling environment failure from a real regression
 
@@ -116,7 +123,7 @@ IDA-2A is pure static analysis — it reads `schema.sql` and `plate-validator.js
 **Triage in order:**
 
 1. Re-run step 3. Any `MISSING` explains the failure — fix and re-run.
-2. Run **IDA-2A** alone. It needs no environment. If it passes, the runtime and schema are structurally intact and your failures are almost certainly environmental.
+2. Run **IDA-2A** (and, for identity-related changes, **identity-conformance**) alone. Neither needs any environment. If they pass, the runtime and schema are structurally intact and your failures are almost certainly environmental.
 3. Confirm the database is actually up: `docker inspect idauto-postgres --format '{{.State.Health.Status}}'` should report `healthy`.
 4. Only if the environment is fully confirmed and failures persist should you treat it as a regression. Then compare against the stage baseline with an isolated worktree — per `projects/meta/known-baselines.json`, **never** classify a failure as a known baseline failure without that comparison:
    ```bash

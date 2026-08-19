@@ -1,0 +1,32 @@
+{
+  "protocol": "OVIP",
+  "vocabulary": "actor_type",
+  "version": 1,
+  "revision": 1,
+  "canonical_id": "https://idauto.org/protocol/vocabularies/actor-type.v1.json",
+  "status": "stable",
+  "published_at": "2026-08-18",
+  "description": "The closed set of actor classes recorded against every IDauto submission and audit-log row. Adopted verbatim platform-wide by Mythos OS. Describes a deployed CHECK constraint, not a convergence target.",
+  "source_of_truth": {
+    "repository": "othoth77/idauto",
+    "file": "database/schema.sql",
+    "constraints": ["chk_submission_actor", "chk_audit_actor"],
+    "storage": "VARCHAR(20)"
+  },
+  "compatibility": {
+    "policy": "closed-set",
+    "value_order": "declaration order of the SQL CHECK; non-normative — comparisons are set equality",
+    "additive": "new value -> same major file, revision + 1",
+    "deprecation": "value stays present with status 'deprecated' for >= 1 major version",
+    "breaking": "removal, rename, or semantic change -> new file actor-type.v2.json; v1 retained with status 'superseded'",
+    "supersedes": null,
+    "superseded_by": null
+  },
+  "values": [
+    { "value": "system", "status": "active", "description": "An IDauto service acting on its own behalf. actor_ref is svc_<name>." },
+    { "value": "contributor", "status": "active", "description": "An authenticated public submitter. actor_ref is usr_<uuidv7>." },
+    { "value": "professional_user", "status": "active", "description": "A member of a subscriber organisation. actor_ref is usr_<uuidv7>." },
+    { "value": "admin", "status": "active", "description": "An operator-provisioned administrative identity. actor_ref is usr_<uuidv7>." },
+    { "value": "anonymous", "status": "active", "description": "Unauthenticated caller. actor_ref is NULL; an identifier is never invented." }
+  ]
+}
