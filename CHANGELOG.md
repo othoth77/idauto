@@ -6,6 +6,23 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-26 — ida-ship-1: PR #6 + PR #7 merged; release verification of main
+
+Final ship pass under the owner's IDauto ship order. PR #6 (IDA-4 Option C,
+merge `33557f0`) and PR #7 (IDA-DS-1, retargeted to main and updated after #6,
+merge `c65215a`) merged in order, each after its own green audit. Clean-clone
+verification of the merged `main`: 17/17 suites (1186 assertions) 0 failures
+on a fresh PostgreSQL 16; browser QA flows (homepage, plate input, IVID,
+passport, QR) green in Chromium with 0 horizontal overflow at
+320/390/768/1024/1280 px; Lighthouse local — home 99/100/96/100, passport
+89/100/96/90; `npm audit` 0 vulnerabilities; A5-PLATE and the
+`qr.payload === ivid` invariant re-verified against the running server. No
+code changed in this pass — documentation only: new
+`docs/PRODUCTION_RUNBOOK.md` (release state, remaining host steps, rollback
+procedure) and the ship record in `docs/AI_HANDOVER.md`. Deployment to
+idauto.tn remains a host/owner step; verdict at this point: ENGINEERING
+COMPLETE, PRODUCTION NOT READY, CITIZEN-FACING NOT READY.
+
 ## 2026-08-26 — ida-ds-1: IDauto Design System + citizen UI (Encre & Papier, scellé de vert)
 
 The proprietary IDauto Design System, transplanted from its first delivery in

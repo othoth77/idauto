@@ -1,5 +1,28 @@
 # IDauto — Implementation Record (AI Handover)
 
+## Current record — 2026-08-26 FINAL SHIP (native entry, this repository)
+
+**IDA-SHIP-1:** PR [#6](https://github.com/othoth77/idauto/pull/6) (IDA-4
+Option C, merge `33557f0`) and PR
+[#7](https://github.com/othoth77/idauto/pull/7) (IDA-DS-1 Design System +
+citizen UI, retargeted to main after #6, merge `c65215a` = current `main`)
+are **merged**. Clean-clone verification of `main`: 17/17 suites (1186
+assertions) 0 failures on fresh PostgreSQL 16; browser QA (Chromium) flows
+A–E green, 0 horizontal overflow at 320–1280px; Lighthouse local — home
+99/100/96/100, passport 89/100/96/90 (perf/a11y/bp/seo); `npm audit` 0;
+A5-PLATE and `qr.payload === ivid` re-verified against the running server.
+Design frozen: « Encre & Papier, scellé de vert », TUN_STD black plate
+`SSS تونس NNNN`, no flag, no band. **ENGINEERING COMPLETE · PRODUCTION NOT
+READY · CITIZEN-FACING NOT READY** — deployment is blocked on host/owner
+steps (idauto.tn DNS points at `213.186.33.5` OVH shared hosting, not the
+Mythos VPS; deploy/TLS/backup verification are host actions unreachable from
+the Claude Code cloud environment). The exact remaining steps and the
+rollback procedure are in [`PRODUCTION_RUNBOOK.md`](PRODUCTION_RUNBOOK.md).
+Legal gates L01–L16 remain 16/16 OPEN; `CITIZEN_FACING_IDA4_READY = NO`
+unchanged.
+
+---
+
 **This is the preserved implementation history of ID Auto**, extracted verbatim from
 `othoth77/mythos-prod`'s `docs/AI_HANDOVER.md` on 2026-08-18 when the project was moved into
 this standalone repository.
