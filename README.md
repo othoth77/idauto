@@ -84,7 +84,10 @@ database/       PostgreSQL schema, migrations, synthetic seed data
 config/         configurable rules and feature flags (no secrets)
 ops/            operator tooling and runbooks — media integrity, backup, restore
 src/            reserved layout for the protocol-era implementation — NOT yet implemented
-tests/          the automated suite (601 assertions across 13 suites)
+web/            the IDauto Design System + citizen UI (docs/DESIGN_SYSTEM.md) — tokens,
+                components, the Tunisian plate system, and the /  + /passport pages served
+                by reference/api.js in the A5-PLATE PUBLIC phase only
+tests/          the automated suite
 ```
 
 `reference/` is where the code that runs today lives. `src/` is a reserved skeleton for the

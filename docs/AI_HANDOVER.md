@@ -27,6 +27,54 @@ For the current state, read [`ROADMAP.md`](ROADMAP.md). For what changed on 2026
 
 ---
 
+## IDA-DS-1 — DESIGN SYSTEM + CITIZEN UI TRANSPLANTED AND WIRED TO THE REAL SURFACE (2026-08-26)
+
+Branch `claude/idauto-design-system-lllzpz`, based on `ida4-option-c` (PR #6 head
+`615f11a` — this stage builds ON Option C's routes and changes none of its rulings; PR #6
+itself is preserved, not merged, not superseded). Origin: the IDauto Design System first
+delivered as `projects/idauto-design-system/` in `othoth77/mythos-prod` (PR #90, same
+day), transplanted here per the owner's order and adapted — not copied blind.
+
+**What adapted during transplantation (the differences that matter):** canonical plate
+form corrected to the catalogue's own `SSS TUN NNNN` (was an invented `TU` — now
+cross-checked against `config/idauto.example.json` through `reference/plate-validator.js`,
+per AD-3); status vocabularies corrected to the real schema constraints
+(`chk_vehicle_status`, `chk_fact_status` — no invented states); trust display corrected to
+T0–T3 + SEPARATE `anchored` (TRUST_MODEL §2.1); all inline styles/scripts and remote fonts
+removed (the repo CSP `script-src 'self'; style-src 'self'` is test-asserted on every
+served page); QR vendored for real (nayuki MIT v1.8.0, npm-byte-identical except the
+documented export tail) and rendered as inline SVG from `qr.payload` with a client-side
+`payload === ivid` assertion mirroring the server's.
+
+**Surface wiring (A5-PLATE implemented in UI):** anonymous plate submit resolves nothing
+and makes ZERO requests (E2E-asserted) — the explainer routes citizens to QR/IVID;
+professional flow uses only existing authenticated routes (plate → `vehicle_ivid` →
+`GET /api/passport/:ivid`), token in page memory only; the citizen static surface is
+served by a new map-based `serveCitizenAsset()` gated by the SAME
+`public_resolution.enabled` switch as the public route — PRIVATE phase leaves `/`
+byte-identical (401, proven live). Backend delta is exactly two things: that asset map,
+and `vehicle_ivid` joined into `GET /api/plates/:plate_number` (public route untouched,
+test-asserted).
+
+**Validation (first-hand, this branch):** new offline suite `tests/ida4-ds-ui-test.js`
+**345/0**. Full 17-suite pass against a purpose-built local PostgreSQL 16 (schema +
+ida-3a + option-c migrations + synthetic seed): 2a 44/0 · 2c 26/0 · 2d 39/0 · 2f 32/0 ·
+2g 17/0 · 2h 37/0 (one 36/1 on the very first post-seed run, clean on re-run and on every
+run since — recorded, not hidden) · 3a 47/0 · 3b 67/0 · 3c 63/0 · 3d 74/0 · 3e 48/0 ·
+3f 35/0 · foundation 130/0 (env-free run — it REFUSES live-DB env by design) · option-c
+128/0 · storage-ops 73/0 · identity-conformance 81/0. Chromium E2E against the live
+server: all A5-PLATE invariants, public passport render with real QR, 404/429 states,
+professional plate→passport, zero console errors; responsive 320/390/768/1024/1280 ×
+light/dark on both pages = 0 overflow (20/20); phase gate proven live both ways.
+
+**Honest limits:** citizen pages are French (RTL-ready, not RTL-done); Plex faces not
+self-hosted (deployment step); the public passport has no dated event stream, so no
+timeline renders from real data (none invented); `web/design-system/pages/components.html`
+is documentation, deliberately unserved; **CITIZEN_FACING_IDA4_READY stays NO** — legal
+gates untouched. Docs: `docs/DESIGN_SYSTEM.md` (new), CHANGELOG, README.
+
+---
+
 ## IDA4-OPTION-C — IVID ISSUANCE + THE IVID-ONLY PUBLIC PASSPORT SURFACE (2026-08-19) — SONNET IMPLEMENTATION, OPUS FINAL VERDICT: APPROVE, HAIKU AUDIT: ACCEPT-WITH-FINDINGS, A5-PLATE REVISED RULING IMPLEMENTED, PENDING RE-REVIEW
 
 **A5-PLATE REVISED RULING addendum (2026-08-19, after both review verdicts below):** the

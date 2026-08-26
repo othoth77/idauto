@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Passeport Véhicule</title>
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <link rel="stylesheet" href="/assets/base.css">
+  <link rel="stylesheet" href="/assets/components.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<p id="ida-live" class="ida-sr-only" role="status" aria-live="polite"></p>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation principale">
+      <ul class="ida-nav-links">
+        <li><a href="/">Vérifier</a></li>
+        <li><a href="/passport" aria-current="page">Passeport</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer le thème clair ou sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-container--narrow ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <!-- IVID entry, shown when the page is opened without ?ivid= -->
+    <form class="ida-stack" data-ivid-form>
+      <div class="ida-field ida-u-maxch-40">
+        <label for="pp-ivid">IVID du véhicule</label>
+        <input class="ida-input ida-id" id="pp-ivid" name="ivid" autocomplete="off" spellcheck="false" placeholder="ivid:1:…" aria-describedby="pp-ivid-hint">
+        <p id="pp-ivid-hint" class="ida-hint">L'identifiant imprimé sous le QR IDauto du véhicule.</p>
+        <p class="ida-error-msg" data-ivid-error hidden></p>
+      </div>
+      <div>
+        <button type="submit" class="ida-btn ida-btn--primary">Ouvrir le passeport</button>
+      </div>
+    </form>
+
+    <!-- Loading -->
+    <div class="ida-card ida-stack" data-passport-loading hidden aria-busy="true" aria-label="Chargement du passeport">
+      <div class="ida-skeleton ida-u-maxch-22"></div>
+      <div class="ida-skeleton"></div>
+      <div class="ida-skeleton ida-u-maxch-40"></div>
+    </div>
+
+    <!-- Errors -->
+    <div class="ida-error-state ida-stack" data-passport-error hidden>
+      <p class="ida-h4" data-passport-error-title>Consultation impossible</p>
+      <p class="ida-small ida-muted" data-passport-error-detail></p>
+    </div>
+
+    <!-- The passport renders here (web/design-system passport language) -->
+    <section data-passport-result hidden aria-live="polite"></section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — protocole ouvert d'identité et d'historique des véhicules.</p>
+    <p class="ida-caption">Apache-2.0 · <a href="https://github.com/othoth77/idauto">source</a></p>
+  </div>
+</footer>
+
+<script src="/assets/ivid-client.js"></script>
+<script src="/assets/qrcodegen.js"></script>
+<script src="/assets/passport-render.js"></script>
+<script src="/assets/ui.js"></script>
+<script src="/assets/passport.js"></script>
+</body>
+</html>

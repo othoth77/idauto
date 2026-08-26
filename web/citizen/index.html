@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — L'identité numérique de votre véhicule</title>
+  <meta name="description" content="IDauto donne à chaque véhicule une identité numérique vérifiable : plaque, IVID, passeport et historique adossé à des preuves.">
+  <link rel="stylesheet" href="/assets/tokens.css">
+  <link rel="stylesheet" href="/assets/base.css">
+  <link rel="stylesheet" href="/assets/components.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<p id="ida-live" class="ida-sr-only" role="status" aria-live="polite"></p>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation principale">
+      <ul class="ida-nav-links">
+        <li><a href="/" aria-current="page">Vérifier</a></li>
+        <li><a href="/passport">Passeport</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer le thème clair ou sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="ida-container ida-u-pad-hero ida-u-center">
+    <div class="ida-stack">
+      <h1 class="ida-u-maxch-22 ida-u-mx-auto">L'identité numérique de votre véhicule</h1>
+      <p class="ida-muted ida-u-maxch-52 ida-u-mx-auto">
+        Une plaque, un identifiant IVID, un passeport numérique&nbsp;: l'historique du véhicule,
+        adossé à des sources et des preuves — jamais à des promesses.
+      </p>
+    </div>
+  </section>
+
+  <section class="ida-container" aria-labelledby="verif-title">
+    <div class="ida-card ida-card--raised ida-trame ida-u-center ida-u-pad-block-lg">
+      <div class="ida-stack-lg">
+        <h2 id="verif-title" class="ida-h3">Vérifier un véhicule par sa plaque</h2>
+
+        <form class="ida-search" data-plate-form>
+          <div class="ida-plate-input" data-plate-format="TUN_STD" data-state="empty" role="group" aria-labelledby="verif-title" aria-describedby="plate-hint">
+            <label class="ida-sr-only" for="plate-serie">Série de la plaque (1 à 3 chiffres)</label>
+            <input class="ida-plate-serie" id="plate-serie" name="serie" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="000">
+            <span class="ida-plate-word" aria-hidden="true">تونس</span>
+            <label class="ida-sr-only" for="plate-numero">Numéro de la plaque (1 à 4 chiffres)</label>
+            <input class="ida-plate-numero" id="plate-numero" name="numero" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="0000">
+          </div>
+          <p id="plate-hint" class="ida-caption">Plaque tunisienne — série puis numéro. Exemple&nbsp;: 220&nbsp;<bdi>تونس</bdi>&nbsp;4518</p>
+          <p class="ida-error-msg" data-plate-error hidden></p>
+          <div class="ida-search-actions">
+            <button type="submit" class="ida-btn ida-btn--primary">Consulter l'identité</button>
+          </div>
+        </form>
+
+        <!-- A5-PLATE: public resolution is IVID-only. Shown when an anonymous
+             visitor submits a plate. -->
+        <div class="ida-alert ida-alert--info ida-u-maxch-52 ida-u-mx-auto" data-plate-public-notice hidden>
+          <div>
+            <p class="ida-alert-title">La consultation publique se fait par IVID</p>
+            <p class="ida-small">Pour protéger la vie privée, une plaque ne permet pas de consulter
+            un passeport publiquement. Scannez le QR IDauto du véhicule ou saisissez son IVID
+            ci-dessous. Les professionnels autorisés peuvent consulter par plaque après connexion.</p>
+          </div>
+        </div>
+
+        <div>
+          <p class="ida-label ida-u-mbe-3">Autres accès</p>
+          <form class="ida-search" data-ivid-form>
+            <div class="ida-field ida-u-maxch-40 ida-u-mx-auto ida-u-block">
+              <label for="q-ivid">IVID du véhicule</label>
+              <input class="ida-input ida-id" id="q-ivid" name="ivid" autocomplete="off" spellcheck="false" placeholder="ivid:1:…" aria-describedby="ivid-hint">
+              <p id="ivid-hint" class="ida-hint">L'identifiant imprimé sous le QR IDauto du véhicule.</p>
+              <p class="ida-error-msg" data-ivid-error hidden></p>
+            </div>
+            <div class="ida-search-actions ida-u-mbs-3">
+              <button type="submit" class="ida-btn ida-btn--secondary">Ouvrir le passeport</button>
+            </div>
+          </form>
+          <p class="ida-caption ida-u-mbs-3">Le QR d'un véhicule encode uniquement son IVID — jamais sa plaque.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Professional access: plate lookup is a PRIVATE-phase capability
+       (A5-PLATE). The token lives only in page memory, like the admin UI. -->
+  <section class="ida-container ida-u-pad-section" aria-labelledby="pro-title">
+    <details class="ida-card">
+      <summary id="pro-title" class="ida-h4">Accès professionnel — consultation par plaque</summary>
+      <div class="ida-stack ida-u-mbs-4">
+        <p class="ida-small ida-muted ida-u-maxch-52">Réservé aux organisations autorisées. Le jeton n'est
+        conservé qu'en mémoire de page, jamais enregistré dans le navigateur.</p>
+        <div class="ida-field ida-u-maxch-40">
+          <label for="pro-token">Jeton d'accès</label>
+          <input class="ida-input" id="pro-token" type="password" autocomplete="off">
+        </div>
+        <p class="ida-error-msg" data-pro-error hidden></p>
+        <p class="ida-caption">Saisissez ensuite la plaque ci-dessus puis «&nbsp;Consulter l'identité&nbsp;».</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- Private passport result (professional flow) renders here, on this page,
+       so the token never leaves page memory. -->
+  <section class="ida-container ida-u-pad-section" data-passport-result hidden aria-live="polite"></section>
+
+  <section class="ida-container ida-u-pad-section" aria-labelledby="passport-expl">
+    <div class="ida-stack-lg">
+      <h2 id="passport-expl" class="ida-h3 ida-u-center">Le Passeport Véhicule IDauto</h2>
+      <div class="ida-grid ida-grid-3">
+        <div class="ida-card ida-stack">
+          <p class="ida-label">Identité</p>
+          <h3 class="ida-h4">Un identifiant stable&nbsp;: l'IVID</h3>
+          <p class="ida-small ida-muted">Le véhicule reçoit un identifiant durable, indépendant de sa plaque et de ses détenteurs successifs.</p>
+        </div>
+        <div class="ida-card ida-stack">
+          <p class="ida-label">Preuves</p>
+          <h3 class="ida-h4">Des faits adossés à des sources</h3>
+          <p class="ida-small ida-muted">Chaque fait du passeport porte son statut de vérification et sa confiance. Ce qui n'est pas prouvé est affiché comme tel.</p>
+        </div>
+        <div class="ida-card ida-stack">
+          <p class="ida-label">Confiance</p>
+          <h3 class="ida-h4">Des niveaux T0–T3, jamais des slogans</h3>
+          <p class="ida-small ida-muted">La corroboration se lit sur l'échelle du protocole — l'ancrage cryptographique est affiché à part, jamais confondu avec la vérité.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — protocole ouvert d'identité et d'historique des véhicules.</p>
+    <p class="ida-caption">Apache-2.0 · <a href="https://github.com/othoth77/idauto">source</a></p>
+  </div>
+</footer>
+
+<script src="/assets/plate.js"></script>
+<script src="/assets/ivid-client.js"></script>
+<script src="/assets/qrcodegen.js"></script>
+<script src="/assets/passport-render.js"></script>
+<script src="/assets/ui.js"></script>
+<script src="/assets/home.js"></script>
+</body>
+</html>
