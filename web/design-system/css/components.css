@@ -1,0 +1,609 @@
+/* IDauto Design System — components.css
+ * Every visual value is a token. Interactive hit areas ≥ 44px even when the
+ * visual control is smaller (transparent expansion, never margin). */
+
+/* ============ Button ============ */
+.ida-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ida-space-2);
+  min-height: 44px;
+  padding: var(--ida-space-2) var(--ida-space-5);
+  border-radius: var(--ida-radius-control);
+  border: 1px solid transparent;
+  font-weight: var(--ida-weight-medium);
+  font-size: var(--ida-size-16);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--ida-duration-fast) var(--ida-easing-standard),
+              border-color var(--ida-duration-fast) var(--ida-easing-standard),
+              color var(--ida-duration-fast) var(--ida-easing-standard);
+}
+.ida-btn:disabled, .ida-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+
+.ida-btn--primary { background: var(--ida-primary); color: var(--ida-primary-contrast); }
+.ida-btn--primary:hover:not(:disabled) { background: var(--ida-verify-strong); color: var(--ida-plate-glyph); }
+
+.ida-btn--secondary { background: transparent; color: var(--ida-text); border-color: var(--ida-border-strong); }
+.ida-btn--secondary:hover:not(:disabled) { border-color: var(--ida-text); background: var(--ida-surface); }
+
+.ida-btn--ghost { background: transparent; color: var(--ida-text-muted); }
+.ida-btn--ghost:hover:not(:disabled) { color: var(--ida-text); background: var(--ida-surface-sunken); }
+
+.ida-btn--danger { background: var(--ida-danger); color: var(--ida-plate-glyph); }
+.ida-btn--danger:hover:not(:disabled) { background: var(--ida-text); }
+
+.ida-btn--sm { min-height: 36px; padding: var(--ida-space-1) var(--ida-space-3); font-size: var(--ida-size-14); position: relative; }
+.ida-btn--sm::after { content: ""; position: absolute; inset: -4px; /* extends hit area to 44px */ }
+
+/* ============ Field / Input ============ */
+.ida-field { display: flex; flex-direction: column; gap: var(--ida-space-2); }
+.ida-field > label { font-weight: var(--ida-weight-medium); font-size: var(--ida-size-14); }
+.ida-field .ida-hint { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+.ida-field .ida-error-msg { font-size: var(--ida-size-14); color: var(--ida-danger); display: flex; gap: var(--ida-space-1); align-items: center; }
+
+.ida-input {
+  min-height: 44px;
+  padding: var(--ida-space-2) var(--ida-space-3);
+  background: var(--ida-surface);
+  color: var(--ida-text);
+  border: 1px solid var(--ida-border-strong);
+  border-radius: var(--ida-radius-control);
+  width: 100%;
+  transition: border-color var(--ida-duration-fast) var(--ida-easing-standard);
+}
+.ida-input:hover { border-color: var(--ida-text-muted); }
+.ida-input:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 0; border-color: var(--ida-focus); }
+.ida-input[aria-invalid="true"] { border-color: var(--ida-danger); }
+.ida-input:disabled { background: var(--ida-surface-sunken); color: var(--ida-text-faint); cursor: not-allowed; }
+
+/* ============ La Plaque — PlateDisplay ============
+ * Tunisian série plate: SSS تونس NNNN, white on black, ratio ≈ 4.5:1.
+ * No flag, no country band, no European element. */
+.ida-plate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+  background: var(--ida-plate-field);
+  color: var(--ida-plate-glyph);
+  border-radius: var(--ida-radius-plate);
+  border: 1px solid var(--ida-border-strong);
+  box-shadow: var(--ida-shadow-1);
+  padding: 0.28em 0.9em;
+  font-family: var(--ida-font-id);
+  font-weight: var(--ida-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ida-size-28);
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  direction: ltr; /* SSS تونس NNNN reads as one LTR string of digits around the Arabic word */
+}
+.ida-plate .ida-plate-word {
+  font-family: var(--ida-font-editorial);
+  font-weight: var(--ida-weight-semibold);
+  font-size: 0.82em;
+  letter-spacing: 0;
+}
+.ida-plate--sm { font-size: var(--ida-size-16); border-radius: var(--ida-radius-control); }
+.ida-plate--lg { font-size: var(--ida-size-28); }
+@media (min-width: 480px) { .ida-plate--lg { font-size: var(--ida-size-36); } }
+@media (min-width: 768px) { .ida-plate--lg { font-size: var(--ida-size-46); } }
+
+/* ============ PlateInput ============
+ * Two numeric fields around the fixed word تونس, styled as the plate itself.
+ * States: empty / focused / typing / valid / invalid / loading / verified / disabled
+ * driven by [data-state] set in js/plate.js. */
+.ida-plate-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  background: var(--ida-plate-field);
+  border: 2px solid var(--ida-border-strong);
+  border-radius: var(--ida-radius-plate);
+  padding: 0.28em 0.7em;
+  font-size: var(--ida-size-28);
+  transition: border-color var(--ida-duration-base) var(--ida-easing-standard),
+              box-shadow var(--ida-duration-base) var(--ida-easing-standard);
+  direction: ltr;
+}
+@media (min-width: 768px) { .ida-plate-input { font-size: var(--ida-size-36); } }
+
+.ida-plate-input input {
+  background: transparent;
+  border: 0;
+  color: var(--ida-plate-glyph);
+  font-family: var(--ida-font-id);
+  font-weight: var(--ida-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  font-size: 1em;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
+  text-align: center;
+  min-width: 0;
+  padding: 0;
+  caret-color: var(--ida-plate-glyph);
+}
+.ida-plate-input input:focus-visible { outline: none; } /* focus is carried by the plate frame */
+.ida-plate-input input::placeholder { color: var(--ida-plate-glyph); opacity: 0.35; }
+.ida-plate-input .ida-plate-serie { width: 3.6ch; }
+.ida-plate-input .ida-plate-numero { width: 5.6ch; }
+.ida-plate-input .ida-plate-word {
+  color: var(--ida-plate-glyph);
+  font-family: var(--ida-font-editorial);
+  font-weight: var(--ida-weight-semibold);
+  font-size: 0.82em;
+  user-select: none;
+}
+
+.ida-plate-input:focus-within,
+.ida-plate-input[data-state="focused"],
+.ida-plate-input[data-state="typing"] {
+  border-color: var(--ida-focus);
+  box-shadow: 0 0 0 2px var(--ida-verify-tint);
+}
+.ida-plate-input[data-state="valid"] { border-color: var(--ida-verify); }
+.ida-plate-input[data-state="invalid"] { border-color: var(--ida-danger); }
+.ida-plate-input[data-state="verified"] { border-color: var(--ida-verify-strong); }
+.ida-plate-input[data-state="loading"] { border-color: var(--ida-border-strong); }
+.ida-plate-input[data-state="disabled"],
+.ida-plate-input:has(input:disabled) { opacity: 0.45; }
+
+/* loading tick — a control-point pulse on the frame, not a spinner */
+.ida-plate-input[data-state="loading"]::after {
+  content: "";
+  width: 0.3em; height: 0.3em;
+  border-radius: var(--ida-radius-seal);
+  background: var(--ida-plate-glyph);
+  animation: ida-pulse 1s var(--ida-easing-standard) infinite alternate;
+}
+@keyframes ida-pulse { from { opacity: 0.2; } to { opacity: 0.9; } }
+
+/* ============ Search (page-level) ============ */
+.ida-search { display: flex; flex-direction: column; gap: var(--ida-space-3); align-items: center; }
+.ida-search .ida-search-actions { display: flex; gap: var(--ida-space-3); flex-wrap: wrap; justify-content: center; }
+
+/* ============ IVIDDisplay ============ */
+.ida-ivid {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ida-space-2);
+  font-family: var(--ida-font-id);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  font-size: var(--ida-size-14);
+  background: var(--ida-surface-sunken);
+  border: 1px solid var(--ida-border);
+  border-radius: var(--ida-radius-chip);
+  padding: var(--ida-space-1) var(--ida-space-2);
+  color: var(--ida-text);
+  direction: ltr;
+}
+.ida-ivid .ida-ivid-copy {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--ida-text-muted); padding: var(--ida-space-1);
+  position: relative; display: inline-flex;
+}
+.ida-ivid .ida-ivid-copy::after { content: ""; position: absolute; inset: -10px; }
+.ida-ivid .ida-ivid-copy:hover { color: var(--ida-verify); }
+
+/* ============ Sceau — VerificationBadge ============
+ * The verification language: solid seal ring = verified, dashed = pending,
+ * plain chip = source/info, triangle mark = anomaly. */
+.ida-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ida-space-2);
+  font-size: var(--ida-size-14);
+  font-weight: var(--ida-weight-medium);
+  border-radius: var(--ida-radius-seal);
+  padding: var(--ida-space-1) var(--ida-space-3);
+  border: 1.5px solid currentColor;
+}
+.ida-seal .ida-seal-dot {
+  width: var(--ida-space-2); height: var(--ida-space-2);
+  border-radius: var(--ida-radius-seal);
+  background: currentColor;
+  flex: none;
+}
+.ida-seal--verified { color: var(--ida-verify); background: var(--ida-verify-tint); }
+.ida-seal--pending { color: var(--ida-pending); background: var(--ida-pending-tint); border-style: dashed; }
+.ida-seal--anomaly { color: var(--ida-danger); background: var(--ida-danger-tint); }
+.ida-seal--info { color: var(--ida-info); background: var(--ida-info-tint); }
+
+/* stamp-in animation, used when a verification state is confirmed live */
+.ida-seal--stamp { animation: ida-stamp var(--ida-duration-slow) var(--ida-easing-standard); }
+@keyframes ida-stamp {
+  from { transform: scale(1.12); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* ============ Status chip (event / record states) ============ */
+.ida-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ida-space-1);
+  font-size: var(--ida-size-12);
+  font-weight: var(--ida-weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: var(--ida-radius-chip);
+  padding: var(--ida-space-1) var(--ida-space-2);
+}
+[lang="ar"] .ida-status { letter-spacing: 0; text-transform: none; }
+.ida-status--verified { color: var(--ida-verify); background: var(--ida-verify-tint); }
+.ida-status--pending { color: var(--ida-pending); background: var(--ida-pending-tint); }
+.ida-status--anomaly { color: var(--ida-danger); background: var(--ida-danger-tint); }
+.ida-status--neutral { color: var(--ida-info); background: var(--ida-info-tint); }
+
+/* ============ TrustIndicator — protocol trust levels T0–T3 ============
+ * Four control marks; filled marks = reached level. Never a percentage. */
+.ida-trust { display: inline-flex; align-items: center; gap: var(--ida-space-2); }
+.ida-trust .ida-trust-marks { display: inline-flex; gap: var(--ida-space-1); }
+.ida-trust .ida-trust-mark {
+  width: var(--ida-space-4); height: var(--ida-space-1);
+  border-radius: var(--ida-radius-chip);
+  background: var(--ida-border);
+}
+.ida-trust .ida-trust-mark--on { background: var(--ida-verify); }
+.ida-trust .ida-trust-level { font-family: var(--ida-font-id); font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+
+/* ============ Cards ============ */
+.ida-card {
+  background: var(--ida-surface);
+  border: 1px solid var(--ida-border);
+  border-radius: var(--ida-radius-card);
+  padding: var(--ida-space-5);
+}
+.ida-card--raised { box-shadow: var(--ida-shadow-2); border-color: var(--ida-border); }
+
+/* VehicleCard — search result / listing row */
+.ida-vehicle-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ida-space-4);
+  background: var(--ida-surface);
+  border: 1px solid var(--ida-border);
+  border-radius: var(--ida-radius-card);
+  padding: var(--ida-space-4) var(--ida-space-5);
+  transition: border-color var(--ida-duration-fast) var(--ida-easing-standard);
+}
+.ida-vehicle-card:hover { border-color: var(--ida-border-strong); }
+.ida-vehicle-card .ida-vehicle-meta { flex: 1 1 200px; min-width: 0; }
+.ida-vehicle-card .ida-vehicle-name { font-weight: var(--ida-weight-semibold); }
+
+/* EvidenceCard / DocumentCard */
+.ida-evidence {
+  display: flex;
+  gap: var(--ida-space-3);
+  align-items: flex-start;
+  background: var(--ida-surface);
+  border: 1px solid var(--ida-border);
+  border-inline-start: 3px solid var(--ida-verify);
+  border-radius: var(--ida-radius-card);
+  padding: var(--ida-space-4);
+}
+.ida-evidence--pending { border-inline-start-color: var(--ida-pending); }
+.ida-evidence--anomaly { border-inline-start-color: var(--ida-danger); }
+.ida-evidence .ida-evidence-icon { flex: none; color: var(--ida-text-muted); margin-block-start: 2px; }
+.ida-evidence .ida-evidence-source {
+  font-family: var(--ida-font-id);
+  font-size: var(--ida-size-12);
+  color: var(--ida-text-muted);
+}
+
+/* ============ Passport ============
+ * A digital trust document, not a SaaS card: trame header band, marginal
+ * labels, perforated separators, identifier typography. */
+.ida-passport {
+  background: var(--ida-surface);
+  border: 1px solid var(--ida-border-strong);
+  border-radius: var(--ida-radius-card);
+  overflow: hidden;
+  box-shadow: var(--ida-shadow-2);
+}
+.ida-passport-header {
+  color: var(--ida-text);
+  background: var(--ida-surface-sunken);
+  padding: var(--ida-space-5);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ida-space-4);
+  align-items: center;
+  justify-content: space-between;
+  border-block-end: 1px solid var(--ida-border);
+}
+.ida-passport-section { padding: var(--ida-space-5); }
+.ida-passport-section + .ida-passport-section { border-block-start: 2px dotted var(--ida-border-strong); }
+.ida-passport-section > .ida-label { display: block; margin-block-end: var(--ida-space-3); }
+
+.ida-passport-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--ida-space-4);
+  margin: 0;
+}
+.ida-passport-facts dt { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+.ida-passport-facts dd { margin: 0; font-weight: var(--ida-weight-medium); overflow-wrap: anywhere; }
+
+/* ============ Timeline — les repères de traçabilité ============
+ * A vertical control line with tick marks; each event is a control point.
+ * Verified points are filled, pending points hollow, anomalies marked. */
+.ida-timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.ida-timeline::before {
+  content: "";
+  position: absolute;
+  inset-block: var(--ida-space-2);
+  inset-inline-start: 7px;
+  width: 2px;
+  background: var(--ida-border-strong);
+}
+.ida-event {
+  position: relative;
+  padding-inline-start: var(--ida-space-6);
+  padding-block-end: var(--ida-space-5);
+}
+.ida-event:last-child { padding-block-end: 0; }
+.ida-event::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: var(--ida-space-1);
+  width: var(--ida-space-4); height: var(--ida-space-4);
+  border-radius: var(--ida-radius-seal);
+  border: 2px solid var(--ida-verify);
+  background: var(--ida-surface);
+}
+.ida-event--verified::before { background: var(--ida-verify); box-shadow: inset 0 0 0 3px var(--ida-surface); }
+.ida-event--pending::before { border-color: var(--ida-pending); border-style: dashed; }
+.ida-event--anomaly::before { border-color: var(--ida-danger); background: var(--ida-danger-tint); }
+
+.ida-event .ida-event-date {
+  font-family: var(--ida-font-id);
+  font-size: var(--ida-size-12);
+  color: var(--ida-text-muted);
+  letter-spacing: 0.04em;
+}
+.ida-event .ida-event-title { font-weight: var(--ida-weight-semibold); margin-block: var(--ida-space-1); }
+.ida-event .ida-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ida-space-2);
+  align-items: center;
+  margin-block-start: var(--ida-space-2);
+}
+
+/* ============ QRCode frame ============
+ * Frames a product-generated QR (IVID-only, never the plate). The design
+ * system owns the quiet zone, caption and print treatment — not the matrix. */
+.ida-qr {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ida-space-2);
+  background: var(--ida-surface);
+  border: 1px solid var(--ida-border-strong);
+  border-radius: var(--ida-radius-card);
+  padding: var(--ida-space-4);
+}
+.ida-qr .ida-qr-zone {
+  width: 128px; height: 128px;
+  display: grid;
+  place-items: center;
+  background: var(--ida-surface);
+  color: var(--ida-text-muted);
+  border: 2px dotted var(--ida-border);
+  border-radius: var(--ida-radius-chip);
+  text-align: center;
+  font-size: var(--ida-size-12);
+  padding: var(--ida-space-2);
+}
+.ida-qr .ida-qr-caption { font-family: var(--ida-font-id); font-size: var(--ida-size-12); color: var(--ida-text-muted); direction: ltr; }
+
+/* ============ Alert ============ */
+.ida-alert {
+  display: flex;
+  gap: var(--ida-space-3);
+  align-items: flex-start;
+  border-radius: var(--ida-radius-card);
+  border: 1px solid var(--ida-border);
+  padding: var(--ida-space-4);
+  background: var(--ida-surface);
+}
+.ida-alert--info { border-inline-start: 3px solid var(--ida-info); }
+.ida-alert--success { border-inline-start: 3px solid var(--ida-verify); background: var(--ida-verify-tint); }
+.ida-alert--warning { border-inline-start: 3px solid var(--ida-pending); background: var(--ida-pending-tint); }
+.ida-alert--danger { border-inline-start: 3px solid var(--ida-danger); background: var(--ida-danger-tint); }
+.ida-alert .ida-alert-title { font-weight: var(--ida-weight-semibold); }
+
+/* ============ Modal / Drawer ============ */
+.ida-modal[open], .ida-drawer[open] { display: flex; }
+.ida-modal, .ida-drawer {
+  border: 0; padding: 0; margin: auto;
+  background: var(--ida-surface-raised);
+  color: var(--ida-text);
+  border-radius: var(--ida-radius-card);
+  box-shadow: var(--ida-shadow-3);
+  max-width: min(560px, calc(100vw - var(--ida-space-6)));
+  width: 100%;
+  flex-direction: column;
+}
+.ida-modal::backdrop, .ida-drawer::backdrop { background: var(--ida-scrim, rgba(28, 27, 24, 0.5)); }
+.ida-modal .ida-modal-header, .ida-drawer .ida-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--ida-space-3);
+  padding: var(--ida-space-4) var(--ida-space-5);
+  border-block-end: 1px solid var(--ida-border);
+}
+.ida-modal .ida-modal-body, .ida-drawer .ida-modal-body { padding: var(--ida-space-5); }
+.ida-modal .ida-modal-footer {
+  display: flex; justify-content: flex-end; gap: var(--ida-space-3);
+  padding: var(--ida-space-4) var(--ida-space-5);
+  border-block-start: 1px solid var(--ida-border);
+}
+.ida-drawer {
+  margin: 0 0 0 auto;
+  min-height: 100vh;
+  max-width: min(420px, 90vw);
+  border-radius: 0;
+}
+@media (max-width: 480px) {
+  .ida-drawer { max-width: 100vw; }
+}
+
+/* ============ Tabs ============ */
+.ida-tabs [role="tablist"] {
+  display: flex;
+  gap: var(--ida-space-2);
+  border-block-end: 1px solid var(--ida-border);
+  overflow-x: auto;
+}
+.ida-tabs [role="tab"] {
+  border: 0; background: transparent; cursor: pointer;
+  min-height: 44px;
+  padding: var(--ida-space-2) var(--ida-space-4);
+  color: var(--ida-text-muted);
+  font-weight: var(--ida-weight-medium);
+  border-block-end: 2px solid transparent;
+  white-space: nowrap;
+}
+.ida-tabs [role="tab"][aria-selected="true"] {
+  color: var(--ida-text);
+  border-block-end-color: var(--ida-verify);
+}
+.ida-tabs [role="tabpanel"] { padding-block-start: var(--ida-space-5); }
+
+/* ============ Table ============ */
+.ida-table-wrap { overflow-x: auto; border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); }
+.ida-table { border-collapse: collapse; width: 100%; font-size: var(--ida-size-14); }
+.ida-table th, .ida-table td { text-align: start; padding: var(--ida-space-3) var(--ida-space-4); border-block-end: 1px solid var(--ida-border); }
+.ida-table th { font-size: var(--ida-size-12); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ida-text-muted); background: var(--ida-surface-sunken); }
+[lang="ar"] .ida-table th { letter-spacing: 0; text-transform: none; }
+.ida-table tr:last-child td { border-block-end: 0; }
+.ida-table .ida-id { font-size: var(--ida-size-12); }
+
+/* ============ Navigation / Footer ============ */
+.ida-nav {
+  background: var(--ida-surface);
+  border-block-end: 1px solid var(--ida-border);
+}
+.ida-nav-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ida-space-2) var(--ida-space-4);
+  min-height: var(--ida-space-8);
+  padding-block: var(--ida-space-2);
+}
+.ida-nav-inner > nav { min-width: 0; max-width: 100%; } /* flex child may shrink so the link row scrolls */
+.ida-nav-links {
+  display: flex;
+  gap: var(--ida-space-2);
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: auto; /* mobile: the link row scrolls inside itself, the page never does */
+}
+.ida-nav-links a {
+  display: inline-flex; align-items: center;
+  min-height: 44px;
+  padding: var(--ida-space-2) var(--ida-space-3);
+  text-decoration: none;
+  color: var(--ida-text-muted);
+  border-radius: var(--ida-radius-control);
+  font-weight: var(--ida-weight-medium);
+  font-size: var(--ida-size-14);
+}
+.ida-nav-links a:hover { color: var(--ida-text); background: var(--ida-surface-sunken); }
+.ida-nav-links a[aria-current="page"] { color: var(--ida-text); box-shadow: inset 0 -2px 0 0 var(--ida-verify); border-radius: var(--ida-radius-chip); }
+
+/* Wordmark — IDauto: "ID" carried in a seal box, "auto" in editorial type */
+.ida-wordmark {
+  display: inline-flex; align-items: center; gap: var(--ida-space-1);
+  text-decoration: none; color: var(--ida-text);
+  font-weight: var(--ida-weight-semibold); font-size: var(--ida-size-18);
+  letter-spacing: -0.01em;
+}
+.ida-wordmark .ida-wordmark-id {
+  font-family: var(--ida-font-id);
+  background: var(--ida-primary);
+  color: var(--ida-primary-contrast);
+  border-radius: var(--ida-radius-chip);
+  padding: 0 var(--ida-space-1);
+  letter-spacing: 0.04em;
+}
+.ida-wordmark:hover { color: var(--ida-text); }
+
+.ida-footer {
+  border-block-start: 1px solid var(--ida-border);
+  color: var(--ida-text-muted);
+  font-size: var(--ida-size-14);
+  margin-block-start: var(--ida-space-8);
+}
+.ida-footer .ida-footer-inner {
+  display: flex; flex-wrap: wrap; gap: var(--ida-space-4);
+  align-items: center; justify-content: space-between;
+  padding-block: var(--ida-space-5);
+}
+
+/* ============ Empty / Loading / Error states ============ */
+.ida-empty, .ida-error-state {
+  text-align: center;
+  padding: var(--ida-space-7) var(--ida-space-5);
+  border: 2px dotted var(--ida-border-strong);
+  border-radius: var(--ida-radius-card);
+  color: var(--ida-text-muted);
+}
+.ida-error-state { border-color: var(--ida-danger); color: var(--ida-text); }
+
+/* Loading — static-first skeletons (survive prefers-reduced-motion) */
+.ida-skeleton {
+  border-radius: var(--ida-radius-chip);
+  background: var(--ida-surface-sunken);
+  min-height: var(--ida-space-4);
+  animation: ida-pulse 1.2s var(--ida-easing-standard) infinite alternate;
+}
+
+/* ============ Demo helpers ============ */
+.ida-specimen {
+  display: inline-block;
+  font-family: var(--ida-font-id);
+  font-size: var(--ida-size-12);
+  letter-spacing: 0.08em;
+  color: var(--ida-pending);
+  background: var(--ida-pending-tint);
+  border-radius: var(--ida-radius-chip);
+  padding: 0 var(--ida-space-2);
+}
+
+/* ============ Utilities (CSP: no inline styles — every page layout need
+ * is a class here, tokens only) ============ */
+.ida-u-center { text-align: center; }
+.ida-u-mx-auto { margin-inline: auto; }
+.ida-u-maxch-22 { max-width: 22ch; }
+.ida-u-maxch-40 { max-width: 40ch; }
+.ida-u-maxch-52 { max-width: 52ch; }
+.ida-u-pad-hero { padding-block: var(--ida-space-7) var(--ida-space-6); }
+.ida-u-pad-section { padding-block: var(--ida-space-6); }
+.ida-u-pad-block-lg { padding-block: var(--ida-space-6); }
+.ida-u-mbs-2 { margin-block-start: var(--ida-space-2); }
+.ida-u-mbs-3 { margin-block-start: var(--ida-space-3); }
+.ida-u-mbs-4 { margin-block-start: var(--ida-space-4); }
+.ida-u-mbe-3 { margin-block-end: var(--ida-space-3); }
+.ida-u-row { display: flex; flex-wrap: wrap; gap: var(--ida-space-4); align-items: center; }
+.ida-u-row-lg { display: flex; flex-wrap: wrap; gap: var(--ida-space-5); align-items: center; }
+.ida-u-nolink { text-decoration: none; }
+.ida-container--narrow { max-width: 880px; }
+.ida-u-block { display: block; }
+
+/* QR rendered as inline SVG by web/citizen JS (img-src stays 'self') */
+.ida-qr-svg { width: 128px; height: 128px; }
+.ida-qr-svg svg { width: 100%; height: 100%; display: block; }
+.ida-qr-svg .ida-qr-dark { fill: var(--ida-text); }
+.ida-qr-svg .ida-qr-light { fill: var(--ida-surface); }

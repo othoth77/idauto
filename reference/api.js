@@ -121,6 +121,64 @@ function serveAdminAsset(req, res, pathname) {
 }
 
 // =====================================================
+// IDA-DS-1 — citizen UI static assets (web/)
+//
+// The IDauto Design System citizen surface (web/citizen + web/design-system
+// + web/vendor). Static shells and assets only — every DATA request the
+// pages make still goes through handlePublicPassportRoute() (public,
+// IVID-only) or requireAuth() (professional), exactly as before; this map
+// adds no data path and parses no query string.
+//
+// PHASE GATE (A5-PLATE): the citizen UI is the PUBLIC-phase surface and
+// follows public_resolution.enabled — the exact same owner-controlled
+// switch that gates GET /public/passport/:ivid, read through the same
+// loadPublicResolutionConfig() (same once-per-process cache semantics).
+// enabled = false (PRIVATE phase) → serveCitizenAsset() declines every
+// path and behavior is byte-identical to before this map existed ('/'
+// falls through to requireAuth() → 401, like any unknown path). No second
+// activation mechanism exists: the citizen shells can never be reachable
+// while public resolution is off, and CITIZEN_FACING_IDA4_READY remains
+// the deployment-decision gate this code does not decide.
+//
+// Map-based file resolution, identical to ADMIN_ASSETS above — no path
+// concatenation from request input, so no traversal surface.
+var CITIZEN_WEB_ROOT = path.join(__dirname, '..', 'web');
+var CITIZEN_ASSETS = {
+  '/': { file: 'citizen/index.html', contentType: 'text/html; charset=utf-8' },
+  '/index.html': { file: 'citizen/index.html', contentType: 'text/html; charset=utf-8' },
+  '/passport': { file: 'citizen/passport.html', contentType: 'text/html; charset=utf-8' },
+  '/assets/tokens.css': { file: 'design-system/tokens/tokens.css', contentType: 'text/css; charset=utf-8' },
+  '/assets/base.css': { file: 'design-system/css/base.css', contentType: 'text/css; charset=utf-8' },
+  '/assets/components.css': { file: 'design-system/css/components.css', contentType: 'text/css; charset=utf-8' },
+  '/assets/plate.js': { file: 'design-system/js/plate.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/ui.js': { file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/ivid-client.js': { file: 'design-system/js/ivid-client.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/qrcodegen.js': { file: 'vendor/qrcodegen.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/passport-render.js': { file: 'citizen/passport-render.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/home.js': { file: 'citizen/home.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' }
+};
+
+function serveCitizenAsset(req, res, pathname) {
+  var asset = CITIZEN_ASSETS[pathname];
+  if (!asset || req.method !== 'GET') return false;
+  // PHASE GATE before anything else — PRIVATE phase means this surface
+  // does not exist; fall through to the pre-existing dispatch unchanged.
+  if (!loadPublicResolutionConfig().enabled) return false;
+  fs.readFile(path.join(CITIZEN_WEB_ROOT, asset.file), function (err, content) {
+    if (err) return sendJson(res, 500, { error: 'citizen UI unavailable' });
+    res.writeHead(200, {
+      'Content-Type': asset.contentType,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+    });
+    res.end(content);
+  });
+  return true;
+}
+
+// =====================================================
 // IDA-4 Option C — GET /public/passport/:ivid
 // A5 OPTION C, 2026-08-19 (docs/IDA4_READINESS_AUDIT.md §A5)
 //
@@ -472,10 +530,15 @@ async function getVehicle(res, internalRef) {
 // GET /api/plates/:plate_number
 // No owner fields exist in the schema (idauto_plates has none, by design).
 async function getPlate(res, plateNumber) {
+  // IDA-DS-1: vehicle_ivid added so an authenticated (PRIVATE-phase) caller
+  // can go plate → IVID → GET /api/passport/:ivid without any new lookup
+  // route. The IVID is the public resolution credential (never a secret),
+  // and this route was already authenticated plate lookup — no scope widens.
   var result = await db.query(
     'SELECT p.plate_number, p.format_code, g.name_fr AS governorate_name, p.status, ' +
-    'p.vehicle_id, p.valid_from, p.valid_until ' +
+    'p.vehicle_id, v.ivid AS vehicle_ivid, p.valid_from, p.valid_until ' +
     'FROM idauto_plates p LEFT JOIN idauto_governorates g ON g.id = p.governorate_id ' +
+    'LEFT JOIN idauto_vehicles v ON v.id = p.vehicle_id ' +
     'WHERE p.plate_number = $1',
     [plateNumber]
   );
@@ -990,6 +1053,11 @@ function createServer() {
 
     if (serveAdminAsset(req, res, pathname)) return;
 
+    // IDA-DS-1 — citizen UI shells/assets; active ONLY in the A5-PLATE
+    // PUBLIC phase (see serveCitizenAsset()'s header). Static files only;
+    // never a data path.
+    if (serveCitizenAsset(req, res, pathname)) return;
+
     // A5 OPTION C, 2026-08-19 — the one unauthenticated route, reached
     // BEFORE requireAuth() deliberately. Every path under /public/ is
     // handled here and NEVER falls through to the authenticated ROUTES
@@ -1051,5 +1119,9 @@ module.exports = {
   createServer: createServer,
   parseMultipartBuffer: parseMultipartBuffer,
   ingestHttpStatus: ingestHttpStatus,
-  retryAfterSeconds: retryAfterSeconds
+  retryAfterSeconds: retryAfterSeconds,
+  // IDA-DS-1: exported for tests/ida4-ds-ui-test.js (structural checks on
+  // the citizen asset map and its phase gate). Not a public API.
+  _citizenAssets: CITIZEN_ASSETS,
+  _serveCitizenAsset: serveCitizenAsset
 };

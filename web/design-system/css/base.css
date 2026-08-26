@@ -1,0 +1,154 @@
+/* IDauto Design System — base.css
+ * Reset, typography roles, focus, accessibility primitives, layout.
+ * Every value is a token from tokens/tokens.css — no arbitrary values. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ida-bg);
+  color: var(--ida-text);
+  font-family: var(--ida-font-editorial);
+  font-size: var(--ida-size-16);
+  line-height: 1.55;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, p, figure, blockquote, dl, dd { margin: 0; }
+
+h1, .ida-h1 { font-size: var(--ida-size-36); font-weight: var(--ida-weight-semibold); line-height: 1.15; letter-spacing: -0.01em; }
+h2, .ida-h2 { font-size: var(--ida-size-28); font-weight: var(--ida-weight-semibold); line-height: 1.2; letter-spacing: -0.01em; }
+h3, .ida-h3 { font-size: var(--ida-size-22); font-weight: var(--ida-weight-semibold); line-height: 1.3; }
+h4, .ida-h4 { font-size: var(--ida-size-18); font-weight: var(--ida-weight-semibold); line-height: 1.35; }
+
+@media (min-width: 768px) {
+  h1, .ida-h1 { font-size: var(--ida-size-46); }
+}
+
+small, .ida-small { font-size: var(--ida-size-14); }
+.ida-caption { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+.ida-muted { color: var(--ida-text-muted); }
+
+/* Identifier typography role — IVID, plates, VIN, record dates.
+ * Distinct from editorial type by design: identifiers are data. */
+.ida-id {
+  font-family: var(--ida-font-id);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Marginal label — the passport/document section label language */
+.ida-label {
+  font-size: var(--ida-size-12);
+  font-weight: var(--ida-weight-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ida-text-muted);
+}
+[lang="ar"] .ida-label, .ida-label[lang="ar"] { letter-spacing: 0; text-transform: none; }
+
+a { color: var(--ida-text); text-decoration: underline; text-underline-offset: 2px; }
+a:hover { color: var(--ida-verify); }
+
+img, svg { max-width: 100%; display: block; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* Focus — one visible language everywhere, WCAG 2.4.7 */
+:focus-visible {
+  outline: 2px solid var(--ida-focus);
+  outline-offset: 2px;
+  border-radius: var(--ida-radius-control);
+}
+
+::selection { background: var(--ida-verify-tint); color: var(--ida-text); }
+
+/* Screen-reader-only text */
+.ida-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link */
+.ida-skip-link {
+  position: absolute;
+  inset-inline-start: var(--ida-space-4);
+  top: calc(-1 * var(--ida-space-8));
+  z-index: 100;
+  background: var(--ida-primary);
+  color: var(--ida-primary-contrast);
+  padding: var(--ida-space-2) var(--ida-space-4);
+  border-radius: var(--ida-radius-control);
+  transition: top var(--ida-duration-fast) var(--ida-easing-standard);
+}
+.ida-skip-link:focus-visible { top: var(--ida-space-4); }
+
+/* Layout */
+.ida-container {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding-inline: var(--ida-space-4);
+}
+@media (min-width: 768px) {
+  .ida-container { padding-inline: var(--ida-space-6); }
+}
+
+.ida-stack > * + * { margin-block-start: var(--ida-space-4); }
+.ida-stack-lg > * + * { margin-block-start: var(--ida-space-6); }
+
+.ida-grid {
+  display: grid;
+  gap: var(--ida-space-4);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 768px) {
+  .ida-grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .ida-grid-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* La trame — the IDauto security-line pattern (see js/trame in components).
+ * Applied as a background band; intensity controlled by one token so it can
+ * never become decoration noise. */
+.ida-trame {
+  position: relative;
+  overflow: hidden;
+}
+.ida-trame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--ida-trame-opacity);
+  background-image: repeating-linear-gradient(
+    115deg,
+    currentColor 0,
+    currentColor 1px,
+    transparent 1px,
+    transparent 7px
+  );
+}
+
+/* Perforation rule — document separator */
+.ida-perf {
+  border: 0;
+  border-block-start: 2px dotted var(--ida-border-strong);
+  margin: 0;
+}
+
+/* Motion discipline — everything stops under reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

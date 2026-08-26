@@ -1,0 +1,123 @@
+{
+  "$description": "IDauto Design System — design tokens, DTCG Format Module 2025.10. Source of truth for tokens/tokens.css (hand-generated, kept in sync by tests/design-system-test.js).",
+  "color": {
+    "$type": "color",
+    "light": {
+      "bg": { "$value": "#F6F4EE", "$description": "Papier — page ground" },
+      "surface": { "$value": "#FFFFFF" },
+      "surface-raised": { "$value": "#FFFFFF" },
+      "surface-sunken": { "$value": "#EFECE4" },
+      "text": { "$value": "#1C1B18", "$description": "Encre" },
+      "text-muted": { "$value": "#5D594F" },
+      "text-faint": { "$value": "#8A8578" },
+      "border": { "$value": "#DCD8CC" },
+      "border-strong": { "$value": "#A9A395" },
+      "primary": { "$value": "#1C1B18", "$description": "Actions are ink; the accent is reserved for verification" },
+      "primary-contrast": { "$value": "#F6F4EE" },
+      "verify": { "$value": "#1D6B4F", "$description": "Vert cachet — verification only" },
+      "verify-strong": { "$value": "#14523C" },
+      "verify-tint": { "$value": "#E3EFE8" },
+      "pending": { "$value": "#8A5A0B", "$description": "Ocre — pending / in review" },
+      "pending-tint": { "$value": "#F5EBD8" },
+      "danger": { "$value": "#9E3125", "$description": "Rouge sceau — anomaly / error" },
+      "danger-tint": { "$value": "#F7E5E2" },
+      "info": { "$value": "#44514E" },
+      "info-tint": { "$value": "#E7ECEA" },
+      "focus": { "$value": "#1D6B4F" },
+      "plate-field": { "$value": "#0B0B0C", "$description": "Tunisian plate — black field" },
+      "plate-glyph": { "$value": "#FAFAF7", "$description": "Tunisian plate — white characters" }
+    },
+    "dark": {
+      "bg": { "$value": "#171614", "$description": "Asphalte — warm charcoal, never blue-black" },
+      "surface": { "$value": "#1F1E1B" },
+      "surface-raised": { "$value": "#282622" },
+      "surface-sunken": { "$value": "#121110" },
+      "text": { "$value": "#ECE9E1" },
+      "text-muted": { "$value": "#B0AA9C" },
+      "text-faint": { "$value": "#847F72" },
+      "border": { "$value": "#3B3933" },
+      "border-strong": { "$value": "#5C594F" },
+      "primary": { "$value": "#ECE9E1" },
+      "primary-contrast": { "$value": "#1C1B18" },
+      "verify": { "$value": "#63B893" },
+      "verify-strong": { "$value": "#8ACCAD" },
+      "verify-tint": { "$value": "#20342B" },
+      "pending": { "$value": "#D2A24C" },
+      "pending-tint": { "$value": "#37301F" },
+      "danger": { "$value": "#DE8578" },
+      "danger-tint": { "$value": "#3B2521" },
+      "info": { "$value": "#A3B3AE" },
+      "info-tint": { "$value": "#28302E" },
+      "focus": { "$value": "#63B893" },
+      "plate-field": { "$value": "#0B0B0C" },
+      "plate-glyph": { "$value": "#FAFAF7" }
+    }
+  },
+  "font": {
+    "family": {
+      "editorial": { "$type": "fontFamily", "$value": ["IBM Plex Sans", "IBM Plex Sans Arabic", "Segoe UI", "system-ui", "sans-serif"], "$description": "FR/EN/AR editorial text" },
+      "id": { "$type": "fontFamily", "$value": ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"], "$description": "Identifiers: IVID, plates, VIN, record dates" }
+    },
+    "size": {
+      "$type": "dimension",
+      "12": { "$value": { "value": 0.75, "unit": "rem" } },
+      "14": { "$value": { "value": 0.875, "unit": "rem" } },
+      "16": { "$value": { "value": 1, "unit": "rem" } },
+      "18": { "$value": { "value": 1.125, "unit": "rem" } },
+      "22": { "$value": { "value": 1.375, "unit": "rem" } },
+      "28": { "$value": { "value": 1.75, "unit": "rem" } },
+      "36": { "$value": { "value": 2.25, "unit": "rem" } },
+      "46": { "$value": { "value": 2.875, "unit": "rem" } }
+    },
+    "weight": {
+      "$type": "fontWeight",
+      "regular": { "$value": 400 },
+      "medium": { "$value": 500 },
+      "semibold": { "$value": 600 }
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "1": { "$value": { "value": 4, "unit": "px" } },
+    "2": { "$value": { "value": 8, "unit": "px" } },
+    "3": { "$value": { "value": 12, "unit": "px" } },
+    "4": { "$value": { "value": 16, "unit": "px" } },
+    "5": { "$value": { "value": 24, "unit": "px" } },
+    "6": { "$value": { "value": 32, "unit": "px" } },
+    "7": { "$value": { "value": 48, "unit": "px" } },
+    "8": { "$value": { "value": 64, "unit": "px" } }
+  },
+  "radius": {
+    "$type": "dimension",
+    "chip": { "$value": { "value": 2, "unit": "px" } },
+    "control": { "$value": { "value": 4, "unit": "px" } },
+    "plate": { "$value": { "value": 6, "unit": "px" } },
+    "card": { "$value": { "value": 8, "unit": "px" } },
+    "seal": { "$value": { "value": 999, "unit": "px" }, "$description": "Seals and status dots only" }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "1": { "$value": { "color": "#1C1B1814", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 1, "unit": "px" }, "blur": { "value": 2, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+    "2": { "$value": { "color": "#1C1B181F", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 2, "unit": "px" }, "blur": { "value": 8, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } },
+    "3": { "$value": { "color": "#1C1B1829", "offsetX": { "value": 0, "unit": "px" }, "offsetY": { "value": 8, "unit": "px" }, "blur": { "value": 24, "unit": "px" }, "spread": { "value": 0, "unit": "px" } } }
+  },
+  "motion": {
+    "duration": {
+      "$type": "duration",
+      "fast": { "$value": { "value": 120, "unit": "ms" } },
+      "base": { "$value": { "value": 200, "unit": "ms" } },
+      "slow": { "$value": { "value": 320, "unit": "ms" } }
+    },
+    "easing": {
+      "$type": "cubicBezier",
+      "standard": { "$value": [0.2, 0, 0, 1] }
+    }
+  },
+  "breakpoint": {
+    "$type": "dimension",
+    "sm": { "$value": { "value": 480, "unit": "px" } },
+    "md": { "$value": { "value": 768, "unit": "px" } },
+    "lg": { "$value": { "value": 1024, "unit": "px" } },
+    "xl": { "$value": { "value": 1280, "unit": "px" } }
+  }
+}

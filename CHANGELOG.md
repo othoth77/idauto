@@ -6,6 +6,33 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-26 — ida-ds-1: IDauto Design System + citizen UI (Encre & Papier, scellé de vert)
+
+The proprietary IDauto Design System, transplanted from its first delivery in
+`othoth77/mythos-prod` (PR #90) into this canonical repository and wired to the real
+product surface. New `web/` tree: DTCG-2025.10 tokens + hand-built `tokens.css`
+(light « Papier » / dark « Asphalte », sync test-verified), zero-dependency component
+library (`.ida-*`), the Tunisian plate system (PlateInput/PlateDisplay, catalogue code
+TUN_STD, canonical form cross-checked against `config/idauto.example.json` through
+`reference/plate-validator.js` per AD-3), a browser IVID validator mirroring
+`reference/ivid.js` (cross-checked in tests), the vendored MIT nayuki QR generator
+(`web/vendor/`, license preserved, documented export-tail adaptation), and the citizen
+pages `/` and `/passport` — plate-first homepage and the Digital Vehicle Passport
+rendered from the REAL `GET /public/passport/:ivid` / `GET /api/passport/:ivid`
+responses (schema-true status vocabularies, T0–T3 + `anchored` never merged,
+`completeness_note` verbatim, `qr.payload === ivid` asserted client-side too).
+`reference/api.js` changes are minimal: a map-based `serveCitizenAsset()` (static
+shells only, gated by the SAME `public_resolution.enabled` A5-PLATE phase switch —
+PRIVATE phase leaves `/` byte-identical 401) and `vehicle_ivid` on the authenticated
+`GET /api/plates/:plate_number` (the plate → passport link; public route untouched,
+test-asserted). A5-PLATE holds everywhere: anonymous plate submit resolves nothing and
+makes zero requests (E2E-asserted); public resolution stays IVID-only. New suite
+`tests/ida4-ds-ui-test.js`: 345/0 offline. Full 17-suite pass on a local PostgreSQL 16
+(schema + migrations + seed): 0 failures, `ida4-option-c` 128/0 included. Chromium
+E2E + responsive 320–1280 × light/dark: 0 overflow, 0 console errors. Docs:
+`docs/DESIGN_SYSTEM.md` (new), README, AI_HANDOVER. CITIZEN_FACING_IDA4_READY remains
+NO — the legal gate is untouched by this stage.
+
 ## 2026-08-19 — ida4-option-c: IVID issuance + the IVID-only public passport surface
 
 A5 OPTION C, owner-approved. Implements the zero-account IDA-4 public passport surface on

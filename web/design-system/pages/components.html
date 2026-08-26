@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto Design System — Composants</title>
+  <link rel="stylesheet" href="../tokens/tokens.css">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <style>
+    .demo-row { display: flex; flex-wrap: wrap; gap: var(--ida-space-3); align-items: center; }
+    .demo-swatch { width: var(--ida-space-7); height: var(--ida-space-7); border-radius: var(--ida-radius-control); border: 1px solid var(--ida-border); }
+    .demo-block { padding-block: var(--ida-space-5); border-block-end: 1px solid var(--ida-border); }
+  </style>
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<p id="ida-live" class="ida-sr-only" role="status" aria-live="polite"></p>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="index.html" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation principale">
+      <ul class="ida-nav-links">
+        <li><a href="index.html">Vérifier</a></li>
+        <li><a href="search.html">Recherche</a></li>
+        <li><a href="passport.html">Passeport</a></li>
+        <li><a href="components.html" aria-current="page">Design System</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer le thème clair ou sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container" style="padding-block: var(--ida-space-6);">
+  <div class="ida-stack">
+    <h1 class="ida-h2">IDauto Design System</h1>
+    <p class="ida-muted">Fondations et composants. La documentation complète est dans <code>docs/DESIGN_SYSTEM.md</code>.</p>
+  </div>
+
+  <section class="demo-block" aria-labelledby="d-col">
+    <h2 id="d-col" class="ida-h4">Couleur — Encre &amp; Papier, scellé de vert</h2>
+    <p class="ida-small ida-muted">L'accent vert est réservé à la vérification. Les actions sont encre.</p>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <div><div class="demo-swatch" style="background: var(--ida-bg);"></div><p class="ida-caption">bg</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-surface);"></div><p class="ida-caption">surface</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-text);"></div><p class="ida-caption">text / primary</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-verify);"></div><p class="ida-caption">verify</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-pending);"></div><p class="ida-caption">pending</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-danger);"></div><p class="ida-caption">danger</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-info);"></div><p class="ida-caption">info</p></div>
+      <div><div class="demo-swatch" style="background: var(--ida-plate-field);"></div><p class="ida-caption">plate</p></div>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-type">
+    <h2 id="d-type" class="ida-h4">Typographie — éditoriale et identifiants</h2>
+    <div class="ida-stack" style="margin-block-start: var(--ida-space-4);">
+      <p class="ida-h1">Identité vérifiable</p>
+      <p>Texte éditorial — IBM Plex Sans / Plex Sans Arabic. يعمل بالعربية أيضًا.</p>
+      <p class="ida-id">IDENTIFIANTS · IVID SPEC-0000-0000-DEMO · 2026-08-26</p>
+      <p class="ida-label">Étiquette marginale de section</p>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-btn">
+    <h2 id="d-btn" class="ida-h4">Button</h2>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <button type="button" class="ida-btn ida-btn--primary">Primaire</button>
+      <button type="button" class="ida-btn ida-btn--secondary">Secondaire</button>
+      <button type="button" class="ida-btn ida-btn--ghost">Discret</button>
+      <button type="button" class="ida-btn ida-btn--danger">Destructif</button>
+      <button type="button" class="ida-btn ida-btn--primary" disabled>Désactivé</button>
+      <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm">Petit (hit ≥ 44px)</button>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-field">
+    <h2 id="d-field" class="ida-h4">Input / Field</h2>
+    <div class="ida-grid ida-grid-3" style="margin-block-start: var(--ida-space-4);">
+      <div class="ida-field">
+        <label for="f1">Normal</label>
+        <input class="ida-input" id="f1" placeholder="Saisir…">
+        <p class="ida-hint">Texte d'aide.</p>
+      </div>
+      <div class="ida-field">
+        <label for="f2">Erreur</label>
+        <input class="ida-input" id="f2" aria-invalid="true" aria-describedby="f2-err" value="valeur invalide">
+        <p class="ida-error-msg" id="f2-err">Ce champ est invalide.</p>
+      </div>
+      <div class="ida-field">
+        <label for="f3">Désactivé</label>
+        <input class="ida-input" id="f3" disabled value="—">
+      </div>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-plate">
+    <h2 id="d-plate" class="ida-h4">PlateDisplay &amp; PlateInput</h2>
+    <p class="ida-small ida-muted">Plaque tunisienne série&nbsp;: <span class="ida-id">SSS تونس NNNN</span> — champ noir, caractères blancs, sans bande ni drapeau. Architecture par registre de formats (extensible à d'autres pays).</p>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <span class="ida-plate ida-plate--sm"><span>220</span><span class="ida-plate-word">تونس</span><span>4518</span></span>
+      <span class="ida-plate"><span>220</span><span class="ida-plate-word">تونس</span><span>4518</span></span>
+      <span class="ida-plate ida-plate--lg"><span>220</span><span class="ida-plate-word">تونس</span><span>4518</span></span>
+    </div>
+    <div class="ida-grid ida-grid-2" style="margin-block-start: var(--ida-space-5);">
+      <div class="ida-stack">
+        <p class="ida-label">Interactif (états auto&nbsp;: empty → typing → valid/invalid)</p>
+        <div class="ida-plate-input" data-plate-format="TUN_STD" data-state="empty" role="group" aria-label="Saisie de plaque de démonstration">
+          <label class="ida-sr-only" for="dp-s">Série</label>
+          <input class="ida-plate-serie" id="dp-s" inputmode="numeric" maxlength="3" placeholder="000">
+          <span class="ida-plate-word" aria-hidden="true">تونس</span>
+          <label class="ida-sr-only" for="dp-n">Numéro</label>
+          <input class="ida-plate-numero" id="dp-n" inputmode="numeric" maxlength="4" placeholder="0000">
+        </div>
+      </div>
+      <div class="ida-stack">
+        <p class="ida-label">États figés</p>
+        <div class="demo-row">
+          <div class="ida-plate-input" data-state="loading" style="font-size: var(--ida-size-16);"><span class="ida-plate-word">تونس</span></div>
+          <div class="ida-plate-input" data-state="verified" style="font-size: var(--ida-size-16);"><span style="color:var(--ida-plate-glyph);" class="ida-id">220</span><span class="ida-plate-word">تونس</span><span style="color:var(--ida-plate-glyph);" class="ida-id">4518</span></div>
+          <div class="ida-plate-input" data-state="invalid" style="font-size: var(--ida-size-16);"><span style="color:var(--ida-plate-glyph);" class="ida-id">9999</span><span class="ida-plate-word">تونس</span></div>
+          <div class="ida-plate-input" data-state="disabled" style="font-size: var(--ida-size-16);"><span class="ida-plate-word">تونس</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-verif">
+    <h2 id="d-verif" class="ida-h4">Langage de vérification — Sceaux, Status, Trust, IVID</h2>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <span class="ida-seal ida-seal--verified"><span class="ida-seal-dot" aria-hidden="true"></span>Identité vérifiée</span>
+      <span class="ida-seal ida-seal--pending"><span class="ida-seal-dot" aria-hidden="true"></span>Vérification en cours</span>
+      <span class="ida-seal ida-seal--anomaly"><span class="ida-seal-dot" aria-hidden="true"></span>Anomalie détectée</span>
+      <span class="ida-seal ida-seal--info"><span class="ida-seal-dot" aria-hidden="true"></span>Source déclarative</span>
+    </div>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <span class="ida-status ida-status--verified">Vérifié</span>
+      <span class="ida-status ida-status--pending">En revue</span>
+      <span class="ida-status ida-status--anomaly">Anomalie</span>
+      <span class="ida-status ida-status--neutral">Observé</span>
+    </div>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <span class="ida-trust">
+        <span class="ida-trust-marks" aria-hidden="true"><span class="ida-trust-mark ida-trust-mark--on"></span><span class="ida-trust-mark"></span><span class="ida-trust-mark"></span><span class="ida-trust-mark"></span></span>
+        <span class="ida-trust-level">T0</span><span class="ida-small">Observé</span>
+      </span>
+      <span class="ida-trust">
+        <span class="ida-trust-marks" aria-hidden="true"><span class="ida-trust-mark ida-trust-mark--on"></span><span class="ida-trust-mark ida-trust-mark--on"></span><span class="ida-trust-mark ida-trust-mark--on"></span><span class="ida-trust-mark ida-trust-mark--on"></span></span>
+        <span class="ida-trust-level">T3</span><span class="ida-small">Ancré</span>
+      </span>
+      <span class="ida-ivid"><span>IVID</span><span>SPEC-0000-0000-DEMO</span>
+        <button type="button" class="ida-ivid-copy" data-copy="SPEC-0000-0000-DEMO" aria-label="Copier l'IVID">⧉</button>
+      </span>
+    </div>
+    <p class="ida-caption" style="margin-block-start: var(--ida-space-3);">Les niveaux de confiance sont les niveaux réels du protocole (T0–T3) — jamais un pourcentage fabriqué.</p>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-alert">
+    <h2 id="d-alert" class="ida-h4">Alert</h2>
+    <div class="ida-stack" style="margin-block-start: var(--ida-space-4);">
+      <div class="ida-alert ida-alert--success"><div><p class="ida-alert-title">Fait vérifié</p><p class="ida-small">La preuve a été recoupée avec sa source.</p></div></div>
+      <div class="ida-alert ida-alert--warning"><div><p class="ida-alert-title">Recoupement en attente</p><p class="ida-small">La déclaration attend une seconde source.</p></div></div>
+      <div class="ida-alert ida-alert--danger"><div><p class="ida-alert-title">Anomalie</p><p class="ida-small">Un écart a été détecté dans l'historique.</p></div></div>
+      <div class="ida-alert ida-alert--info"><div><p class="ida-alert-title">Information</p><p class="ida-small">Cette fiche est née d'une observation.</p></div></div>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-dlg">
+    <h2 id="d-dlg" class="ida-h4">Modal &amp; Drawer</h2>
+    <div class="demo-row" style="margin-block-start: var(--ida-space-4);">
+      <button type="button" class="ida-btn ida-btn--secondary" data-dialog-open="demo-modal">Ouvrir la modale</button>
+      <button type="button" class="ida-btn ida-btn--secondary" data-dialog-open="demo-drawer">Ouvrir le panneau</button>
+    </div>
+    <dialog class="ida-modal" id="demo-modal" aria-labelledby="dm-t">
+      <div class="ida-modal-header"><h3 id="dm-t" class="ida-h4">Confirmer l'action</h3>
+        <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-dialog-close aria-label="Fermer">✕</button></div>
+      <div class="ida-modal-body"><p class="ida-small">Une modale sobre&nbsp;: un titre, un contenu, deux actions.</p></div>
+      <div class="ida-modal-footer">
+        <button type="button" class="ida-btn ida-btn--ghost" data-dialog-close>Annuler</button>
+        <button type="button" class="ida-btn ida-btn--primary" data-dialog-close>Confirmer</button>
+      </div>
+    </dialog>
+    <dialog class="ida-drawer" id="demo-drawer" aria-labelledby="dd-t">
+      <div class="ida-modal-header"><h3 id="dd-t" class="ida-h4">Détail de preuve</h3>
+        <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-dialog-close aria-label="Fermer">✕</button></div>
+      <div class="ida-modal-body ida-stack">
+        <p class="ida-evidence-source">SOURCE · centre agréé — 2026-05-02</p>
+        <p class="ida-small">Le panneau latéral porte le détail d'un événement ou d'une preuve sans quitter le passeport.</p>
+      </div>
+    </dialog>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-tabs">
+    <h2 id="d-tabs" class="ida-h4">Tabs</h2>
+    <div class="ida-tabs" style="margin-block-start: var(--ida-space-4);">
+      <div role="tablist" aria-label="Sections de démonstration">
+        <button type="button" role="tab" aria-selected="true" aria-controls="tp-1" id="tab-1">Historique</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="tp-2" id="tab-2" tabindex="-1">Preuves</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="tp-3" id="tab-3" tabindex="-1">Propriété</button>
+      </div>
+      <div role="tabpanel" id="tp-1" aria-labelledby="tab-1" tabindex="0"><p class="ida-small">Contenu de l'onglet Historique.</p></div>
+      <div role="tabpanel" id="tp-2" aria-labelledby="tab-2" tabindex="0" hidden><p class="ida-small">Contenu de l'onglet Preuves.</p></div>
+      <div role="tabpanel" id="tp-3" aria-labelledby="tab-3" tabindex="0" hidden><p class="ida-small">Contenu de l'onglet Propriété.</p></div>
+    </div>
+  </section>
+
+  <section class="demo-block" aria-labelledby="d-states">
+    <h2 id="d-states" class="ida-h4">Empty / Loading / Error</h2>
+    <div class="ida-grid ida-grid-3" style="margin-block-start: var(--ida-space-4);">
+      <div class="ida-empty"><p>Aucun résultat</p><p class="ida-small">Proposer une observation.</p></div>
+      <div class="ida-card ida-stack" aria-busy="true" aria-label="Chargement">
+        <div class="ida-skeleton" style="width: 60%;"></div>
+        <div class="ida-skeleton" style="width: 90%;"></div>
+        <div class="ida-skeleton" style="width: 75%;"></div>
+      </div>
+      <div class="ida-error-state"><p style="font-weight: var(--ida-weight-semibold);">Consultation impossible</p><p class="ida-small ida-muted">Réessayer, ou revenir plus tard.</p></div>
+    </div>
+  </section>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — protocole ouvert d'identité et d'historique des véhicules.</p>
+    <p class="ida-caption">Pages du Design System — données affichées&nbsp;: <span class="ida-specimen">SPÉCIMEN</span></p>
+  </div>
+</footer>
+
+<script src="../js/plate.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+  IdaPlate.enhance(document.querySelector('[data-plate-format]'));
+</script>
+</body>
+</html>
