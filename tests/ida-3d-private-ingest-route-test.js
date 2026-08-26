@@ -83,7 +83,17 @@ async function staticCases() {
   ok(!/api\\\/v1\\\/ingest|anonymous[^\n]*route/i.test(source), 'no public or anonymous ingestion route was added');
   ok(!/require\s*\(\s*['"][^'"]*(?:jwt|oauth|session|cookie)[^'"]*['"]\s*\)|req\.(?:cookies|session)|set-cookie/i.test(source), 'no JWT, OAuth, session, or cookie auth was added');
   ok(!/CREATE\s+(?:TABLE|INDEX)|ALTER\s+TABLE/i.test(source), 'api.js contains no DDL');
-  ok(!/require\(['"]\.\/rate-limit\.js['"]\)|idauto_rate_limit_counters|bucketKey|selectBuckets/.test(source), 'api.js contains no rate-limit or counter implementation');
+  // A5 OPTION C, 2026-08-19: api.js may now CALL reference/rate-limit.js for
+  // the public passport route (IDA-4 Option C requires that route to be
+  // rate-limited), so requiring rate-limit.js is no longer forbidden here —
+  // but api.js must still never host counter/bucket-selection machinery
+  // itself; that stays exclusively in reference/rate-limit.js.
+  ok(!/idauto_rate_limit_counters|bucketKey|selectBuckets/.test(source), 'api.js contains no inline rate-limit counter implementation — the sanctioned public_resolution limiter lives in reference/rate-limit.js');
+  // F9 (Opus review, 2026-08-19): api.js may call rate-limit.js's
+  // public-resolution-specific function, but must never invoke the
+  // ingestion limiter (enforce()) itself — that stays exclusively behind
+  // reference/ingestion.js's own call site.
+  ok(source.indexOf('rateLimit.enforce(') === -1, 'api.js never calls the ingestion rate limiter (rateLimit.enforce) directly');
   ok(source.indexOf('FORBIDDEN_PAYLOAD_FIELDS') === -1 && source.indexOf("'capture_source_id', 'contributor_id'") === -1, 'api.js does not reimplement the forbidden-field list');
   ok(/if \(!requireAuth\(req, res\)\) return;[\s\S]*route\.handler/.test(source), 'existing authentication gate still precedes every route handler');
 }

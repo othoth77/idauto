@@ -6,6 +6,136 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-08-19 — ida4-option-c: IVID issuance + the IVID-only public passport surface
+
+A5 OPTION C, owner-approved. Implements the zero-account IDA-4 public passport surface on
+branch `ida4-option-c` (not merged to `main`, not deployed): IVID issuance
+(`reference/ivid-issuance.js`, permanent once issued, `system`-actor audit rows), a new
+migration (`database/migrations/ida4-option-c-ivid.sql`, adds `idauto_vehicles.ivid`), and
+`reference/api.js`'s first and only unauthenticated route, `GET /public/passport/:ivid` —
+IVID-only lookup (never plate), a format gate before any database touch, its own rate-limit
+bucket (`config/idauto.example.json`'s `public_resolution` section), scope hardcoded to
+`public` with SQL-level `access_scope='public'` defense-in-depth, and a
+`qr.payload === ivid` assertion before every response. `tests/ida4-option-c-test.js`: 47
+live-database assertions, 0 failures; `tests/ida4-foundation-test.js` remains 130/0;
+`tests/identity-conformance-test.js` remains 81/0. All 86 existing vehicles in the live
+database now carry a permanent IVID (`issueMissing()`), applied as part of this stage's own
+test run, per the task's explicit allowance to add the column and issue IVIDs against real
+operational data. Docs updated: `docs/IDA4_READINESS_AUDIT.md` (A5 row -> DECIDED, owner
+decision excerpted, new §J), `docs/ROADMAP.md` (dated note), `docs/THREAT_MODEL.md`
+(§5 QR-resolution row marked IMPLEMENTED with file/line references). `CITIZEN_FACING_IDA4_READY`
+stays NO. `PUBLIC_ENDPOINT_READY_TO_IMPLEMENT` stays NO. No deployment, no production
+activation, no legal gate touched.
+
+- **Fix (Chef Phase-1 audit, follow-up commit):** the public passport's `vehicle` object was
+  the raw `idauto_vehicles` row, leaking `internal_ref` (the internal identifier the IVID
+  exists to avoid exposing) and bypassing the fact-level `access_scope` filter at the column
+  level (`seats`, `gross_weight_kg`, `engine_cc` passed through verbatim even though
+  `engine_cc` is professional-scope as a Fact). `reference/api.js` now builds a
+  `protocol/schemas/vehicle.schema.json`-conformant object instead —
+  `{protocol_version, ivid, status, created_at, observation_count, summary}` only, `status`
+  a direct passthrough of `fiche_status` (its allowed set is an exact subset of the
+  protocol's status enum), `current_plate_ref` and `merged_into` omitted. Extended
+  `tests/ida4-option-c-test.js` §3 accordingly; suites re-run: ida4-option-c 66/0,
+  ida4-foundation 130/0, identity-conformance 81/0.
+- **Fix (Phase 2 audit, follow-up commit):** the public-resolution rate limiter tripped
+  `tests/ida-3d-private-ingest-route-test.js`'s structural guard (api.js must host no
+  rate-limit/counter implementation) because its bucket-key and upsert logic lived inline in
+  `reference/api.js`. Relocated into `reference/rate-limit.js` as first-class exports
+  `enforcePublicResolution()` / `floorPublicResolutionWindow()`; `reference/api.js` now only
+  reads config and calls that function. Narrowed the IDA-3D guard (line 86) to drop the
+  now-legitimate `require('./rate-limit.js')` prohibition while keeping the
+  bucket/counter-token prohibition intact. Suites re-run: ida-3d 73/0, ida-3c-rate-limit
+  63/0, ida4-option-c 66/0, ida4-foundation 130/0, identity-conformance 81/0,
+  ida-2c-readonly-api 26/0, ida-2d-write-api-and-audit 39/0.
+- **Fix (Opus architecture review, APPROVE-WITH-FINDINGS, follow-up commit):** eleven
+  findings fixed. F4 — a fact-key deny-list (`PUBLIC_FACT_KEY_DENY_LIST = ['vin',
+  'plate_number']` in `reference/api.js`, derived from `docs/PRIVACY_ARCHITECTURE.md` §3 plus
+  an interim owner-decision-pending exclusion for `plate_number`) now excludes those keys
+  from the public route regardless of a fact's stored `access_scope`, closing the gap where
+  `writes.js`'s `reviewFact()`/`createFact()` can set or default a fact to `public`
+  regardless of its key. F2 — `reference/writes.js`'s `createVehicle()` now calls
+  `reference/ivid-issuance.js`'s `issueForVehicle()` inside its own transaction, so every
+  vehicle created through the authenticated write path gets a permanent ivid immediately;
+  previously nothing in production called that module at all. F3 —
+  `config/idauto.example.json`'s `public_resolution.enabled` kill-switch, previously read by
+  nothing, is now wired: disabled returns the identical 404 shape for the whole route before
+  any database touch. F7 — the anonymous `/public/` error path no longer echoes
+  `err.message`, and gained a `res.headersSent` guard. F5 — the live suite no longer calls
+  `issueMissing()` unconditionally; it verifies every currently-missing-ivid row is its own
+  fixture first and skips otherwise. F9 — restored a `tests/ida-3d...` assertion that api.js
+  never calls the ingestion rate limiter directly. F10 — `docs/THREAT_MODEL.md`'s §5
+  implementation note no longer orphans the Anchoring table row. F11a — the A5 owner-decision
+  quote is now labelled "excerpted" rather than "verbatim" everywhere it appears (this file
+  included, above). F1 — corrected a stale assertion count and a stale, since-relocated
+  function name (`enforcePublicResolutionLimit` → `enforcePublicResolution`) in
+  `docs/AI_HANDOVER.md`. F6/F8 — two new documented limitations (pool-mode issuance-audit
+  non-atomicity, mitigated for the write path by F2's wiring; `VARCHAR(40)`'s zero headroom
+  for a future multi-digit IVID version) plus one documentation fix (`issueMissing()`'s
+  `already_had` field) recorded in `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §14. Suite
+  grew from 86 to 104 assertions, run twice consecutively (both green); also re-verified:
+  ida-3d 74/0, ida-2d 39/0 (unchanged — the F2 wiring preserves its exact
+  one-audit-row-per-write assertion), ida4-foundation 130/0, identity-conformance 81/0.
+- **Review verdicts recorded (follow-up commit, no code change):** Opus's three-pass
+  architecture review reached a FINAL VERDICT of **APPROVE**; an independent Haiku audit
+  reached **ACCEPT-WITH-FINDINGS** (three informational items, all already in
+  `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` §14). Recorded in the new
+  `docs/IDA4_OPTION_C_REVIEW_VERDICTS.md`. Deployment remained NOT AUTHORIZED; both
+  readiness flags remained NO; the open **A5-PLATE** owner question was the sole
+  outstanding item.
+- **A5-PLATE REVISED OWNER RULING received and implemented (2026-08-19):** the owner
+  ruled on the open plate-exposure question — quoted in full in
+  `docs/IDA4_READINESS_AUDIT.md`'s A5-PLATE row; FINAL RULE: "PRIVATE: plate_number =
+  permitted. PUBLIC: plate_number = hidden. PUBLIC RESOLUTION: IVID only." Implemented:
+  **`reference/public-surface-policy.js`** (NEW) — the one reviewed public-surface-policy
+  artifact the ruling requires, deliberately NOT config-toggleable, declaring the
+  PUBLIC-phase deny-list (`vin`, `plate_number`); `reference/api.js`'s public route now
+  consumes it via `deniedFactKeys()` instead of a local constant (which no longer
+  exists). **`GET /api/passport/:ivid`** (NEW) — the authenticated PRIVATE-phase internal
+  passport surface, in the ordinary `ROUTES` table behind `requireAuth()`, IVID-only
+  lookup, assembled at scope `mythos_private` INCLUDING the vehicle's plate records
+  (`idauto_plates.vehicle_id`, the same direct-FK join `getPlate()` already uses).
+  **`config/idauto.example.json`'s `public_resolution.enabled`** is now the owner-required
+  tested PRIVATE/PUBLIC phase gate, not merely a kill-switch. `plate_number` was not
+  deleted from the database; no plate-based public lookup was added, anywhere, including
+  on the new private route; the A5 IVID-only public resolution decision is unchanged.
+  `tests/ida4-option-c-test.js` grew to 118 assertions (new §11 phase-gate proof in one
+  child process — anonymous 404/zero-queries and authenticated 200/plate-present from the
+  identical PRIVATE-phase config state — and new §13 PRIVATE MODE tests, plus updated §10
+  structural pins), run twice consecutively, both green; also re-verified: ida-3d 74/0,
+  ida-2d 39/0, ida4-foundation 130/0 (env-free), identity-conformance 81/0. Docs updated:
+  `docs/IDA4_READINESS_AUDIT.md` (A5-PLATE row OPEN → DECIDED, ruling quoted in full; §J
+  cross-ref updated), `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` (§17 A5-PLATE moved
+  from open to ruled; §2/§3/§6/§8 updated for the policy module, private surface, and
+  phase-gate semantics; FINAL STATUS unchanged), `docs/THREAT_MODEL.md` (plate-exclusion
+  note updated to RULED; private surface documented).
+- **Fix (Opus review, APPROVE-WITH-FINDINGS on the A5-PLATE implementation, follow-up
+  commit):** two technical defects fixed. **P1** — the private route's first cut
+  assembled at scope `mythos_private` with NO `access_scope` filter in SQL at all,
+  serving restricted facts (`vin` included) to any authenticated caller; its justifying
+  comment also miscited precedent. Corrected: assembles at scope `'professional'`, with
+  `mythos_private`-scope facts excluded in SQL (`AND access_scope != 'mythos_private'`)
+  as a second layer — mirroring `getFactsForVehicle()`'s real precedent and the public
+  route's own two-layer pattern. Plate display is unaffected; plates aren't facts.
+  **P2** — the private route returned a raw `idauto_vehicles` row and raw
+  `idauto_plates` rows, violating `vehicle.schema.json`/`plate.schema.json` (both
+  `additionalProperties:false`) — the exact defect class `c003029` already fixed once
+  for the public route. Corrected with a shared `buildProtocolConformantVehicle()`
+  helper (used by both routes now, not duplicated) and a new
+  `buildProtocolConformantPlate()`, mapping `idauto_governorates.code` → `region_code`
+  and `valid_until` → `valid_to`, dropping `governorate_name`/`status` (no schema
+  field for either). **P3** — one stale test-assertion label updated ("owner decision
+  pending" → "per the A5-PLATE ruling, 2026-08-19"). `tests/ida4-option-c-test.js` grew
+  from 118 to 128 assertions (professional-vs-restricted-fact assertions with a
+  non-vacuous professional sentinel; exact vehicle/plate key-set assertions), run twice
+  consecutively, both green; also re-verified: ida-3d 74/0, ida-2d 39/0, ida4-foundation
+  130/0 (env-free), identity-conformance 81/0. Docs updated:
+  `docs/IDA4_OPTION_C_IMPLEMENTATION_REPORT.md` (§3/§6/§14 updated with the corrected
+  scope, the plate-schema mapping table, and the two limitation write-ups; §11 counts
+  updated to 128/123; FINAL STATUS unchanged), `docs/THREAT_MODEL.md` and
+  `docs/AI_HANDOVER.md` (private-surface descriptions corrected from `mythos_private`
+  to `'professional'` with restricted-fact exclusion).
+
 ## 2026-08-19 — gate-closure: readiness recheck + A5 evaluation recorded
 
 PR stack merged to main (merge commits; pin provenance verified). docs-only additions: legal gate matrix (16 OPEN), counsel review package, readiness recheck §I — CITIZEN_FACING_IDA4_READY = NO. A5: owner decision required, recommended default option C. No implementation.
