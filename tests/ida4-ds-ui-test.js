@@ -227,10 +227,18 @@ const passportJs = read("citizen/passport.js");
 const renderJs = read("citizen/passport-render.js");
 ok(!/\/public\/plate|plate=|\/public\/[^p]/.test(homeJs + passportJs + renderJs),
   "citizen JS never constructs a public plate lookup");
-ok(/publicNotice\.hidden = false/.test(homeJs) && !/fetch\([^)]*plate[^)]*\)\s*;?\s*$/m.test(homeJs.split("professionalLookup")[0]),
+ok(/publicNotice\.hidden = false/.test(homeJs) && !/fetch\s*\(/.test(homeJs),
   "anonymous plate submit shows the IVID-only notice and makes no request");
-ok(/\/api\/plates\//.test(homeJs) && /Authorization: "Bearer " \+ token/.test(homeJs),
-  "professional plate lookup uses the existing authenticated route only");
+// V1 PERSONAL: no key or token is ever asked of the user — the citizen
+// surface carries no Authorization header, no bearer, no token input.
+ok(!/Authorization|Bearer/i.test(homeJs + passportJs + renderJs),
+  "V1 personal: citizen JS sends no Authorization/Bearer header");
+const citizenHome = read("citizen/index.html");
+const citizenPassport = read("citizen/passport.html");
+ok(!/pro-token|Jeton d'accès|type="password"/.test(citizenHome + citizenPassport),
+  "V1 personal: no key/token input anywhere in the citizen pages");
+ok(!/github\.com|open.?source|protocole ouvert|Apache-2\.0/i.test(citizenHome + citizenPassport),
+  "V1 personal: no open-source or GitHub presentation in the citizen UI");
 ok(!/localStorage|sessionStorage|document\.cookie/.test(homeJs + passportJs),
   "no token or identifier ever touches browser storage in citizen flows");
 ok(/qr\.payload does not match|passport\.qr\.payload !== requestedIvid/.test(renderJs) ||

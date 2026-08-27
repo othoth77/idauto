@@ -156,7 +156,9 @@ var CITIZEN_ASSETS = {
   '/assets/qrcodegen.js': { file: 'vendor/qrcodegen.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/passport-render.js': { file: 'citizen/passport-render.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/home.js': { file: 'citizen/home.js', contentType: 'application/javascript; charset=utf-8' },
-  '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' }
+  '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/favicon.svg': { file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
+  '/favicon.ico': { file: 'citizen/favicon.svg', contentType: 'image/svg+xml' }
 };
 
 function serveCitizenAsset(req, res, pathname) {
