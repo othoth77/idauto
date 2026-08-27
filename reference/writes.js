@@ -378,8 +378,48 @@ async function createObservationMedia(observationId, buffer, mimeType, body, ide
   }
 }
 
+/* IDA-V3 follow-up, 2026-08-27 — the anonymous audit-observation path.
+ *
+ * This module owns every SQL mutation in the codebase; api.js contains none,
+ * and tests/ida-2c-readonly-api-test.js enforces that by scanning api.js for
+ * write verbs. The IDA-V3 public-plate-miss event was written with an inline
+ * INSERT in api.js and broke that guard. The SQL belongs here.
+ *
+ * It is deliberately NOT routed through withAudit(). withAudit() refuses to
+ * write without an attributable identity — "there is no code path that writes
+ * data without an attributable audit actor" — and that invariant is about
+ * DATA. This writes no data: it records that an anonymous request happened,
+ * and the audit table models an anonymous actor as a first-class case
+ * (actor_type is a column, actor_ref is nullable). Routing it through
+ * withAudit() would either force a fake identity or force the invariant to
+ * bend; keeping it separate keeps both honest.
+ *
+ * It touches idauto_audit_log and nothing else — no vehicle, plate, fact or
+ * observation row can be created through here.
+ *
+ * Callers treat failure as non-fatal: this runs on unauthenticated read
+ * paths, where refusing to answer because a log row could not be written
+ * would turn the audit trail into an availability weapon. It therefore
+ * throws, and the caller decides — it does not swallow errors itself. */
+async function recordAnonymousAuditEvent(entry) {
+  await db.query(
+    'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, ip_hash) ' +
+    'VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    [
+      entry.event_type,
+      entry.actor_type,
+      entry.actor_ref || null,
+      entry.target_type,
+      entry.target_ref,
+      entry.change_summary,
+      entry.ip_hash
+    ]
+  );
+}
+
 module.exports = {
   createVehicle: createVehicle,
+  recordAnonymousAuditEvent: recordAnonymousAuditEvent,
   createPlate: createPlate,
   createObservation: createObservation,
   reviewObservation: reviewObservation,
