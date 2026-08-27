@@ -225,20 +225,28 @@ for (const spec of Object.values(assets)) {
 const homeJs = read("citizen/home.js");
 const passportJs = read("citizen/passport.js");
 const renderJs = read("citizen/passport-render.js");
-ok(!/\/public\/plate|plate=|\/public\/[^p]/.test(homeJs + passportJs + renderJs),
-  "citizen JS never constructs a public plate lookup");
-// IDA-V1D: this assertion used to be labelled "anonymous plate submit shows
-// the IVID-only notice and makes no request". It cannot show any such thing —
-// it searches home.js for a string. It stayed green throughout the regression
-// where the notice was shown and then instantly re-hidden by the focus move
-// blurring the plate input. Relabelled to what it actually proves; the
-// behaviour is asserted for real, on both gestures, in
-// tests/ida-v1d-plate-no-public-resolution-test.js.
-ok(/publicNotice\.hidden = false/.test(homeJs) && !/fetch\s*\(/.test(homeJs),
-  "home.js source still contains the notice-showing line and no fetch (behaviour: see ida-v1d suite)");
+// Comments stripped before the prohibition checks below: these files' own
+// headers legitimately DISCUSS Authorization, vehicle_id and VIN in order to
+// explain why they are never used. A prohibition must be checked against code.
+const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const homeCode = stripComments(homeJs);
+const citizenCode = stripComments(homeJs + passportJs + renderJs);
+// IDA-V2, 2026-08-27 — OWNER DECISION: a plate now DOES resolve publicly.
+// These two assertions encoded the withdrawn A5-PLATE rule and are replaced
+// by ones that pin the new rule's boundaries instead of forbidding it:
+// the citizen surface may call the PUBLIC plate route and nothing else, and
+// it still asks the visitor for no credential. The behaviour — request made,
+// IVID rendered, private fields absent, no raw error shown — is asserted by
+// running the code in tests/ida-v2-public-plate-resolution-test.js.
+ok(!/\/api\/plates/.test(citizenCode),
+  "citizen JS never calls the AUTHENTICATED plate route");
+ok(/\/public\/plates\//.test(homeCode),
+  "home.js resolves plates through the public plate route (IDA-V2)");
+ok(!/internal_ref|vehicle_id|\bvin\b/i.test(homeCode),
+  "citizen JS never references a private vehicle identifier");
 // V1 PERSONAL: no key or token is ever asked of the user — the citizen
 // surface carries no Authorization header, no bearer, no token input.
-ok(!/Authorization|Bearer/i.test(homeJs + passportJs + renderJs),
+ok(!/Authorization|Bearer/i.test(citizenCode),
   "V1 personal: citizen JS sends no Authorization/Bearer header");
 const citizenHome = read("citizen/index.html");
 const citizenPassport = read("citizen/passport.html");
@@ -246,7 +254,7 @@ ok(!/pro-token|Jeton d'accès|type="password"/.test(citizenHome + citizenPasspor
   "V1 personal: no key/token input anywhere in the citizen pages");
 ok(!/github\.com|open.?source|protocole ouvert|Apache-2\.0/i.test(citizenHome + citizenPassport),
   "V1 personal: no open-source or GitHub presentation in the citizen UI");
-ok(!/localStorage|sessionStorage|document\.cookie/.test(homeJs + passportJs),
+ok(!/localStorage|sessionStorage|document\.cookie/.test(citizenCode),
   "no token or identifier ever touches browser storage in citizen flows");
 ok(/qr\.payload does not match|passport\.qr\.payload !== requestedIvid/.test(renderJs) ||
    /qr\.payload !== requestedIvid/.test(renderJs),
