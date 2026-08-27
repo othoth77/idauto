@@ -508,7 +508,23 @@
   margin: 0;
   padding: 0;
   max-width: 100%;
-  overflow-x: auto; /* mobile: the link row scrolls inside itself, the page never does */
+  /* Was `overflow-x: auto`, to keep a long link row from pushing the page
+   * wide on mobile. It produced a permanent, useless horizontal scrollbar —
+   * with stepper arrows — under the navigation at EVERY width, desktop
+   * included.
+   *
+   * Measured: the three items are 72.9 + 90.7 + 34.5 = 198.1px, plus two 8px
+   * gaps = 214.1px, inside a 214px box. The content fits. But each element's
+   * scroll extent is rounded up independently, so scrollWidth reports 217
+   * against a clientWidth of 214 — three phantom pixels that never existed
+   * as content. `overflow-x: auto` sees that and renders a scrollbar.
+   *
+   * Wrapping replaces scrolling. The row can now break to a second line if it
+   * ever outgrows its container, which is what .ida-nav-inner (flex-wrap:
+   * wrap) already does one level up — so the original worry, a link row
+   * pushing the page wide, is still answered, without a scroll container that
+   * sub-pixel rounding can trip. */
+  flex-wrap: wrap;
 }
 .ida-nav-links a {
   display: inline-flex; align-items: center;
