@@ -31,18 +31,37 @@
 <main id="main" class="ida-container ida-container--narrow ida-u-pad-section">
   <div class="ida-stack-lg">
 
-    <!-- IVID entry, shown when the page is opened without ?ivid= -->
-    <form class="ida-stack" data-ivid-form>
-      <div class="ida-field ida-u-maxch-40">
-        <label for="pp-ivid">IVID du véhicule</label>
-        <input class="ida-input ida-id" id="pp-ivid" name="ivid" autocomplete="off" spellcheck="false" placeholder="ivid:1:…" aria-describedby="pp-ivid-hint">
-        <p id="pp-ivid-hint" class="ida-hint">L'identifiant imprimé sous le QR IDauto du véhicule.</p>
-        <p class="ida-error-msg" data-ivid-error hidden></p>
+    <!-- IDA-V5 — IVID on the left, the vehicle's plate on the right; one
+         column each on desktop, stacked on narrow screens by .ida-grid's own
+         breakpoint. Existing grid utility, existing PlateDisplay component. -->
+    <div class="ida-grid ida-grid-2">
+
+      <!-- IVID entry, shown when the page is opened without ?ivid= -->
+      <form class="ida-stack" data-ivid-form>
+        <div class="ida-field ida-u-maxch-40">
+          <label for="pp-ivid">IVID du véhicule</label>
+          <input class="ida-input ida-id" id="pp-ivid" name="ivid" autocomplete="off" spellcheck="false" placeholder="ivid:1:…" aria-describedby="pp-ivid-hint">
+          <p id="pp-ivid-hint" class="ida-hint">L'identifiant imprimé sous le QR IDauto du véhicule.</p>
+          <p class="ida-error-msg" data-ivid-error hidden></p>
+        </div>
+        <div>
+          <button type="submit" class="ida-btn ida-btn--primary">Ouvrir le passeport</button>
+        </div>
+      </form>
+
+      <!-- The vehicle's plate. Rendered ONLY once the server has confirmed
+           that this plate resolves to this exact IVID — see passport.js. The
+           span structure is the Design System's PlateDisplay (.ida-plate),
+           unchanged: série, تونس, numéro. No flag, no country band. -->
+      <div class="ida-stack" data-plate-block hidden>
+        <p class="ida-label">Plaque d'immatriculation</p>
+        <p class="ida-plate" data-plate-display dir="ltr">
+          <span data-plate-serie></span><span class="ida-plate-word">تونس</span><span data-plate-numero></span>
+        </p>
+        <p class="ida-caption" data-plate-caption></p>
       </div>
-      <div>
-        <button type="submit" class="ida-btn ida-btn--primary">Ouvrir le passeport</button>
-      </div>
-    </form>
+
+    </div>
 
     <!-- Loading -->
     <div class="ida-card ida-stack" data-passport-loading hidden aria-busy="true" aria-label="Chargement du passeport">
