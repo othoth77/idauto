@@ -233,7 +233,29 @@ async function reviewObservation(observationId, decision, identity) {
 // POST /api/review/facts/:id/decision (IDA-3E)
 // Fact review is independent from observation review. Acceptance is the only
 // transition that widens an ingested community fact to public visibility.
-async function reviewFact(factId, decision, identity) {
+// IDA-V4, 2026-08-27 — VERIFICATION, PUBLICATION, SOURCE AND CONFIDENCE ARE
+// INDEPENDENT. Owner decision.
+//
+// Before this change, `accept` wrote verification_status='verified' AND
+// access_scope='public' in one statement, so "checked" and "published" were
+// the same act. A VIN read off an official certificate could not be recorded
+// as verified without also being made public — the model had no way to say
+// "certain, and private".
+//
+// Now: accept sets the status; access_scope and confidence_score are
+// PRESERVED unless the caller names new ones; an evidence row is added when
+// the caller names an evidence_type, so the provenance of the VERIFICATION
+// act is recorded, not only the fact's original source.
+//
+// Publication therefore becomes a deliberate, audited argument rather than a
+// side effect. The review queue still publishes community facts — it now
+// passes access_scope:'public' explicitly, which is the compatibility the old
+// behaviour actually needed. Nothing else relied on the coupling.
+//
+// opts: { access_scope, confidence_score, evidence_type, weight }, all
+// optional and all validated before use — an unknown value is a 400, never a
+// silent write.
+async function reviewFact(factId, decision, identity, opts) {
   var targetStatus = decision === 'accept' ? 'verified' : decision === 'reject' ? 'rejected' : null;
   if (!targetStatus) {
     throw Object.assign(new Error('decision must be accept or reject'), { httpStatus: 400 });
@@ -249,25 +271,65 @@ async function reviewFact(factId, decision, identity) {
       if (current.rows.length === 0) {
         throw Object.assign(new Error('fact not found'), { httpStatus: 404 });
       }
-      if (current.rows[0].verification_status === targetStatus) {
-        return { record: current.rows[0], auditTargetRef: current.rows[0].id, skipAudit: true };
+      var options = opts || {};
+      var row = current.rows[0];
+
+      if (options.access_scope != null && ALLOWED_ACCESS_SCOPE.indexOf(options.access_scope) === -1) {
+        throw Object.assign(new Error('access_scope must be one of ' + ALLOWED_ACCESS_SCOPE.join(', ')), { httpStatus: 400 });
       }
-      if (['pending_review', 'unverified'].indexOf(current.rows[0].verification_status) === -1) {
+      if (options.confidence_score != null &&
+          (typeof options.confidence_score !== 'number' || !isFinite(options.confidence_score) ||
+           options.confidence_score < 0 || options.confidence_score > 1)) {
+        throw Object.assign(new Error('confidence_score must be a number between 0.0 and 1.0'), { httpStatus: 400 });
+      }
+      if (options.evidence_type != null && ALLOWED_EVIDENCE_TYPE.indexOf(options.evidence_type) === -1) {
+        throw Object.assign(new Error('evidence_type must be one of ' + ALLOWED_EVIDENCE_TYPE.join(', ')), { httpStatus: 400 });
+      }
+
+      var nextScope = options.access_scope != null ? options.access_scope : row.access_scope;
+      var nextConfidence = options.confidence_score != null ? options.confidence_score : row.confidence_score;
+
+      // Already at the target status. Before IDA-V4 that was always a no-op,
+      // because status was the only thing a decision could change. A decision
+      // now also carries scope, confidence and evidence, so one that changes
+      // any of those is real work and must be audited; only a decision that
+      // changes nothing at all stays a no-op.
+      if (row.verification_status === targetStatus) {
+        var changesNothing = nextScope === row.access_scope &&
+          Number(nextConfidence) === Number(row.confidence_score) &&
+          options.evidence_type == null;
+        if (changesNothing) {
+          return { record: row, auditTargetRef: row.id, skipAudit: true };
+        }
+      } else if (['pending_review', 'unverified'].indexOf(row.verification_status) === -1) {
         throw Object.assign(new Error('fact is no longer pending review'), { httpStatus: 409 });
       }
+
       var updated = await client.query(
-        decision === 'accept'
-          ? "UPDATE idauto_vehicle_facts SET verification_status = 'verified', access_scope = 'public' WHERE id = $1 RETURNING id, observation_id, fact_key, fact_value, confidence_score, verification_status, access_scope"
-          : "UPDATE idauto_vehicle_facts SET verification_status = 'rejected' WHERE id = $1 RETURNING id, observation_id, fact_key, fact_value, confidence_score, verification_status, access_scope",
-        [factId]
+        'UPDATE idauto_vehicle_facts SET verification_status = $2, access_scope = $3, confidence_score = $4 WHERE id = $1 RETURNING id, observation_id, fact_key, fact_value, confidence_score, verification_status, access_scope',
+        [factId, targetStatus, nextScope, nextConfidence]
       );
+
+      // Provenance of the VERIFICATION act, written in the same transaction as
+      // the status change and covered by the same audit row.
+      if (options.evidence_type != null) {
+        await client.query(
+          'INSERT INTO idauto_fact_evidence (fact_id, evidence_type, weight) VALUES ($1,$2,$3)',
+          [factId, options.evidence_type, typeof options.weight === 'number' ? options.weight : 0.1]
+        );
+      }
       return { record: updated.rows[0], auditTargetRef: updated.rows[0].id };
     }
   );
 }
 
 var ALLOWED_ACCESS_SCOPE = ['public', 'professional', 'mythos_private'];
-var ALLOWED_EVIDENCE_TYPE = ['user_confirmation', 'cross_source_match', 'vin_decode', 'document_scan', 'professional_assertion', 'automated_check', 'admin_validation'];
+// IDA-V4: 'document_scan_official' — read off an OFFICIAL registration
+// document, legibly and without inference. Deliberately distinct from
+// 'document_scan' (any scanned document): that distinction is what justifies
+// a confidence of 1.0, so collapsing the two would erase the justification.
+// Mirrors database/migrations/ida-v4-verification-scope-separation.sql.
+var ALLOWED_EVIDENCE_TYPE = ['user_confirmation', 'cross_source_match', 'vin_decode', 'document_scan', 'document_scan_official', 'professional_assertion', 'automated_check', 'admin_validation'];
 
 // POST /api/vehicles/:internal_ref/facts
 // Optionally creates one idauto_fact_evidence row in the same transaction

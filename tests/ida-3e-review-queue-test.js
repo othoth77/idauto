@@ -15,16 +15,22 @@ var dbPath = require.resolve(path.join(reference, 'db.js'));
 var realDbCache = require.cache[dbPath];
 
 var state, audits;
+var evidence = [];
 var stubClient = {
   release: function () {},
   query: async function (sql, params) {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] };
     if (/SELECT id, observation_id[\s\S]+FOR UPDATE/.test(sql)) return { rows: state ? [Object.assign({}, state)] : [] };
     if (/UPDATE idauto_vehicle_facts/.test(sql)) {
-      state.verification_status = sql.indexOf("'verified'") !== -1 ? 'verified' : 'rejected';
-      if (sql.indexOf("access_scope = 'public'") !== -1) state.access_scope = 'public';
+      // IDA-V4: the statement is parameterised — status, scope and confidence
+      // all arrive as bound values, so the stub reads params instead of
+      // scanning SQL text for literals.
+      state.verification_status = params[1];
+      state.access_scope = params[2];
+      state.confidence_score = params[3];
       return { rows: [Object.assign({}, state)] };
     }
+    if (/INSERT INTO idauto_fact_evidence/.test(sql)) { evidence.push({ fact_id: params[0], evidence_type: params[1], weight: params[2] }); return { rows: [] }; }
     if (/INSERT INTO idauto_audit_log/.test(sql)) { audits++; return { rows: [] }; }
     throw new Error('unexpected stub query: ' + sql);
   }
@@ -43,10 +49,37 @@ function fact(status, scope) { return { id: 71, observation_id: 31, fact_key: 'c
 
 async function staticCases() {
   console.log('\nSTATIC SUBSET — no database or network');
-  state = fact('pending_review', 'mythos_private'); audits = 0;
+  // IDA-V4, 2026-08-27 — OWNER DECISION: verification and publication are
+  // separate acts. This assertion used to read "accept maps to verified +
+  // public". That coupling is withdrawn: a fact can now be verified and stay
+  // private, which is what a VIN read off an official certificate requires.
+  // The old behaviour is still reachable — by asking for it — and that is
+  // asserted immediately below, so nothing was lost, only made explicit.
+  state = fact('pending_review', 'mythos_private'); audits = 0; evidence.length = 0;
   var accepted = await writes.reviewFact(71, 'accept', IDENTITY);
-  ok(accepted.verification_status === 'verified' && accepted.access_scope === 'public', 'accept maps to verified + public');
+  ok(accepted.verification_status === 'verified', 'accept verifies the fact');
+  ok(accepted.access_scope === 'mythos_private', 'accept PRESERVES the existing scope — verifying never publishes by itself');
   ok(audits === 1, 'accept creates exactly one audit row');
+
+  state = fact('pending_review', 'mythos_private'); audits = 0;
+  var published = await writes.reviewFact(71, 'accept', IDENTITY, { access_scope: 'public' });
+  ok(published.verification_status === 'verified' && published.access_scope === 'public', 'publication is still possible — as an explicit, audited argument');
+  ok(audits === 1, 'publishing creates exactly one audit row');
+
+  state = fact('pending_review', 'mythos_private'); audits = 0; evidence.length = 0;
+  var official = await writes.reviewFact(71, 'accept', IDENTITY, { confidence_score: 1.0, evidence_type: 'document_scan_official' });
+  ok(Number(official.confidence_score) === 1, 'confidence 1.0 can be set on verification');
+  ok(official.access_scope === 'mythos_private', 'a fact verified against an official document stays private unless publication is asked for');
+  ok(evidence.length === 1 && evidence[0].evidence_type === 'document_scan_official', 'the verification act records its own provenance');
+  ok(audits === 1, 'one audit row covers the status, confidence and evidence together');
+
+  state = fact('pending_review', 'mythos_private'); audits = 0;
+  ok(await statusOf(writes.reviewFact(71, 'accept', IDENTITY, { access_scope: 'everyone' })) === 400, 'an unknown access_scope is refused');
+  state = fact('pending_review', 'mythos_private');
+  ok(await statusOf(writes.reviewFact(71, 'accept', IDENTITY, { confidence_score: 1.5 })) === 400, 'a confidence above 1.0 is refused');
+  state = fact('pending_review', 'mythos_private');
+  ok(await statusOf(writes.reviewFact(71, 'accept', IDENTITY, { evidence_type: 'hearsay' })) === 400, 'an unknown evidence_type is refused');
+  ok(audits === 0, 'a refused decision writes nothing');
 
   state = fact('pending_review', 'mythos_private'); audits = 0;
   var rejected = await writes.reviewFact(71, 'reject', IDENTITY);
@@ -205,11 +238,26 @@ async function liveCases() {
   var accept = await request('POST', '/api/review/facts/' + firstFact.id + '/decision', TOKEN, { decision: 'accept' });
   var acceptReplay = await request('POST', '/api/review/facts/' + firstFact.id + '/decision', TOKEN, { decision: 'accept' });
   var acceptReverse = await request('POST', '/api/review/facts/' + firstFact.id + '/decision', TOKEN, { decision: 'reject' });
-  ok(accept.status === 200 && accept.body.verification_status === 'verified' && accept.body.access_scope === 'public', 'fact accept returns verified + public');
+  // IDA-V4: accept verifies without publishing. The community fact arrived
+  // mythos_private and stays there until publication is asked for.
+  ok(accept.status === 200 && accept.body.verification_status === 'verified' && accept.body.access_scope === 'mythos_private', 'fact accept returns verified and keeps its scope');
   ok(acceptReplay.status === 200 && await auditCount(firstFact.id, 'accept') === 1, 'accept replay is idempotent with no phantom audit');
   ok(acceptReverse.status === 409 && await auditCount(firstFact.id, 'reject') === 0, 'accepted fact reversal fails 409 without audit');
+  // IDA-V4, 2026-08-27 — OWNER DECISION. This assertion used to read
+  // "accepted community fact becomes visible", which held only because accept
+  // also published. Verification no longer publishes, and this read route
+  // excludes mythos_private, so an accepted-but-unpublished fact is still
+  // absent. That is the intended consequence, not a regression: publishing is
+  // now a second, deliberate act. Both halves are asserted, so neither the
+  // old coupling nor a silent loss of the publication path can come back.
+  var stillPrivate = await request('GET', '/api/vehicles/' + encodeURIComponent(firstVehicle) + '/facts', TOKEN);
+  ok(stillPrivate.raw.indexOf('ida3e-blue-' + base) === -1, 'a verified but unpublished community fact stays out of the facts response');
+
+  var publish = await request('POST', '/api/review/facts/' + firstFact.id + '/decision', TOKEN, { decision: 'accept', access_scope: 'public' });
+  ok(publish.status === 200 && publish.body.access_scope === 'public' && publish.body.verification_status === 'verified',
+    'publishing it explicitly succeeds and keeps it verified');
   var visible = await request('GET', '/api/vehicles/' + encodeURIComponent(firstVehicle) + '/facts', TOKEN);
-  ok(visible.raw.indexOf('ida3e-blue-' + base) !== -1, 'accepted community fact becomes visible');
+  ok(visible.raw.indexOf('ida3e-blue-' + base) !== -1, 'once published, the accepted community fact becomes visible');
 
   var secondBase = base + 1;
   var second = await ingest(await seedPlate(), 'ida3e-red-' + base, false);
