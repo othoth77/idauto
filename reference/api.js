@@ -159,9 +159,27 @@ var CITIZEN_ASSETS = {
   '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' }
 };
 
+//
+// IDA-SHIP-2, 2026-08-27 — HEAD is answered exactly like GET here.
+//
+// These paths are the PUBLIC citizen surface: GET / already answers 200
+// with the page to anyone. Before this change HEAD / fell past this map
+// (method gate), past the /public/ route, into requireAuth() and answered
+// 401 — so every HEAD-based caller (uptime monitors, link checkers,
+// crawlers and preview fetchers, all of which HEAD before they GET) was
+// told the public homepage needs credentials. That is a wrong answer, not
+// a protection: the content behind it is already unauthenticated.
+//
+// This weakens no authentication. HEAD is admitted ONLY for paths already
+// present in CITIZEN_ASSETS, only after the same A5-PLATE phase gate, and
+// the response carries the same status and headers a GET would. Node
+// suppresses the body for a HEAD request itself, so no byte of it is
+// written. ADMIN_ASSETS above and the authenticated ROUTES table are
+// deliberately NOT changed, and GET /public/passport/:ivid keeps its
+// documented 405-with-Allow answer for every non-GET method.
 function serveCitizenAsset(req, res, pathname) {
   var asset = CITIZEN_ASSETS[pathname];
-  if (!asset || req.method !== 'GET') return false;
+  if (!asset || (req.method !== 'GET' && req.method !== 'HEAD')) return false;
   // PHASE GATE before anything else — PRIVATE phase means this surface
   // does not exist; fall through to the pre-existing dispatch unchanged.
   if (!loadPublicResolutionConfig().enabled) return false;
@@ -274,9 +292,86 @@ function loadPublicResolutionConfig() {
 // precisely what tests/ida-3d-private-ingest-route-test.js's structural
 // guard checks api.js's source for the absence of — this route stays
 // genuinely rate-limited without api.js failing that check.
+//
+// IDA-SHIP-2, 2026-08-27 — TRUSTED-PROXY CLIENT IP.
+//
+// The process binds 127.0.0.1 only (see the listen() call at the bottom of
+// this file), so in production EVERY connection arrives from nginx and
+// req.socket.remoteAddress is always the loopback address. Hashing it
+// alone put every visitor on the planet into ONE public_resolution bucket:
+// the configured limit stopped being "30 requests per client per minute"
+// and became "30 requests for the whole site per minute", which any single
+// caller could exhaust for everybody. Observed in production before this
+// fix — the shared counter table held exactly one bucket key, the one
+// derived from 127.0.0.1, and it had already been driven past the limit.
+//
+// The vhost sets both X-Real-IP ($remote_addr) and X-Forwarded-For
+// ($proxy_add_x_forwarded_for) with proxy_set_header, which REPLACES any
+// value the caller sent for X-Real-IP and APPENDS nginx's own view to
+// X-Forwarded-For. Two consequences this code depends on:
+//
+//   1. Those headers are trustworthy ONLY when the immediate peer is one of
+//      our own proxies. A direct caller could otherwise pick its own
+//      rate-limit bucket by sending a header, i.e. bypass the limit
+//      entirely. So the headers are read only for a loopback peer, and a
+//      non-loopback peer is keyed on its socket address, header or not.
+//   2. Within X-Forwarded-For, the RIGHTMOST entry is the one nginx
+//      appended; anything to its left was supplied by the caller and is
+//      not evidence of anything. The leftmost entry — the usual "real
+//      client" convention behind a trusted chain — is exactly the value an
+//      attacker controls here, so it is never used.
+//
+// Addresses are normalised (IPv6 zone index stripped, IPv4-mapped IPv6
+// unwrapped) so one caller cannot occupy two buckets by arriving as both
+// '1.2.3.4' and '::ffff:1.2.3.4'.
+//
+// This is IP EXTRACTION only. No counter, bucket or window logic lives
+// here — that stays in reference/rate-limit.js, per the structural guard
+// in tests/ida-3d-private-ingest-route-test.js and the note above.
+// The trusted peer set is expressed as "the peer is loopback", not as a
+// list of literal addresses: the whole 127.0.0.0/8 block is loopback, and a
+// socket bound to loopback (this process binds nothing else) cannot receive
+// a connection carrying a loopback source address from off this host. So
+// "peer is loopback" is exactly "peer is our own nginx". Written as a
+// predicate rather than a quoted address so this file still contains
+// exactly one bind-host literal — the guards in
+// tests/ida-3d-private-ingest-route-test.js and
+// tests/ida-3e-review-queue-test.js count that literal to prove nobody has
+// moved the listener off loopback or added a second one.
+function isLoopbackPeer(ip) {
+  return ip === '::1' || /^127\./.test(ip);
+}
+
+function normalizeIp(value) {
+  var ip = String(value == null ? '' : value).trim();
+  var zone = ip.indexOf('%');
+  if (zone !== -1) ip = ip.slice(0, zone);
+  ip = ip.toLowerCase();
+  if (ip.indexOf('::ffff:') === 0 && /^::ffff:\d{1,3}(?:\.\d{1,3}){3}$/.test(ip)) ip = ip.slice(7);
+  // Anything that is not a bare IPv4 or IPv6 literal is a header a caller
+  // made up (or a duplicate header Node joined with a comma) — reject it
+  // rather than let it become a bucket of its own.
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip) || /^[0-9a-f:]{2,45}$/.test(ip)) return ip;
+  return '';
+}
+
+function clientIp(req) {
+  var peer = normalizeIp(req.socket && req.socket.remoteAddress);
+  if (!isLoopbackPeer(peer)) return peer;
+  var headers = req.headers || {};
+  var realIp = normalizeIp(headers['x-real-ip']);
+  if (realIp) return realIp;
+  var forwarded = headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded) {
+    var parts = forwarded.split(',');
+    var appended = normalizeIp(parts[parts.length - 1]);
+    if (appended) return appended;
+  }
+  return peer;
+}
+
 function clientIpHash(req) {
-  var ip = (req.socket && req.socket.remoteAddress) || '';
-  return crypto.createHash('sha256').update(ip).digest('hex');
+  return crypto.createHash('sha256').update(clientIp(req)).digest('hex');
 }
 
 // F4 (Opus review, 2026-08-19), RULED — A5-PLATE revised decision,
