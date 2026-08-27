@@ -8,7 +8,7 @@
     "url": "https://github.com/othoth77/idauto.git"
   },
   "scripts": {
-    "test:offline": "node tests/ida-2a-schema-and-plate-validation-test.js && node tests/ida-3a-ingestion-schema-test.js && node tests/ida-3f-offhost-backup-test.js && node tests/ida-v1b-owner-session-test.js"
+    "test:offline": "node tests/ida-2a-schema-and-plate-validation-test.js && node tests/ida-3a-ingestion-schema-test.js && node tests/ida-3f-offhost-backup-test.js && node tests/ida-v1b-owner-session-test.js && node tests/ida-v1d-plate-no-public-resolution-test.js"
   },
   "dependencies": {
     "pg": "^8.13.1"
