@@ -294,7 +294,10 @@ var dbPath = require.resolve(path.join(BASE, 'reference', 'db.js'));
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
   query: async function (sql, params) {
     SQL.push({ sql: sql, params: params });
-    if (/FROM idauto_plates p JOIN idauto_vehicles/.test(sql)) {
+    // IDA-V8: the plate lookup became a recursive CTE so a plate on a merged
+    // record resolves to the canonical vehicle. The stub matches the table
+    // pair either way, and returns a row that is already canonical.
+    if (/idauto_plates p[\s\S]*idauto_vehicles v/.test(sql)) {
       var key = params[0];
       if (!Object.prototype.hasOwnProperty.call(PLATES, key)) return { rows: [] };
       return { rows: [{ plate_number: key, ivid: PLATES[key] }] };

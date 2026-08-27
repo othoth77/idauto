@@ -668,7 +668,13 @@ async function a5ProhibitionGuards() {
   // assembler's primary filter masks the SQL layer. This structural
   // assertion pins the SQL layer directly so it cannot silently rot.
   ok(/access_scope = \$2/.test(apiSource), 'the facts query in api.js still filters access_scope = $2 in SQL (defense-in-depth, not just in assemblePassport())');
-  ok(/\[candidate, 'public'\]/.test(apiSource), 'the facts query still binds $2 to the literal string \'public\' (not a caller-influenced or looser value)');
+  // IDA-V8: $1 is now canonicalIvid — the ivid of the vehicle the route
+  // actually resolved to, after following any merge — instead of `candidate`,
+  // the ivid the caller asked for. That is STRICTER, not looser: the bound
+  // value is now derived from a database row rather than from the request.
+  // The property this assertion guards is unchanged and is about $2.
+  ok(/\[canonicalIvid, 'public'\]/.test(apiSource), 'the facts query still binds $2 to the literal string \'public\' (not a caller-influenced or looser value)');
+  ok(/var canonicalIvid = vehicleRow\.ivid;/.test(apiSource), 'and binds $1 to a server-resolved ivid, never straight to the caller\'s input');
 
   // 6. F4/A5-PLATE deny-list structural pin (Opus review + the owner's
   // revised A5-PLATE ruling, 2026-08-19): a mutation shrinking or

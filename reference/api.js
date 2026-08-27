@@ -760,10 +760,18 @@ async function handlePublicPlateRoute(req, res, m) {
   // Two columns. The join reads idauto_vehicles for `ivid` alone — no other
   // vehicle column is selected here, so none can leak through this route
   // even if the response shape were later widened by mistake.
+  // IDA-V8 — a plate attached to a record that was later merged must resolve
+  // to the CANONICAL vehicle, so plate → IVID → passport lands on the same
+  // vehicle as the QR does. The recursive walk is bounded by the same depth
+  // the rest of the resolution uses.
   var result = await db.query(
-    'SELECT p.plate_number, v.ivid AS ivid ' +
-    'FROM idauto_plates p JOIN idauto_vehicles v ON v.id = p.vehicle_id ' +
-    'WHERE p.plate_number = $1',
+    'WITH RECURSIVE chain(id, ivid, merged_into_id, depth) AS (' +
+    '  SELECT v.id, v.ivid, v.merged_into_id, 0 FROM idauto_plates p ' +
+    '  JOIN idauto_vehicles v ON v.id = p.vehicle_id WHERE p.plate_number = $1' +
+    '  UNION ALL' +
+    '  SELECT v.id, v.ivid, v.merged_into_id, c.depth + 1 FROM chain c ' +
+    '  JOIN idauto_vehicles v ON v.id = c.merged_into_id WHERE c.depth < 16' +
+    ') SELECT $1::text AS plate_number, ivid FROM chain WHERE merged_into_id IS NULL LIMIT 1',
     [normalized]
   );
   if (result.rows.length === 0 || !result.rows[0].ivid) {
@@ -887,13 +895,32 @@ async function handlePublicPassportRoute(req, res, pathname) {
   // block below for what replaces fiche_status and why the others are
   // never public.
   var vehicleResult = await db.query(
-    'SELECT ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
-    'fiche_status, created_at, observation_count ' +
+    'SELECT id, ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
+    'fiche_status, created_at, observation_count, merged_into_id ' +
     'FROM idauto_vehicles WHERE ivid = $1',
     [candidate]
   );
   if (vehicleResult.rows.length === 0) return notFound(res);
   var vehicleRow = vehicleResult.rows[0];
+
+  // IDA-V8 — an IVID printed on a QR sticker before a merge must keep opening
+  // a passport. Follow the chain to the canonical record and serve THAT, so a
+  // sticker never dies because two records were later found to be one vehicle.
+  // Bounded for the same reason resolveCanonical() is bounded: a cycle must
+  // fail as a 404 here rather than hang an anonymous request.
+  var hops = 0;
+  while (vehicleRow.merged_into_id) {
+    if (++hops > 16) return notFound(res);
+    var nextRow = await db.query(
+      'SELECT id, ivid, make, model, variant, year, body_type, fuel_type, colour, category_code, ' +
+      'fiche_status, created_at, observation_count, merged_into_id ' +
+      'FROM idauto_vehicles WHERE id = $1',
+      [vehicleRow.merged_into_id]
+    );
+    if (nextRow.rows.length === 0) return notFound(res);
+    vehicleRow = nextRow.rows[0];
+  }
+  var canonicalIvid = vehicleRow.ivid;
 
   // Defense-in-depth: access_scope = 'public' filtered in SQL, in
   // addition to assemblePassport()'s own scope filter below. PLUS the
@@ -917,7 +944,7 @@ async function handlePublicPassportRoute(req, res, pathname) {
     'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND access_scope = $2 ' +
     denyClause + 'AND is_active = TRUE ' +
     'ORDER BY fact_key',
-    [candidate, 'public'].concat(denyList)
+    [canonicalIvid, 'public'].concat(denyList)
   );
 
   // Chef Phase-1 audit fix (follow-up to e220213), now shared with the
@@ -945,7 +972,7 @@ async function handlePublicPassportRoute(req, res, pathname) {
     'SELECT p.id, p.plate_number, p.format_code, p.created_at ' +
     'FROM idauto_plates p WHERE p.vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
     "AND p.status = 'active' ORDER BY p.id",
-    [candidate]
+    [canonicalIvid]
   );
 
   var publicPlates = platesResult.rows.map(function (row) {
@@ -968,8 +995,17 @@ async function handlePublicPassportRoute(req, res, pathname) {
   });
 
   // 6. Structural assertion, not just hoped for.
-  if (passport.qr.payload !== candidate) {
-    throw new Error('handlePublicPassportRoute: internal invariant violated — qr.payload must equal the requested ivid');
+  //
+  // IDA-V8: compared against the CANONICAL ivid, not the requested one. When
+  // the requested ivid belongs to a record that was merged, the passport
+  // served is the canonical vehicle's, so requiring equality with the request
+  // would make every pre-merge QR sticker a 500. The guarantee itself is
+  // unchanged and is what it always meant: the QR must encode the ivid of the
+  // vehicle THIS passport describes — never a different vehicle's, never a
+  // plate, never a token. When nothing was merged, canonicalIvid IS candidate
+  // and this is the identical check it was before.
+  if (passport.qr.payload !== canonicalIvid || passport.qr.payload !== passport.vehicle.ivid) {
+    throw new Error('handlePublicPassportRoute: internal invariant violated — qr.payload must equal the ivid of the vehicle served');
   }
 
   // 7. Existing CSP/security header set, identical to serveAdminAsset().
@@ -1502,6 +1538,33 @@ async function postFactReviewDecision(req, res, factId) {
   sendJson(res, 200, record);
 }
 
+
+// IDA-V8 — identity resolution. Owner requirement, 2026-08-27.
+//
+// Three authenticated routes and one public consequence. Fixpert holds
+// references minted before a merge; none of them may ever stop resolving.
+async function postVehicleMerge(req, res, ref) {
+  var body = await readJsonBody(req);
+  if (!body || !body.canonical_ref) {
+    return sendJson(res, 400, { error: 'canonical_ref is required' });
+  }
+  var record = await writes.mergeVehicle(ref, String(body.canonical_ref), req.mythosIdentity);
+  sendJson(res, 200, record);
+}
+
+async function postVehicleSplit(req, res, ref) {
+  var record = await writes.splitVehicle(ref, req.mythosIdentity);
+  sendJson(res, 200, record);
+}
+
+// GET /api/vehicles/:ref/resolve — what does this identifier point at today?
+// Accepts an IVID or an internal_ref, because Fixpert holds both.
+async function getVehicleResolve(res, ref) {
+  var resolved = await writes.resolveVehicleRef(ref);
+  if (!resolved) return notFound(res);
+  sendJson(res, 200, resolved);
+}
+
 var ROUTES = [
   { method: 'GET', pattern: /^\/health$/, handler: function (req, res) { return getHealth(res); } },
   { method: 'GET', pattern: /^\/api\/review\/observations$/, handler: function (req, res) { return getReviewObservations(res); } },
@@ -1514,6 +1577,9 @@ var ROUTES = [
   { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/facts$/, handler: function (req, res, m) { return postFact(req, res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)$/, handler: function (req, res, m) { return getVehicle(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/vehicles$/, handler: function (req, res) { return postVehicle(req, res); } },
+  { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/merge$/, handler: function (req, res, m) { return postVehicleMerge(req, res, decodePathSegment(m[1])); } },
+  { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/split$/, handler: function (req, res, m) { return postVehicleSplit(req, res, decodePathSegment(m[1])); } },
+  { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/resolve$/, handler: function (req, res, m) { return getVehicleResolve(res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/plates\/([^/]+)$/, handler: function (req, res, m) { return getPlate(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/plates$/, handler: function (req, res) { return postPlate(req, res); } },
   { method: 'GET', pattern: /^\/api\/passport\/([^/]+)$/, handler: function (req, res, m) { return getPrivatePassport(res, decodePathSegment(m[1])); } },
