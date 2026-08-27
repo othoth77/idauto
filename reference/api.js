@@ -171,6 +171,7 @@ function logAuthDecision(req, fields) {
   };
   try { entry.client = clientIpHash(req).slice(0, 16); } catch (_) { entry.client = null; }
   if (fields.actor) entry.actor = fields.actor;
+  if (fields.org !== undefined && fields.org !== null) entry.org = fields.org;
   if (typeof fields.credentialLength === 'number') entry.credential_length = fields.credentialLength;
   console.log(JSON.stringify(entry));
 }
@@ -180,6 +181,12 @@ function requireAuth(req, res) {
   var token = extractBearer(header);
   var resolved = identity.resolveIdentity(token);
   var via = resolved ? 'bearer' : null;
+  // IDA-V9 — the SAME lookup, read as a principal. req.mythosIdentity keeps
+  // being the actor_ref string every audit row already carries; req.principal
+  // adds the organisation and scopes that authorisation reads. An admin token
+  // resolves to a principal with '*' and no organisation, so nothing that
+  // worked before changes.
+  var principal = identity.resolvePrincipal(token);
   // IDA-V1B: the owner cookie is a fallback, never an override — a request
   // carrying a valid Bearer token is resolved by the token exactly as
   // before. The cookie yields the same actor_ref the token would have, so
@@ -208,8 +215,26 @@ function requireAuth(req, res) {
     return false;
   }
   req.mythosIdentity = resolved;
-  logAuthDecision(req, { result: 'granted', reason: via, actor: resolved });
+  // A cookie-authenticated owner is an admin principal: the session grant is
+  // already narrower than any scope check would be (two READ routes, pinned
+  // in OWNER_SESSION_ROUTES), so it is not widened here.
+  req.principal = principal || { actor_ref: resolved, org_id: null, scopes: [identity.ADMIN_SCOPE], kind: 'admin' };
+  logAuthDecision(req, { result: 'granted', reason: via, actor: resolved, org: req.principal.org_id });
   return true;
+}
+
+// IDA-V9 — one scope gate, used by every route that an organisation may reach.
+// Answers 403, not 401: the caller IS authenticated, it simply may not do this.
+// Returns true when the request may proceed.
+function requireScope(req, res, scope) {
+  if (identity.principalHasScope(req.principal, scope)) return true;
+  logAuthDecision(req, {
+    result: 'denied', reason: 'missing_scope:' + scope,
+    actor: req.mythosIdentity, org: req.principal ? req.principal.org_id : null
+  });
+  res.writeHead(403, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: 'forbidden — this credential does not carry the required scope', required_scope: scope }));
+  return false;
 }
 
 function sendJson(res, status, body) {
@@ -1143,15 +1168,32 @@ async function getPrivatePassport(res, rawIvid) {
 // ip_hash, camera_source_id, contributor_id, capture_session_id — all
 // documented in schema.sql as MYTHOS_PRIVATE or contributor/session
 // identity. Returns only status-shaped fields safe without audit logging.
-async function getObservation(res, id) {
+// IDA-V9 — organisation isolation. An organisation sees an observation only
+// if its own organisation submitted it, or if the row belongs to no
+// organisation at all (admin/manual entry, which is IDauto's own data and not
+// another atelier's). Another atelier's row answers 404, not 403: telling a
+// caller that a record it may not see EXISTS is itself a disclosure.
+// An admin principal is unfiltered, exactly as before.
+async function getObservation(req, res, id) {
   if (!/^\d+$/.test(id)) return notFound(res);
   var result = await db.query(
-    'SELECT id, vehicle_id, plate_id, capture_method, status ' +
+    // capture_time is NOT selected: tests/ida-2c pins it as a MYTHOS_PRIVATE
+    // identity field that must never reach this response, and it is right —
+    // a capture timestamp is movement data. The provenance columns below are
+    // the submitting organisation's own, and organisation isolation already
+    // keeps them from anyone else.
+    'SELECT id, vehicle_id, plate_id, capture_method, status, org_id, author_ref, source, source_type, source_reference ' +
     'FROM idauto_observations WHERE id = $1',
     [id]
   );
   if (result.rows.length === 0) return notFound(res);
-  sendJson(res, 200, result.rows[0]);
+  var row = result.rows[0];
+  if (req.principal && req.principal.kind === 'organisation') {
+    if (row.org_id !== null && String(row.org_id) !== String(req.principal.org_id)) {
+      return notFound(res);
+    }
+  }
+  sendJson(res, 200, row);
 }
 
 // GET /api/vehicles/:vehicle_internal_ref/facts
@@ -1500,7 +1542,7 @@ async function postObservation(req, res) {
   if (!body.vehicle_internal_ref) {
     return sendJson(res, 400, { error: 'vehicle_internal_ref is required' });
   }
-  var record = await writes.createObservation(body, req.mythosIdentity);
+  var record = await writes.createObservation(body, req.mythosIdentity, req.principal);
   sendJson(res, 201, record);
 }
 
@@ -1565,6 +1607,31 @@ async function getVehicleResolve(res, ref) {
   sendJson(res, 200, resolved);
 }
 
+
+// IDA-V9 — the scope each route requires. One table, checked in one place, so
+// a new route is visibly either scoped or deliberately admin-only: anything
+// absent here is reachable ONLY by an admin principal, which is the safe
+// default. An organisation credential can never reach a route it is not
+// listed for, whatever scopes it was granted.
+var ROUTE_SCOPES = [
+  { method: 'GET',  pattern: /^\/api\/vehicles\/[^/]+\/resolve$/, scope: 'identity:resolve' },
+  { method: 'GET',  pattern: /^\/api\/vehicles\/[^/]+\/facts$/,   scope: 'fact:read' },
+  { method: 'POST', pattern: /^\/api\/vehicles\/[^/]+\/facts$/,   scope: 'fact:write' },
+  { method: 'GET',  pattern: /^\/api\/vehicles\/[^/]+$/,           scope: 'vehicle:read' },
+  { method: 'POST', pattern: /^\/api\/vehicles$/,                  scope: 'vehicle:write' },
+  { method: 'GET',  pattern: /^\/api\/plates\/[^/]+$/,             scope: 'plate:read' },
+  { method: 'POST', pattern: /^\/api\/observations$/,              scope: 'observation:write' },
+  { method: 'GET',  pattern: /^\/api\/observations\/[^/]+$/,       scope: 'observation:read' },
+  { method: 'GET',  pattern: /^\/api\/passport\/[^/]+$/,           scope: 'passport:read' }
+];
+
+function scopeForRoute(method, pathname) {
+  for (var i = 0; i < ROUTE_SCOPES.length; i++) {
+    if (ROUTE_SCOPES[i].method === method && ROUTE_SCOPES[i].pattern.test(pathname)) return ROUTE_SCOPES[i].scope;
+  }
+  return null;
+}
+
 var ROUTES = [
   { method: 'GET', pattern: /^\/health$/, handler: function (req, res) { return getHealth(res); } },
   { method: 'GET', pattern: /^\/api\/review\/observations$/, handler: function (req, res) { return getReviewObservations(res); } },
@@ -1586,7 +1653,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return getObservationMedia(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/ingest\/observations$/, handler: function (req, res) { return postIngestObservation(req, res); } },
   { method: 'POST', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return postObservationMedia(req, res, decodePathSegment(m[1])); } },
-  { method: 'GET', pattern: /^\/api\/observations\/([^/]+)$/, handler: function (req, res, m) { return getObservation(res, decodePathSegment(m[1])); } },
+  { method: 'GET', pattern: /^\/api\/observations\/([^/]+)$/, handler: function (req, res, m) { return getObservation(req, res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/observations$/, handler: function (req, res) { return postObservation(req, res); } },
   { method: 'GET', pattern: /^\/api\/facts\/([^/]+)\/evidence$/, handler: function (req, res, m) { return getEvidenceForFact(res, decodePathSegment(m[1])); } }
 ];
@@ -1633,6 +1700,21 @@ function createServer() {
     if (handleSessionRoute(req, res, pathname)) return;
 
     if (!requireAuth(req, res)) return;
+
+    // IDA-V9 — authorisation, after authentication and before dispatch. An
+    // admin principal holds '*' and passes everything, so this changes
+    // nothing for the credentials that exist today. An organisation
+    // principal is refused with 403 unless the route is scoped AND its scope
+    // was granted — a route absent from ROUTE_SCOPES is admin-only.
+    if (req.principal && req.principal.kind === 'organisation') {
+      var needed = scopeForRoute(req.method, pathname);
+      if (!needed) {
+        logAuthDecision(req, { result: 'denied', reason: 'route_not_available_to_organisations', actor: req.mythosIdentity, org: req.principal.org_id });
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'forbidden — this route is not available to an organisation credential' }));
+      }
+      if (!requireScope(req, res, needed)) return;
+    }
 
     var matchedPath = ROUTES.filter(function (r) { return r.pattern.test(pathname); });
     if (matchedPath.length === 0) return notFound(res);
