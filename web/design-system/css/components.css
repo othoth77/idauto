@@ -170,6 +170,16 @@
   display: inline-flex;
   align-items: center;
   gap: var(--ida-space-2);
+  /* IDA-V7 — an IVID is one unbreakable 24-character identifier, and this
+   * chip carries it between a label and a copy button. At 320px the three
+   * together measure 330px inside a 305px column and pushed six elements
+   * past the edge. The chip may now wrap onto a second line and may never
+   * exceed its container; the identifier itself may break if even one line
+   * is too narrow for it. Wrapping only — no colour, size, spacing or
+   * structure changes, and nothing moves at any width where it already
+   * fitted. */
+  flex-wrap: wrap;
+  max-width: 100%;
   font-family: var(--ida-font-id);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
@@ -181,6 +191,7 @@
   color: var(--ida-text);
   direction: ltr;
 }
+.ida-ivid > span { overflow-wrap: anywhere; }
 .ida-ivid .ida-ivid-copy {
   border: 0; background: transparent; cursor: pointer;
   color: var(--ida-text-muted); padding: var(--ida-space-1);
