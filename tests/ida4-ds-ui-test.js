@@ -280,6 +280,41 @@ ok(/\.ida-input\s*{[^}]*min-height:\s*44px/s.test(compCss), "inputs meet 44px to
 ok(!/glow|neon/i.test(compCss), "no glow/neon effects");
 ok((compCss.match(/@keyframes/g) || []).length <= 2, "motion stays minimal (≤2 keyframes)");
 
+/* ---------- navigation: no scroll container of its own (regression) ----------
+ * A permanent horizontal scrollbar, with stepper arrows, sat under the
+ * navigation at every width. Cause: .ida-nav-links carried `overflow-x: auto`
+ * while sub-pixel rounding made scrollWidth (217) exceed clientWidth (214) by
+ * three pixels that were never content — the three items measure 198.1px plus
+ * two 8px gaps and fit their 214px box exactly.
+ *
+ * These assertions pin the cause, not the symptom. A layout metric would be
+ * useless here: scrollWidth stays 3px over clientWidth either way — what
+ * changed is that nothing renders a scrollbar for it any more. */
+// Comments stripped first: the rule's own note quotes the removed
+// `overflow-x: auto` in order to explain why it is gone. A prohibition must
+// be checked against declarations, not against the commentary about them.
+const componentsCss = read("design-system/css/components.css").replace(/\/\*[\s\S]*?\*\//g, "");
+const navLinksRule = (componentsCss.match(/\.ida-nav-links\s*\{[\s\S]*?\}/) || [""])[0];
+ok(navLinksRule !== "", "the .ida-nav-links rule exists");
+ok(!/overflow-x\s*:\s*(auto|scroll)/.test(navLinksRule),
+  "the nav link row declares no horizontal scroll container — no scrollbar can appear under the navigation");
+ok(!/overflow\s*:\s*(auto|scroll)/.test(navLinksRule),
+  "nor a shorthand overflow that would reintroduce one");
+ok(/flex-wrap\s*:\s*wrap/.test(navLinksRule),
+  "the row wraps instead of scrolling, so a long row still cannot push the page wide");
+
+const navInnerRule = (componentsCss.match(/\.ida-nav-inner\s*\{[\s\S]*?\}/) || [""])[0];
+ok(/flex-wrap\s*:\s*wrap/.test(navInnerRule),
+  "the nav container still wraps — the guarantee that replaces the scroll container");
+
+/* The three items must survive this fix, exactly and in order. */
+const navMarkup = (read("citizen/index.html").match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [""])[0];
+ok((navMarkup.match(/<li>/g) || []).length === 3, "the navigation carries exactly three items");
+ok(navMarkup.indexOf(">Vérifier<") !== -1, "the first item is Vérifier");
+ok(navMarkup.indexOf(">Passeport<") !== -1, "the second item is Passeport");
+ok(/data-theme-toggle/.test(navMarkup), "the third item is the theme toggle");
+ok(navMarkup.indexOf("◐") !== -1, "the theme toggle keeps its glyph");
+
 /* ---------- report ---------- */
 console.log(`ida4-ds-ui: ${passed} passed / ${failed} failed`);
 process.exit(failed ? 1 : 0);
