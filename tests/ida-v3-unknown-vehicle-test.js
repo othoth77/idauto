@@ -467,8 +467,16 @@ function noSecondStoreCases() {
   say('\nNO SECOND STORE, NO INVENTED DATA');
   var apiJs = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
   ok(!/CREATE\s+TABLE|ALTER\s+TABLE/i.test(apiJs), 'no schema change is introduced');
-  ok((apiJs.match(/INSERT INTO idauto_audit_log/g) || []).length === 1,
-    'the search event is the only direct audit insert in api.js');
+  // The SQL moved into writes.js, which owns every mutation in this codebase.
+  // api.js must carry no write verb at all — the same property
+  // tests/ida-2c-readonly-api-test.js enforces, asserted here too so the
+  // search-event path cannot quietly reintroduce one.
+  ok(!/INSERT\s+INTO|UPDATE\s+idauto_|DELETE\s+FROM|TRUNCATE|ALTER\s+TABLE/i.test(apiJs),
+    'api.js contains no SQL write verb — the search event is written through writes.js');
+  var writesJs = fs.readFileSync(path.join(BASE, 'reference', 'writes.js'), 'utf8');
+  ok(/function recordAnonymousAuditEvent/.test(writesJs), 'writes.js owns the anonymous audit-event insert');
+  ok((writesJs.match(/INSERT INTO idauto_audit_log/g) || []).length >= 1, 'and it is the module that carries the SQL');
+  ok(/writes\.recordAnonymousAuditEvent/.test(apiJs), 'api.js calls it rather than issuing SQL itself');
   var homeCode = fs.readFileSync(path.join(WEB, 'citizen', 'home.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   ok(!/POST|method:\s*['"]POST/.test(homeCode), 'the public page never writes — it only reads and hands off');

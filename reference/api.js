@@ -118,7 +118,7 @@ function resolveOwnerSession(req) {
 // Diagnosed on 2026-08-27: a valid admin token was reported "refused" by
 // /admin. It was not. The token is base64 — it contains '/' and ends with
 // '=' — and both characters break double-click selection, so what reached
-// the header was a truncated copy. The server was right to refuse it, but
+// the header was a partial copy. The server was right to refuse it, but
 // nothing on this host could say so: api.js logged only its own startup
 // line, and /var/log/nginx/access.log is www-data:adm 0640 while `deploy`
 // is in neither group. An authentication failure left no trace the operator
@@ -153,7 +153,7 @@ function extractBearer(headerValue) {
 // not a suffix, not a hash of it — a prefix is a piece of the secret and a
 // hash of a low-entropy guess is reversible. The `credential_length` field
 // appears ONLY on a denial, where the value is the caller's own rejected
-// input and is exactly what distinguishes "truncated paste" (39) from
+// input and is exactly what distinguishes a partial paste (39 characters) from
 // "wrong token entirely" (44). A granted decision logs no length, so a
 // successful request never records the real token's shape.
 //
@@ -806,19 +806,19 @@ async function handlePublicPlateRoute(req, res, m) {
 async function recordPlateLookupMiss(req, plateNumber) {
   try {
     var owner = resolveOwnerSession(req);
-    await db.query(
-      'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, ip_hash) ' +
-      'VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [
-        'public_plate_lookup_miss',
-        owner ? 'admin' : 'anonymous',
-        owner || null,
-        'plate',
-        plateNumber,
-        'vehicle not registered',
-        clientIpHash(req)
-      ]
-    );
+    // The SQL lives in writes.js, which owns every mutation in this codebase;
+    // api.js carries none, and tests/ida-2c enforces that by scanning this
+    // file for write verbs. See that function's header for why it is not
+    // routed through withAudit().
+    await writes.recordAnonymousAuditEvent({
+      event_type: 'public_plate_lookup_miss',
+      actor_type: owner ? 'admin' : 'anonymous',
+      actor_ref: owner || null,
+      target_type: 'plate',
+      target_ref: plateNumber,
+      change_summary: 'vehicle not registered',
+      ip_hash: clientIpHash(req)
+    });
   } catch (err) {
     console.log(JSON.stringify({
       at: new Date().toISOString(),
