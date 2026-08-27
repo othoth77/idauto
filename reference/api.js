@@ -766,9 +766,67 @@ async function handlePublicPlateRoute(req, res, m) {
     'WHERE p.plate_number = $1',
     [normalized]
   );
-  if (result.rows.length === 0 || !result.rows[0].ivid) return notFound(res);
+  if (result.rows.length === 0 || !result.rows[0].ivid) {
+    await recordPlateLookupMiss(req, normalized);
+    return notFound(res);
+  }
 
   sendJson(res, 200, { plate_number: result.rows[0].plate_number, ivid: result.rows[0].ivid });
+}
+
+//
+// IDA-V3, 2026-08-27 — SEARCH HISTORY FOR AN UNREGISTERED VEHICLE.
+//
+// Owner rule: a plate that resolves to nothing must not vanish as a bare
+// error. The search itself stays traceable, so that a vehicle registered
+// later can be tied back to the moment someone first looked for it, and so
+// a Fixpert-side lookup has a record on this side too.
+//
+// WHERE IT IS WRITTEN. idauto_audit_log, which already carries exactly the
+// columns this needs — event_time, event_type, actor_type, target_ref,
+// ip_hash. No second store, no schema change, no new table.
+//
+// WHY NOT withAudit(). writes.js's withAudit() refuses to write at all
+// without an attributable identity, deliberately: "there is no code path
+// that writes data without an attributable audit actor". That invariant is
+// about DATA. This is not data — it is an audit observation about an
+// anonymous request, and the audit table models an anonymous actor as a
+// first-class case (actor_type is a column; actor_ref is nullable). Writing
+// it directly keeps the invariant intact rather than bending it.
+//
+// BEST EFFORT, DELIBERATELY. This runs on an unauthenticated read path. If the
+// insert fails, the visitor still gets their answer: failing their lookup
+// because a log row could not be written would turn the audit trail into an
+// availability weapon anyone could aim at the public surface. The failure is
+// logged instead, so a silent gap is still visible to the operator.
+//
+// NO PII. The plate is the search subject and is recorded as such. The
+// caller is recorded only as the same salted client hash the limiter uses —
+// never a raw IP, never a header, never a cookie.
+async function recordPlateLookupMiss(req, plateNumber) {
+  try {
+    var owner = resolveOwnerSession(req);
+    await db.query(
+      'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, ip_hash) ' +
+      'VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [
+        'public_plate_lookup_miss',
+        owner ? 'admin' : 'anonymous',
+        owner || null,
+        'plate',
+        plateNumber,
+        'vehicle not registered',
+        clientIpHash(req)
+      ]
+    );
+  } catch (err) {
+    console.log(JSON.stringify({
+      at: new Date().toISOString(),
+      event: 'audit_write_failed',
+      what: 'public_plate_lookup_miss',
+      reason: err && err.code ? String(err.code) : 'unknown'
+    }));
+  }
 }
 
 async function handlePublicPassportRoute(req, res, pathname) {

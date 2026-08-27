@@ -1,6 +1,26 @@
 'use strict';
 
-/* IDA-V2 — public plate resolution. OWNER DECISION, 2026-08-27.
+/* IDA-V3 — unknown vehicle workflow. OWNER DECISION, 2026-08-27.
+ *
+ * A plate that resolves to nothing stops being a dead end. Two things must
+ * hold, and both are asserted here by running the code:
+ *
+ *   - NOTHING is created when the visitor supplies nothing. No vehicle, no
+ *     plate row, no fact, no observation — only one append-only audit row
+ *     recording that the search happened.
+ *   - The registration path is the EXISTING audited entry surface, reached
+ *     with the plate already carried over. No second vehicle store, no second
+ *     creation path, and no way for a human or a URL to choose the IVID.
+ *
+ * The database is stubbed, so the found/miss paths are deterministic and no
+ * real database is touched. Every statement is captured — which is how "no
+ * vehicle row was written" is proved rather than assumed.
+ *
+ * (This file reuses the harness introduced for IDA-V2.)
+ * ------------------------------------------------------------------------
+ * Original IDA-V2 header follows.
+ *
+ * IDA-V2 — public plate resolution. OWNER DECISION, 2026-08-27.
  *
  * This suite encodes the NEW rule and replaces
  * tests/ida-v1d-plate-no-public-resolution-test.js, which encoded the old
@@ -166,12 +186,10 @@ function buildDom() {
   el('p', { 'data-plate-message-title': '', 'class': 'ida-alert-title' }, message);
   el('p', { 'data-plate-message-body': '', 'class': 'ida-small' }, message);
 
-  // IDA-V3 added the unregistered-vehicle surface to the same page; home.js
-  // reads it at load, so the shim must build it too.
   var unknown = el('div', { 'data-plate-unknown': '', 'class': 'ida-card ida-stack' });
   unknown.hidden = true;
   el('p', { 'data-unknown-plate': '', 'class': 'ida-h4' }, unknown);
-  el('a', { 'data-unknown-register': '', 'class': 'ida-btn', href: '#' }, unknown);
+  el('a', { 'data-unknown-register': '', 'class': 'ida-btn ida-btn--primary', href: '#' }, unknown);
 
   var result = el('div', { 'data-plate-result': '', 'class': 'ida-card ida-stack' });
   result.hidden = true;
@@ -205,6 +223,9 @@ function markupCases() {
   requireInMarkup('data-plate-form', 'the plate form hook');
   requireInMarkup('data-ivid-form', 'the IVID form hook');
   requireInMarkup('data-plate-result', 'the result panel hook');
+  requireInMarkup('data-plate-unknown', 'the unregistered-vehicle surface hook');
+  requireInMarkup('data-unknown-plate', 'the carried-over plate output');
+  requireInMarkup('data-unknown-register', 'the registration link');
   requireInMarkup('data-plate-message', 'the user-message hook');
   requireInMarkup('data-result-ivid', 'the IVID output');
   requireInMarkup('data-result-plate', 'the plate output');
@@ -267,6 +288,7 @@ function text(sel, dom) { var e = dom.doc.querySelector(sel); return e ? e.textC
 
 var SQL = [];
 var RATE_COUNT = 0;
+var AUDIT_FAILS = false;
 var PLATES = {};            // normalised plate -> ivid (or null for "no vehicle")
 var dbPath = require.resolve(path.join(BASE, 'reference', 'db.js'));
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
@@ -278,6 +300,10 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
       return { rows: [{ plate_number: key, ivid: PLATES[key] }] };
     }
     if (/idauto_rate_limit_counters/i.test(sql)) { RATE_COUNT += 1; return { rows: [{ count: RATE_COUNT }] }; }
+    if (/INSERT INTO idauto_audit_log/.test(sql)) {
+      if (AUDIT_FAILS) throw Object.assign(new Error('audit store unavailable'), { code: '53300' });
+      return { rows: [] };
+    }
     return { rows: [] };
   },
   getClientForTransaction: async function () {
@@ -311,199 +337,148 @@ function request(method, requestPath, headers) {
   });
 }
 
-async function serverCases() {
-  say('\nSERVER — GET /public/plates/:plate');
-  PLATES['217 TUN 424'] = 'ivid:1:ABCDEFGHJKMNPQRS:AB';
-  PLATES['220 TUN 4518'] = null;   // plate exists, linked to no vehicle
 
-  // 1. valid plate -> vehicle found, 2. -> ivid returned
-  SQL.length = 0;
-  var found = await request('GET', '/public/plates/' + encodeURIComponent('217 TUN 424'));
-  ok(found.status === 200, 'a known plate resolves — 200');
-  ok(found.body && found.body.ivid === 'ivid:1:ABCDEFGHJKMNPQRS:AB', 'the response carries the vehicle IVID');
-  ok(found.body && found.body.plate_number === '217 TUN 424', 'the response echoes the normalised plate');
-  ok(Object.keys(found.body).length === 2, 'the response has EXACTLY two fields, nothing else');
+// ------------------------------------------------------- SEARCH HISTORY ---
 
-  // 8. private data is not exposed
-  ['internal_ref', 'vehicle_id', 'governorate', 'governorate_name', 'status', 'valid_from', 'valid_until',
-   'vin', 'owner', 'format_code', 'id'].forEach(function (field) {
-    ok(found.raw.indexOf('"' + field + '"') === -1, 'the plate response never carries ' + field);
-  });
-
-  // normalisation: same vehicle through lower case and extra spaces
-  var lower = await request('GET', '/public/plates/' + encodeURIComponent('217 tun 424'));
-  ok(lower.status === 200 && lower.body.ivid === found.body.ivid, 'a lower-case plate resolves to the same vehicle');
-  var spaced = await request('GET', '/public/plates/' + encodeURIComponent('  217   TUN   424 '));
-  ok(spaced.status === 200 && spaced.body.ivid === found.body.ivid, 'extra whitespace resolves to the same vehicle');
-
-  // 5. unknown plate -> controlled result
-  var unknown = await request('GET', '/public/plates/' + encodeURIComponent('999 TUN 9999'));
-  ok(unknown.status === 404, 'a well-formed unknown plate is 404');
-
-  // a plate with no linked vehicle is indistinguishable from unknown
-  var orphan = await request('GET', '/public/plates/' + encodeURIComponent('220 TUN 4518'));
-  ok(orphan.status === 404, 'a plate linked to no vehicle is 404');
-  ok(orphan.raw === unknown.raw, 'unknown and unlinked plates return byte-identical bodies');
-
-  // 6. invalid plate -> refused BEFORE any database touch
-  SQL.length = 0;
-  var malformed = await request('GET', '/public/plates/NOT-A-PLATE');
-  ok(malformed.status === 404, 'a malformed plate is 404');
-  ok(SQL.length === 0, 'a malformed plate issues ZERO database statements — format gate precedes the database');
-  ok(malformed.raw === unknown.raw, 'malformed and unknown plates return byte-identical bodies');
-
-  // method gate
-  var posted = await request('POST', '/public/plates/' + encodeURIComponent('217 TUN 424'));
-  ok(posted.status === 405 && posted.headers.allow === 'GET', 'a non-GET method is 405 with Allow: GET');
-
-  // the rate limiter is consulted, on the shared public_resolution bucket
-  SQL.length = 0;
-  await request('GET', '/public/plates/' + encodeURIComponent('217 TUN 424'));
-  ok(SQL.some(function (q) { return /idauto_rate_limit_counters/i.test(q.sql); }),
-    'the plate route goes through the public_resolution limiter');
-
-  // 7. IVID path still works
-  var ividRoute = await request('GET', '/public/passport/ivid:1:ABCDEFGHJKMNPQRS:AB');
-  ok(ividRoute.status !== 405 && ividRoute.status !== 401, 'the IVID passport route is still reachable anonymously');
-
-  // the singular path asserted absent by ida4-option-c stays absent
-  var singular = await request('GET', '/public/plate/217TUN424');
-  ok(singular.status === 404, '/public/plate/... (singular) still does not exist');
-
-  // 9. no secret in any response
-  var all = [found.raw, unknown.raw, malformed.raw, posted.raw].join('\n');
-  ok(!/Bearer|password|secret|token|ida_owner/i.test(all), 'no response carries a credential-shaped string');
+function auditRows() {
+  return SQL.filter(function (q) { return /INSERT INTO idauto_audit_log/.test(q.sql); });
 }
 
-async function phaseGateCases() {
-  say('\nPHASE GATE — disabled means the route does not exist');
-  // loadPublicResolutionConfig() caches for the life of the process, by
-  // design, so this cannot be flipped in-process. A child process with a
-  // disabled config is the honest way to assert it.
-  var disabledPath = path.join(require('os').tmpdir(), 'ida-v2-off-' + crypto.randomBytes(6).toString('hex') + '.json');
-  fs.writeFileSync(disabledPath, JSON.stringify({ public_resolution: { enabled: false } }));
-  var script = [
-    "var path=require('path');",
-    "var dbPath=require.resolve('" + path.join(BASE, 'reference', 'db.js') + "');",
-    "var n=0;",
-    "require.cache[dbPath]={id:dbPath,filename:dbPath,loaded:true,exports:{query:async function(){n++;return {rows:[{count:1}]};}}};",
-    "var api=require('" + path.join(BASE, 'reference', 'api.js') + "');",
-    "var http=require('http');var s=api.createServer();",
-    "s.listen(0,'127.0.0.1',function(){var port=s.address().port;",
-    "  function go(m,cb){var r=http.request({hostname:'127.0.0.1',port:port,path:'/public/plates/'+encodeURIComponent('217 TUN 424'),method:m},function(res){res.resume();res.on('end',function(){cb(res.statusCode);});});r.end();}",
-    "  go('GET',function(g){go('POST',function(p){console.log(JSON.stringify({get:g,post:p,queries:n}));s.close();});});",
-    "});"
-  ].join('\n');
-  var out = require('child_process').execFileSync(process.execPath, ['-e', script], {
-    env: Object.assign({}, process.env, { IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH: disabledPath }),
-    encoding: 'utf8', timeout: 30000
-  });
-  var r = JSON.parse(out.trim().split('\n').pop());
-  ok(r.get === 404, 'with public_resolution disabled, GET is 404');
-  ok(r.post === 404, 'with public_resolution disabled, POST is 404 too — not 405');
-  ok(r.queries === 0, 'with public_resolution disabled, zero database statements are issued');
-  try { fs.unlinkSync(disabledPath); } catch (_) {}
+async function knownPlateCase() {
+  say('\n1. KNOWN PLATE — resolves, and writes no miss event');
+  PLATES['217 TUN 424'] = 'ivid:1:ABCDEFGHJKMNPQRS:AB';
+  SQL.length = 0;
+  var r = await request('GET', '/public/plates/' + encodeURIComponent('217 TUN 424'));
+  ok(r.status === 200 && r.body.ivid === 'ivid:1:ABCDEFGHJKMNPQRS:AB', 'a known plate still resolves to its IVID');
+  ok(auditRows().length === 0, 'a successful lookup writes no miss event');
+}
+
+async function unknownPlateCase() {
+  say('\n2 & 6. UNKNOWN PLATE — no vehicle is created, a search event is');
+  SQL.length = 0;
+  var r = await request('GET', '/public/plates/' + encodeURIComponent('999 TUN 9999'));
+  ok(r.status === 404, 'an unknown plate is still 404 to the caller');
+
+  var rows = auditRows();
+  ok(rows.length === 1, 'exactly one audit row is written');
+  var p = rows[0].params;
+  ok(p[0] === 'public_plate_lookup_miss', 'event_type marks a public plate lookup miss');
+  ok(p[1] === 'anonymous', 'an anonymous caller is recorded as anonymous');
+  ok(p[2] === null, 'no actor_ref is invented for an anonymous caller');
+  ok(p[3] === 'plate' && p[4] === '999 TUN 9999', 'the searched plate is the audit target');
+  ok(p[5] === 'vehicle not registered', 'the status says the vehicle is not registered');
+  ok(/^[a-f0-9]{64}$/.test(p[6]), 'the caller is recorded as a client hash, never a raw IP');
+
+  // 6. no data was created — the ONLY write is the audit row
+  var writes = SQL.filter(function (q) { return /^\s*(INSERT|UPDATE|DELETE)/i.test(q.sql); });
+  var vehicleWrites = writes.filter(function (q) { return /idauto_vehicles|idauto_plates|idauto_vehicle_facts|idauto_observations/i.test(q.sql); });
+  ok(vehicleWrites.length === 0, 'NO vehicle, plate, fact or observation row is created when nothing was supplied');
+}
+
+async function repeatedSearchCase() {
+  say('\n7. REPEATED SEARCH — every attempt is kept');
+  SQL.length = 0;
+  await request('GET', '/public/plates/' + encodeURIComponent('999 TUN 9999'));
+  await request('GET', '/public/plates/' + encodeURIComponent('999 TUN 9999'));
+  await request('GET', '/public/plates/' + encodeURIComponent('888 TUN 1'));
+  var rows = auditRows();
+  ok(rows.length === 3, 'three searches produce three audit rows — history is appended, never replaced');
+  ok(rows[0].params[4] === '999 TUN 9999' && rows[2].params[4] === '888 TUN 1', 'each row carries the plate that was searched');
+  ok(!SQL.some(function (q) { return /UPDATE idauto_audit_log|DELETE FROM idauto_audit_log/i.test(q.sql); }),
+    'the audit log is append-only — nothing updates or deletes a previous search');
+}
+
+async function malformedNoEventCase() {
+  say('\nMALFORMED PLATE — refused before the database, so no event either');
+  SQL.length = 0;
+  var r = await request('GET', '/public/plates/NOT-A-PLATE');
+  ok(r.status === 404, 'a malformed plate is 404');
+  ok(SQL.length === 0, 'a malformed plate writes nothing at all — not even a search event');
+}
+
+async function auditFailureCase() {
+  say('\nAUDIT WRITE FAILURE — the visitor still gets an answer');
+  AUDIT_FAILS = true;
+  SQL.length = 0;
+  var r = await request('GET', '/public/plates/' + encodeURIComponent('777 TUN 77'));
+  ok(r.status === 404, 'a failed audit insert does not break the lookup');
+  ok(r.body && r.body.error, 'the 404 body is unchanged');
+  AUDIT_FAILS = false;
 }
 
 // ------------------------------------------------------------------ UI ----
 
-async function uiFoundCase() {
-  say('\nUI — valid plate, vehicle found');
-  var dom = buildDom();
-  var r = run(dom, [
-    { status: 200, body: { plate_number: '217 TUN 424', ivid: 'ivid:1:ABCDEFGHJKMNPQRS:AB' } },
-    { status: 200, body: { vehicle: { ivid: 'ivid:1:ABCDEFGHJKMNPQRS:AB', summary: { make: 'Peugeot', model: '208', year: 2019 } } } }
-  ]);
-  typePlate(dom, '217', '424');
-  var e = submit(dom);
-  ok(e.defaultPrevented === true, 'the form never navigates on submit');
-  await settle();
-
-  ok(r.calls.length >= 1, 'a resolution request WAS made — the button is no longer inert');
-  ok(r.calls[0].url.indexOf('/public/plates/') === 0, 'the request goes to the public plate route');
-  ok(decodeURIComponent(r.calls[0].url).indexOf('217 TUN 424') !== -1, 'the canonical plate is what is sent');
-  ok(!/Authorization/i.test(JSON.stringify(r.calls[0].options || {})), 'no Authorization header is ever sent');
-
-  ok(r.calls.length === 2 && r.calls[1].url.indexOf('/public/passport/') === 0, 'the IVID is then used against the public passport route');
-
-  var result = dom.doc.querySelector('[data-plate-result]');
-  ok(result.hidden === false, 'the result panel is shown');
-  ok(text('[data-result-ivid]', dom) === 'ivid:1:ABCDEFGHJKMNPQRS:AB', 'the IVID is displayed');
-  ok(text('[data-result-plate]', dom) === '217 TUN 424', 'the plate is displayed');
-  ok(/Peugeot 208 \(2019\)/.test(text('[data-result-summary]', dom)), 'the public identity is displayed');
-  var link = dom.doc.querySelector('[data-result-passport]');
-  ok(link.getAttribute('href') === '/passport?ivid=' + encodeURIComponent('ivid:1:ABCDEFGHJKMNPQRS:AB'), 'the passport link carries the IVID');
-  ok(dom.doc.querySelector('[data-plate-message]').hidden === true, 'no error message is shown on success');
-}
-
-async function uiUnknownCase() {
-  say('\nUI — valid plate, unknown vehicle');
+async function uiUnknownSurfaceCase() {
+  say('\n3. UNKNOWN PLATE → registration surface, plate carried over');
   var dom = buildDom();
   var r = run(dom, [{ status: 404, body: { error: 'not found' } }]);
-  typePlate(dom, '999', '9999');
-  submit(dom);
-  await settle();
-  // IDA-V3 superseded the outcome here: an unknown plate no longer ends in a
-  // message, it opens the unregistered-vehicle surface. That surface is
-  // asserted in full by tests/ida-v3-unknown-vehicle-test.js; what this suite
-  // still owns is that the RESOLUTION behaved correctly — controlled outcome,
-  // no identity panel, no raw error, no second request.
-  var unknownPanel = dom.doc.querySelector('[data-plate-unknown]');
-  ok(unknownPanel.hidden === false, 'a controlled outcome is shown — the registration surface');
-  ok(text('[data-unknown-plate]', dom) !== '', 'the searched plate is carried into it');
-  ok(dom.doc.querySelector('[data-plate-result]').hidden === true, 'no result panel is shown');
-  var shown = unknownPanel.textContent + text('[data-unknown-plate]', dom);
-  ok(!/404|500|error|not found/i.test(shown), 'the visitor never sees a status code or a raw server error');
-  ok(r.calls.length === 1, 'no passport request is made when the plate did not resolve');
-}
-
-async function uiInvalidCase() {
-  say('\nUI — invalid plate');
-  var dom = buildDom();
-  var r = run(dom, []);
-  typePlate(dom, '', '');
-  var e = submit(dom);
-  await settle();
-  ok(e.defaultPrevented === true, 'the form does not navigate');
-  ok(r.calls.length === 0, 'an invalid plate makes NO request');
-  ok(dom.doc.querySelector('[data-plate-error]').hidden === false, 'a validation error is shown');
-  ok(/incomplète ou invalide/.test(text('[data-plate-error]', dom)), 'the validation error names the rule');
-}
-
-async function uiServerErrorCase() {
-  say('\nUI — server failure and rate limit stay opaque to the visitor');
-  var dom = buildDom();
-  run(dom, [{ status: 500, body: { error: 'db.js: connection refused at 127.0.0.1:5432' } }]);
   typePlate(dom, '217', '424');
   submit(dom);
   await settle();
-  var shown = text('[data-plate-message-title]', dom) + ' ' + text('[data-plate-message-body]', dom);
-  ok(dom.doc.querySelector('[data-plate-message]').hidden === false, 'a message is shown');
-  ok(!/500|db\.js|5432|connection refused/i.test(shown), 'the raw server error is NEVER shown to the visitor');
 
-  var dom2 = buildDom();
-  run(dom2, [{ status: 429, body: { error: 'rate limit exceeded' } }]);
-  typePlate(dom2, '217', '424');
-  submit(dom2);
-  await settle();
-  ok(/Trop de recherches/.test(text('[data-plate-message-title]', dom2)), 'a rate-limited visitor gets a plain-language message');
-  ok(!/429/.test(text('[data-plate-message-body]', dom2)), 'the status code is not shown');
+  var panel = dom.doc.querySelector('[data-plate-unknown]');
+  ok(panel.hidden === false, 'the "Véhicule non enregistré" surface opens immediately');
+  ok(dom.doc.querySelector('[data-plate-result]').hidden === true, 'no identity panel is shown');
+  ok(/217/.test(text('[data-unknown-plate]', dom)) && /424/.test(text('[data-unknown-plate]', dom)),
+    'the searched plate is displayed, already filled in');
+
+  var link = dom.doc.querySelector('[data-unknown-register]').getAttribute('href');
+  ok(link.indexOf('/admin?plate=') === 0, 'the registration path is the existing audited entry surface');
+  ok(decodeURIComponent(link).indexOf('217 TUN 424') !== -1, 'the plate is carried through to it');
+  ok(link.indexOf('ivid') === -1, 'no IVID is proposed or carried — IDauto issues it');
+  ok(r.calls.length === 1, 'nothing is created by opening the surface');
+
+  var shown = text('[data-unknown-plate]', dom) + dom.doc.querySelector('[data-plate-unknown]').textContent;
+  ok(!/404|error|not found/i.test(shown), 'the visitor sees no status code and no raw error');
 }
 
-function sourceCases() {
-  say('\nSOURCE — what the citizen surface may and may not do');
-  var homeJs = fs.readFileSync(path.join(WEB, 'citizen', 'home.js'), 'utf8');
-  // Comments stripped: this file's own header discusses Authorization by name.
-  var code = homeJs.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  ok(/\/public\/plates\//.test(code), 'home.js resolves plates through the PUBLIC route');
-  ok(!/\/api\/plates/.test(code), 'home.js never calls the AUTHENTICATED plate route');
-  ok(!/Authorization|Bearer/i.test(code), 'home.js sends no Authorization header — no key is ever asked of the visitor');
-  ok(!/localStorage|sessionStorage|document\.cookie/.test(code), 'home.js stores nothing in the browser');
-  ok(/data-plate-result/.test(code) && /data-result-ivid/.test(code), 'home.js renders the result panel');
-  var markup = fs.readFileSync(path.join(WEB, 'citizen', 'index.html'), 'utf8');
-  ok(markup.indexOf('data-plate-result') !== -1, 'index.html carries the result panel');
-  ok(markup.indexOf('La consultation publique se fait par IVID') === -1, 'the withdrawn IVID-only notice is gone');
-  ok(markup.indexOf('type="password"') === -1, 'the citizen page has no credential field');
+function adminPrefillCases() {
+  say('\n4 & 8. ADMIN ENTRY SURFACE — prefilled, and cannot carry an IVID');
+  var adminUi = fs.readFileSync(path.join(BASE, 'reference', 'admin-ui.js'), 'utf8');
+  var adminHtml = fs.readFileSync(path.join(BASE, 'reference', 'admin.html'), 'utf8');
+  var code = adminUi.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  ok(/URLSearchParams/.test(code) && /params\.get\('plate'\)/.test(code), 'admin-ui reads the plate from the query string');
+  ok(/\^\\d\{1,3\} TUN \\d\{1,4\}\$/.test(code), 'only the canonical plate form is accepted from the URL');
+  ok(/form\.elements\.plate_number/.test(code), 'it prefills the existing plate field');
+  ok(!/params\.get\('ivid'\)|params\.get\("ivid"\)/.test(code), 'no IVID can be seeded from the URL');
+  // HTML comments stripped: admin.html's IDA-V1B note mentions IVID by name
+  // in order to explain the owner-session grant. What must not exist is a
+  // FIELD — an input, select or textarea a human could type an IVID into.
+  var adminMarkup = adminHtml.replace(/<!--[\s\S]*?-->/g, '');
+  ok(!/<(input|select|textarea)[^>]*ivid/i.test(adminMarkup),
+    'the entry form has no IVID field — the vehicle id is never chosen by a human');
+  ok(!/name=["']ivid["']|id=["']ivid["']/i.test(adminMarkup), 'no element is named or identified as ivid');
+
+  // 4. Carte Grise / document: the existing form already carries it
+  ok(/name="media" type="file"/.test(adminHtml), 'the entry form accepts a document or photo (Carte Grise)');
+  ok(/media_type/.test(adminHtml) && /media_access_scope/.test(adminHtml), 'the document carries its type and access scope');
+
+  // 9 & 10. provenance and audit come from the existing write path
+  var writes = fs.readFileSync(path.join(BASE, 'reference', 'writes.js'), 'utf8');
+  ok(/refusing to write without an attributable audit actor/.test(writes),
+    'the write path still refuses to create anything without an attributable actor');
+  ok(/INSERT INTO idauto_audit_log/.test(writes), 'creation is audited by the existing write path');
+  ok(/evidence_type/.test(adminHtml), 'provenance (evidence type) is captured on the fact');
+  ok(/capture method is fixed by the API/i.test(adminHtml), 'the capture method is server-set, not caller-set');
+}
+
+function noSecondStoreCases() {
+  say('\nNO SECOND STORE, NO INVENTED DATA');
+  var apiJs = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
+  ok(!/CREATE\s+TABLE|ALTER\s+TABLE/i.test(apiJs), 'no schema change is introduced');
+  ok((apiJs.match(/INSERT INTO idauto_audit_log/g) || []).length === 1,
+    'the search event is the only direct audit insert in api.js');
+  var homeCode = fs.readFileSync(path.join(WEB, 'citizen', 'home.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  ok(!/POST|method:\s*['"]POST/.test(homeCode), 'the public page never writes — it only reads and hands off');
+  // The page DISPLAYS make/model/year — read from the server's response, which
+  // is exactly its job. What it must never do is AUTHOR one: no vehicle
+  // attribute may be assigned a literal anywhere in this file.
+  ok(!/(make|model|variant|colour|year|vin)\s*[:=]\s*["'][^"']/i.test(homeCode),
+    'the public page never assigns a literal value to a vehicle attribute — it only renders what the server returned');
+  ok(/passport\.vehicle|vehicle\.summary|s\.make/.test(homeCode),
+    'the attributes it shows are read from the server response');
 }
 
 async function main() {
@@ -512,16 +487,17 @@ async function main() {
   await new Promise(function (r) { server.listen(0, '127.0.0.1', r); });
   port = server.address().port;
   try {
-    await serverCases();
-    await phaseGateCases();
+    await knownPlateCase();
+    await unknownPlateCase();
+    await repeatedSearchCase();
+    await malformedNoEventCase();
+    await auditFailureCase();
   } finally { server.close(); }
-  await uiFoundCase();
-  await uiUnknownCase();
-  await uiInvalidCase();
-  await uiServerErrorCase();
-  sourceCases();
+  await uiUnknownSurfaceCase();
+  adminPrefillCases();
+  noSecondStoreCases();
   try { fs.unlinkSync(CONFIG_PATH); } catch (_) {}
-  console.log('\nIDA-V2 public plate resolution: ' + pass + ' passed, ' + fail + ' failed');
+  console.log('\nIDA-V3 unknown vehicle workflow: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);
 }
 
