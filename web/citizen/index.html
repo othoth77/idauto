@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>IDauto — L'identité numérique de votre véhicule</title>
   <meta name="description" content="IDauto donne à chaque véhicule une identité numérique vérifiable : plaque, IVID, passeport et historique adossé à des preuves.">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <link rel="stylesheet" href="/assets/tokens.css">
   <link rel="stylesheet" href="/assets/base.css">
   <link rel="stylesheet" href="/assets/components.css">
@@ -67,7 +68,7 @@
             <p class="ida-alert-title">La consultation publique se fait par IVID</p>
             <p class="ida-small">Pour protéger la vie privée, une plaque ne permet pas de consulter
             un passeport publiquement. Scannez le QR IDauto du véhicule ou saisissez son IVID
-            ci-dessous. Les professionnels autorisés peuvent consulter par plaque après connexion.</p>
+            ci-dessous.</p>
           </div>
         </div>
 
@@ -90,27 +91,9 @@
     </div>
   </section>
 
-  <!-- Professional access: plate lookup is a PRIVATE-phase capability
-       (A5-PLATE). The token lives only in page memory, like the admin UI. -->
-  <section class="ida-container ida-u-pad-section" aria-labelledby="pro-title">
-    <details class="ida-card">
-      <summary id="pro-title" class="ida-h4">Accès professionnel — consultation par plaque</summary>
-      <div class="ida-stack ida-u-mbs-4">
-        <p class="ida-small ida-muted ida-u-maxch-52">Réservé aux organisations autorisées. Le jeton n'est
-        conservé qu'en mémoire de page, jamais enregistré dans le navigateur.</p>
-        <div class="ida-field ida-u-maxch-40">
-          <label for="pro-token">Jeton d'accès</label>
-          <input class="ida-input" id="pro-token" type="password" autocomplete="off">
-        </div>
-        <p class="ida-error-msg" data-pro-error hidden></p>
-        <p class="ida-caption">Saisissez ensuite la plaque ci-dessus puis «&nbsp;Consulter l'identité&nbsp;».</p>
-      </div>
-    </details>
-  </section>
-
-  <!-- Private passport result (professional flow) renders here, on this page,
-       so the token never leaves page memory. -->
-  <section class="ida-container ida-u-pad-section" data-passport-result hidden aria-live="polite"></section>
+  <!-- V1 PERSONAL: no key or token is ever asked of the user. The
+       professional plate-lookup UI was removed by owner decision; the
+       authenticated server routes are unchanged (A5-PLATE). -->
 
   <section class="ida-container ida-u-pad-section" aria-labelledby="passport-expl">
     <div class="ida-stack-lg">
@@ -138,8 +121,7 @@
 
 <footer class="ida-footer">
   <div class="ida-container ida-footer-inner">
-    <p>IDauto — protocole ouvert d'identité et d'historique des véhicules.</p>
-    <p class="ida-caption">Apache-2.0 · <a href="https://github.com/othoth77/idauto">source</a></p>
+    <p>IDauto — l'identité et l'historique numériques de votre véhicule.</p>
   </div>
 </footer>
 
