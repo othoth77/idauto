@@ -479,8 +479,171 @@ async function recordAnonymousAuditEvent(entry) {
   );
 }
 
+
+/* =========================================================================
+ * IDA-V8 — MERGE / SPLIT / ALIAS. Owner requirement, 2026-08-27.
+ *
+ * protocol/schemas/vehicle.schema.json already declared the contract:
+ * "Set when this record was merged into another. Both records are retained;
+ * a merge is itself an Event and MUST be reversible." These functions
+ * implement exactly that.
+ *
+ * NOTHING IS EVER DESTROYED. A merge writes ONE pointer on the merged record.
+ * Its ivid, its internal_ref, its observations, facts, evidence and audit
+ * rows are all left exactly where they were — no row is rewritten, no
+ * provenance is moved, no identifier is freed. That is what makes an external
+ * reference minted before the merge keep resolving afterwards, and what makes
+ * a split a matter of clearing one pointer rather than reconstructing data.
+ * ========================================================================= */
+
+// Follows the merge chain to the canonical record. Bounded, because a cycle
+// must fail loudly rather than hang a request: the self-merge CHECK blocks the
+// one-step cycle, and this bound blocks any longer one that a future bug could
+// create. Returns the canonical row plus how far it had to walk.
+var MAX_MERGE_DEPTH = 16;
+async function resolveCanonical(client, startRow) {
+  var row = startRow;
+  var hops = 0;
+  var seen = {};
+  while (row.merged_into_id) {
+    if (seen[row.id]) {
+      throw Object.assign(new Error('vehicle identity graph contains a cycle'), { httpStatus: 409 });
+    }
+    seen[row.id] = true;
+    if (++hops > MAX_MERGE_DEPTH) {
+      throw Object.assign(new Error('vehicle merge chain is too deep to resolve'), { httpStatus: 409 });
+    }
+    var next = await client.query(
+      'SELECT id, ivid, internal_ref, fiche_status, merged_into_id, pre_merge_status FROM idauto_vehicles WHERE id = $1',
+      [row.merged_into_id]
+    );
+    if (next.rows.length === 0) {
+      throw Object.assign(new Error('merge target no longer exists'), { httpStatus: 409 });
+    }
+    row = next.rows[0];
+  }
+  return { canonical: row, hops: hops };
+}
+
+// Looks a vehicle up by EITHER identifier the outside world may hold: its
+// IVID or its internal_ref. Fixpert holds both kinds, and neither is ever
+// reused, so a reference always finds its record even after a merge.
+async function findVehicleByAnyRef(client, ref) {
+  var r = await client.query(
+    'SELECT id, ivid, internal_ref, fiche_status, merged_into_id, pre_merge_status FROM idauto_vehicles WHERE ivid = $1 OR internal_ref = $1',
+    [ref]
+  );
+  return r.rows.length ? r.rows[0] : null;
+}
+
+/* POST /api/vehicles/:ref/merge — merge :ref INTO the canonical vehicle.
+ *
+ * Refuses, rather than guesses, when: either vehicle is unknown; they are the
+ * same record; the source is already merged (split it first — a re-merge would
+ * silently discard where it pointed before); or the target resolves back to
+ * the source, which would create a cycle. */
+async function mergeVehicle(sourceRef, canonicalRef, identity) {
+  return withAudit(
+    { event_type: 'vehicle.merge', target_type: 'idauto_vehicles',
+      change_summary: 'Merged ' + sourceRef + ' into ' + canonicalRef },
+    identity,
+    async function (client) {
+      var source = await findVehicleByAnyRef(client, sourceRef);
+      if (!source) throw Object.assign(new Error('vehicle not found'), { httpStatus: 404 });
+      var target = await findVehicleByAnyRef(client, canonicalRef);
+      if (!target) throw Object.assign(new Error('canonical vehicle not found'), { httpStatus: 404 });
+      if (String(source.id) === String(target.id)) {
+        throw Object.assign(new Error('a vehicle cannot be merged into itself'), { httpStatus: 400 });
+      }
+      if (source.merged_into_id) {
+        throw Object.assign(new Error('vehicle is already merged — split it before merging again'), { httpStatus: 409 });
+      }
+      // The target may itself be merged; resolve to where it really points,
+      // so a chain stays one hop deep and cannot grow without bound.
+      var resolved = await resolveCanonical(client, target);
+      if (String(resolved.canonical.id) === String(source.id)) {
+        throw Object.assign(new Error('merge would create a cycle'), { httpStatus: 409 });
+      }
+
+      var updated = await client.query(
+        'UPDATE idauto_vehicles SET merged_into_id = $2, pre_merge_status = fiche_status, ' +
+        "fiche_status = 'merged', updated_at = NOW() WHERE id = $1 " +
+        'RETURNING id, ivid, internal_ref, fiche_status, merged_into_id, pre_merge_status',
+        [source.id, resolved.canonical.id]
+      );
+      var row = updated.rows[0];
+      return {
+        record: {
+          merged: { ivid: row.ivid, internal_ref: row.internal_ref, status: row.fiche_status, pre_merge_status: row.pre_merge_status },
+          canonical: { ivid: resolved.canonical.ivid, internal_ref: resolved.canonical.internal_ref }
+        },
+        auditTargetRef: row.id
+      };
+    }
+  );
+}
+
+/* POST /api/vehicles/:ref/split — reverse a merge.
+ *
+ * Clears the pointer and restores the status the record held before. Nothing
+ * has to be moved back, because nothing was moved: this is why the merge was
+ * built as a pointer and not as a data migration. */
+async function splitVehicle(sourceRef, identity) {
+  return withAudit(
+    { event_type: 'vehicle.split', target_type: 'idauto_vehicles',
+      change_summary: 'Split ' + sourceRef + ' back out of its merge' },
+    identity,
+    async function (client) {
+      var source = await findVehicleByAnyRef(client, sourceRef);
+      if (!source) throw Object.assign(new Error('vehicle not found'), { httpStatus: 404 });
+      if (!source.merged_into_id) {
+        throw Object.assign(new Error('vehicle is not merged'), { httpStatus: 409 });
+      }
+      var previous = await client.query('SELECT ivid FROM idauto_vehicles WHERE id = $1', [source.merged_into_id]);
+      var updated = await client.query(
+        'UPDATE idauto_vehicles SET merged_into_id = NULL, ' +
+        "fiche_status = COALESCE(pre_merge_status, 'initial'), pre_merge_status = NULL, updated_at = NOW() " +
+        'WHERE id = $1 RETURNING id, ivid, internal_ref, fiche_status, merged_into_id',
+        [source.id]
+      );
+      var row = updated.rows[0];
+      return {
+        record: {
+          restored: { ivid: row.ivid, internal_ref: row.internal_ref, status: row.fiche_status },
+          was_merged_into: previous.rows.length ? previous.rows[0].ivid : null
+        },
+        auditTargetRef: row.id
+      };
+    }
+  );
+}
+
+/* Read-only resolution. No audit row: reading is not a mutation, and an
+ * audited read on a route Fixpert will call constantly would drown the log
+ * that matters. */
+async function resolveVehicleRef(ref) {
+  var client = await db.getClientForTransaction();
+  try {
+    var found = await findVehicleByAnyRef(client, ref);
+    if (!found) return null;
+    var resolved = await resolveCanonical(client, found);
+    return {
+      requested_ref: ref,
+      is_alias: resolved.hops > 0,
+      requested: { ivid: found.ivid, internal_ref: found.internal_ref, status: found.fiche_status },
+      canonical: { ivid: resolved.canonical.ivid, internal_ref: resolved.canonical.internal_ref, status: resolved.canonical.fiche_status },
+      merge_hops: resolved.hops
+    };
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = {
   createVehicle: createVehicle,
+  mergeVehicle: mergeVehicle,
+  splitVehicle: splitVehicle,
+  resolveVehicleRef: resolveVehicleRef,
   recordAnonymousAuditEvent: recordAnonymousAuditEvent,
   createPlate: createPlate,
   createObservation: createObservation,
