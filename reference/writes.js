@@ -135,7 +135,7 @@ async function createPlate(body, identity) {
     async function (client) {
       var vehicleId = null;
       if (body.vehicle_internal_ref) {
-        var v = await client.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [body.vehicle_internal_ref]);
+      var v = await client.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [body.vehicle_internal_ref]);
         if (v.rows.length === 0) {
           var e = new Error('vehicle_internal_ref not found');
           e.code = '23503';
@@ -165,11 +165,39 @@ var ALLOWED_OBSERVATION_STATUS = ['received', 'processing', 'pending_confirmatio
 // capture_method is hardcoded to 'manual_admin' — not caller-controlled —
 // this endpoint IS the manual-admin-entry path, not a general ingestion
 // route for other capture types (smart_gate, public_upload, etc.).
-async function createObservation(body, identity) {
+/* IDA-V9 — `principal` carries the authenticated organisation and its scopes.
+ * When it is an organisation, the observation is stored WITH its organisation
+ * and its full provenance; the database's chk_obs_org_provenance makes an
+ * organisation row without complete provenance impossible to write, so the
+ * validation below is a clear 400 rather than the last line of defence.
+ * An admin principal writes exactly what it wrote before: org_id NULL. */
+async function createObservation(body, identity, principal) {
   return withAudit(
     { event_type: 'observation.create', target_type: 'idauto_observations', change_summary: 'Manual admin observation entry' },
     identity,
     async function (client) {
+        // Provenance is decided here, from the AUTHENTICATED principal — never
+      // from the request body. A caller cannot claim to be another
+      // organisation, because org_id is not read from what it sent.
+      var prov = { org_id: null, author_ref: null, source: null, source_type: null, source_reference: null };
+      if (principal && principal.kind === 'organisation') {
+        var missing = ['author', 'source', 'source_type', 'source_reference'].filter(function (k) {
+          return !body[k] || typeof body[k] !== 'string' || !String(body[k]).trim();
+        });
+        if (missing.length) {
+          throw Object.assign(
+            new Error('organisation-originated data requires complete provenance; missing: ' + missing.join(', ')),
+            { httpStatus: 400 }
+          );
+        }
+        prov = {
+          org_id: principal.org_id,
+          author_ref: String(body.author).trim().slice(0, 64),
+          source: String(body.source).trim().slice(0, 60),
+          source_type: String(body.source_type).trim().slice(0, 30),
+          source_reference: String(body.source_reference).trim().slice(0, 200)
+        };
+      }
       var v = await client.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [body.vehicle_internal_ref]);
       if (v.rows.length === 0) {
         var e1 = new Error('vehicle_internal_ref not found');
@@ -184,9 +212,12 @@ async function createObservation(body, identity) {
       var source = await client.query("SELECT id FROM idauto_capture_sources WHERE code = 'MANUAL_ADMIN'");
       var status = ALLOWED_OBSERVATION_STATUS.indexOf(body.status) !== -1 ? body.status : 'received';
       var result = await client.query(
-        'INSERT INTO idauto_observations (vehicle_id, plate_id, capture_source_id, capture_method, status) ' +
-        'VALUES ($1,$2,$3,$4,$5) RETURNING id, vehicle_id, plate_id, capture_method, status',
-        [v.rows[0].id, plateId, source.rows[0].id, 'manual_admin', status]
+        'INSERT INTO idauto_observations (vehicle_id, plate_id, capture_source_id, capture_method, status, ' +
+        'org_id, author_ref, source, source_type, source_reference) ' +
+        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ' +
+        'RETURNING id, vehicle_id, plate_id, capture_method, status, org_id, author_ref, source, source_type, source_reference, capture_time',
+        [v.rows[0].id, plateId, source.rows[0].id, 'manual_admin', status,
+         prov.org_id, prov.author_ref, prov.source, prov.source_type, prov.source_reference]
       );
       var row = result.rows[0];
       return { record: row, auditTargetRef: row.id };
