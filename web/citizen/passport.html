@@ -49,16 +49,14 @@
         </div>
       </form>
 
-      <!-- The vehicle's plate. Rendered ONLY once the server has confirmed
-           that this plate resolves to this exact IVID — see passport.js. The
+      <!-- The vehicle's plate, served by the passport itself (IDA-V6). The
            span structure is the Design System's PlateDisplay (.ida-plate),
            unchanged: série, تونس, numéro. No flag, no country band. -->
       <div class="ida-stack" data-plate-block hidden>
         <p class="ida-label">Plaque d'immatriculation</p>
         <p class="ida-plate" data-plate-display dir="ltr">
-          <span data-plate-serie></span><span class="ida-plate-word">تونس</span><span data-plate-numero></span>
+          <span data-plate-serie></span><span class="ida-plate-word" data-plate-word>تونس</span><span data-plate-numero></span>
         </p>
-        <p class="ida-caption" data-plate-caption></p>
       </div>
 
     </div>

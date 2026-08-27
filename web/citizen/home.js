@@ -95,13 +95,7 @@
     resultSummary.textContent = summarize(passport && passport.vehicle);
     resultPlate.textContent = plateNumber;
     resultIvid.textContent = ividValue;
-    /* IDA-V5 — the plate travels as a HINT so the passport page can show it
-     * beside the IVID. It is only a hint: passport.js confirms it against
-     * /public/plates/:plate and draws nothing unless the server returns this
-     * same IVID. The IVID itself remains the only thing that opens the
-     * passport — this parameter changes no lookup. */
-    resultPassport.setAttribute("href", "/passport?ivid=" + encodeURIComponent(ividValue) +
-      (plateNumber ? "&plate=" + encodeURIComponent(plateNumber) : ""));
+    resultPassport.setAttribute("href", "/passport?ivid=" + encodeURIComponent(ividValue));
     result.hidden = false;
     say("Véhicule trouvé");
   }

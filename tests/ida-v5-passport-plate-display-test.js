@@ -1,6 +1,23 @@
 'use strict';
 
-/* IDA-V5 — the vehicle's plate, shown beside its IVID on the passport page.
+/* IDA-V6 — the plate is public data, and the passport shows it however it was
+ * reached. Owner decision, 2026-08-27.
+ *
+ * This REPLACES the A5-PLATE rule that withheld plate records from the
+ * anonymous surface. The three access paths must all end with a visible
+ * plate: by plate search, by IVID, and by QR — which is the same thing as by
+ * IVID, since the QR encodes nothing else.
+ *
+ * WHAT MUST NOT MOVE, and is asserted harder here than before: the VIN and
+ * every piece of owner PII stay off the public surface. 'vin' is still on the
+ * fact deny-list and so is 'plate_number' — the plate now served publicly is
+ * the AUTHORITATIVE idauto_plates row, while a community-submitted FACT keyed
+ * plate_number is arbitrary text and stays excluded, so this decision cannot
+ * be used to smuggle unverified strings onto a trusted-looking key.
+ *
+ * Original IDA-V5 header follows.
+ *
+ * IDA-V5 — the vehicle's plate, shown beside its IVID on the passport page.
  *
  * THE CONSTRAINT THAT SHAPED THIS. The anonymous passport does not carry
  * plate records, and that invariant is untouched: reference/public-surface-policy.js
@@ -91,9 +108,8 @@ function buildDom() {
   block.hidden = true;
   var plate = el('p', { 'data-plate-display': '', 'class': 'ida-plate', dir: 'ltr' }, block);
   el('span', { 'data-plate-serie': '' }, plate);
-  el('span', { 'class': 'ida-plate-word' }, plate).textContent = 'تونس';
+  el('span', { 'class': 'ida-plate-word', 'data-plate-word': '' }, plate).textContent = 'تونس';
   el('span', { 'data-plate-numero': '' }, plate);
-  el('p', { 'data-plate-caption': '', 'class': 'ida-caption' }, block);
 
   el('div', { 'data-passport-loading': '', 'class': 'ida-card' }).hidden = true;
   el('div', { 'data-passport-error': '', 'class': 'ida-error-state' }).hidden = true;
@@ -153,98 +169,124 @@ function markupCases() {
   ok(/\.ida-grid-2/.test(grid), 'the grid utility already existed too');
 }
 
-async function confirmedCase() {
-  say('\nCONFIRMED PLATE — drawn only after the server agrees');
+function passportBodyWithPlate() {
+  var b = passportBody();
+  b.plates = [{ protocol_version: '0.1.0-draft', id: '1', subject_ivid: IVID, plate_number: '217 TUN 424', format_code: 'TUN_STD', valid_from: '2026-01-01T00:00:00.000Z' }];
+  return b;
+}
+
+async function byIvidCase() {
+  say('\nCAS 2 & 3 — IVID (and therefore QR) → passport → plate visible');
   var dom = buildDom();
-  var r = run(dom, '?ivid=' + encodeURIComponent(IVID) + '&plate=' + encodeURIComponent('217 TUN 424'),
-    [{ status: 200, body: passportBody() }, { status: 200, body: { plate_number: '217 TUN 424', ivid: IVID } }]);
+  var r = run(dom, '?ivid=' + encodeURIComponent(IVID), [{ status: 200, body: passportBodyWithPlate() }]);
   await settle();
-  realLog('    [debug] appels=' + JSON.stringify(r.calls));
-  ok(r.calls.length === 2, 'two requests: the passport, then the plate confirmation');
-  ok(r.calls[1].indexOf('/public/plates/') === 0, 'the confirmation goes to the public plate route');
-  ok(decodeURIComponent(r.calls[1]).indexOf('217 TUN 424') !== -1, 'it asks about the plate from the hint');
-  ok(dom.block.hidden === false, 'the plate block is shown');
+  ok(r.calls.length === 1, 'ONE request — the passport carries the plate, nothing extra is fetched');
+  ok(r.calls[0].indexOf('/public/passport/') === 0, 'and it is the public passport route');
+  ok(dom.block.hidden === false, 'the plate block is shown when the page is opened by IVID alone');
   ok(txt(dom, '[data-plate-serie]') === '217', 'série rendered');
   ok(txt(dom, '[data-plate-numero]') === '424', 'numéro rendered');
   ok(dom.doc.querySelector('[data-plate-display]').getAttribute('class') === 'ida-plate', 'rendered inside PlateDisplay');
 }
 
-async function mismatchCase() {
-  say('\nUNCONFIRMED — a hint that does not belong to this vehicle draws NOTHING');
+async function byPlateCase() {
+  say('\nCAS 1 — arriving from a plate search ends the same way');
   var dom = buildDom();
-  run(dom, '?ivid=' + encodeURIComponent(IVID) + '&plate=' + encodeURIComponent('999 TUN 9999'),
-    [{ status: 200, body: passportBody() }, { status: 200, body: { plate_number: '999 TUN 9999', ivid: OTHER } }]);
+  // The homepage now links with ?ivid= only; the passport is what carries the
+  // plate, so the path taken to get here cannot change what is displayed.
+  var r = run(dom, '?ivid=' + encodeURIComponent(IVID), [{ status: 200, body: passportBodyWithPlate() }]);
   await settle();
-  ok(dom.block.hidden === true, 'a plate resolving to a DIFFERENT ivid is not drawn — no spoofing surface');
-  ok(txt(dom, '[data-plate-serie]') === '', 'nothing is written into the component');
-
-  var dom2 = buildDom();
-  run(dom2, '?ivid=' + encodeURIComponent(IVID) + '&plate=' + encodeURIComponent('123 TUN 4567'),
-    [{ status: 200, body: passportBody() }, { status: 404, body: { error: 'not found' } }]);
-  await settle();
-  ok(dom2.block.hidden === true, 'an unknown plate is not drawn');
-
-  var dom3 = buildDom();
-  run(dom3, '?ivid=' + encodeURIComponent(IVID) + '&plate=' + encodeURIComponent('123 TUN 4567'),
-    [{ status: 200, body: passportBody() }, { networkError: true }]);
-  await settle();
-  ok(dom3.block.hidden === true, 'a failed confirmation is not drawn');
-
-  var dom4 = buildDom();
-  var r4 = run(dom4, '?ivid=' + encodeURIComponent(IVID) + '&plate=' + encodeURIComponent('<script>x</script>'),
-    [{ status: 200, body: passportBody() }]);
-  await settle();
-  ok(dom4.block.hidden === true, 'a malformed hint is refused at the format gate');
-  ok(r4.calls.length === 1, 'and costs no request at all');
+  ok(dom.block.hidden === false, 'the plate is shown, identically to the IVID path');
+  ok(txt(dom, '[data-plate-serie]') + txt(dom, '[data-plate-numero]') === '217424', 'and shows the same plate');
+  var home = fs.readFileSync(path.join(WEB, 'citizen', 'home.js'), 'utf8');
+  ok(home.indexOf('&plate=') === -1, 'the homepage no longer needs to pass a plate hint');
 }
 
-async function noHintCase() {
-  say('\nNO HINT — opened straight from a QR');
+async function noPlateCase() {
+  say('\nNO PLATE ON RECORD — the block stays away rather than showing something empty');
   var dom = buildDom();
-  var r = run(dom, '?ivid=' + encodeURIComponent(IVID), [{ status: 200, body: passportBody() }]);
+  run(dom, '?ivid=' + encodeURIComponent(IVID), [{ status: 200, body: passportBody() }]);
   await settle();
-  ok(dom.block.hidden === true, 'no plate block when the page is opened by IVID alone');
-  ok(r.calls.length === 1, 'and no confirmation request is made');
+  ok(dom.block.hidden === true, 'a vehicle with no plate shows no plate block');
+  ok(txt(dom, '[data-plate-serie]') === '', 'and nothing is written into the component');
+}
+
+async function noUrlInfluenceCase() {
+  say('\nTHE URL CANNOT INFLUENCE THE PLATE');
+  var dom = buildDom();
+  run(dom, '?ivid=' + encodeURIComponent(IVID) + '&plate=' + encodeURIComponent('999 TUN 9999'),
+    [{ status: 200, body: passportBodyWithPlate() }]);
+  await settle();
+  ok(txt(dom, '[data-plate-serie]') === '217' && txt(dom, '[data-plate-numero]') === '424',
+    'a plate in the query string is IGNORED — the served plate wins');
+  var js = fs.readFileSync(path.join(WEB, 'citizen', 'passport.js'), 'utf8');
+  var code = js.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  ok(!/renderPlate[\s\S]{0,400}location\.search/.test(code), 'the renderer never reads the query string');
+  ok(!/get\("plate"\)/.test(code), 'no code path reads a plate parameter at all');
+}
+
+async function malformedPlateCase() {
+  say('\nA PLATE THAT IS NOT TUN_STD IS SHOWN WHOLE, NOT GUESSED AT');
+  var dom = buildDom();
+  var body = passportBody();
+  body.plates = [{ plate_number: 'RS 123 TN', subject_ivid: IVID }];
+  run(dom, '?ivid=' + encodeURIComponent(IVID), [{ status: 200, body: body }]);
+  await settle();
+  ok(dom.block.hidden === false, 'it is still displayed');
+  ok(txt(dom, '[data-plate-serie]') === 'RS 123 TN', 'shown whole, in the same component');
+  ok(txt(dom, '[data-plate-numero]') === '', 'and no numéro is invented for it');
 }
 
 function untouchedCases() {
-  say('\nUNTOUCHED — IVID, QR, passport and the public surface');
+  say('\nUNTOUCHED — IVID, QR and the passport itself');
   var js = fs.readFileSync(path.join(WEB, 'citizen', 'passport.js'), 'utf8');
   var code = js.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  ok(/GET|fetch\("\/public\/passport\//.test(code) || /public\/passport\//.test(code), 'the passport is still loaded by IVID from the public route');
-  ok(!/qr/i.test(code.replace(/qrcodegen/gi, '')), 'passport.js touches no QR logic');
-  // The IVID path is unchanged: the passport is still fetched by IVID alone,
-  // and the plate confirmation is a separate call that gates nothing.
   ok(/fetch\("\/public\/passport\/" \+ encodeURIComponent\(ivid\)\)/.test(code), 'the passport is still fetched by IVID alone');
-  ok(!/showConfirmedPlate[\s\S]{0,200}return[\s\S]{0,40}resultHost/.test(code), 'the plate confirmation gates nothing in the passport path');
-
+  ok(!/qr/i.test(code.replace(/qrcodegen/gi, '')), 'passport.js touches no QR logic');
   var render = fs.readFileSync(path.join(WEB, 'citizen', 'passport-render.js'), 'utf8');
   ok(!/data-plate-block/.test(render), 'the passport renderer itself is untouched');
+  ok(fs.readdirSync(path.join(WEB, 'design-system', 'css')).length === 2, 'the Design System stylesheet set is unchanged');
+}
 
+function privacyCases() {
+  say('\nPRIVACY — what the plate decision did NOT open');
   var policy = require(path.join(BASE, 'reference', 'public-surface-policy.js'));
-  ok(policy.deniedFactKeys().indexOf('plate_number') !== -1, 'plate_number is STILL on the anonymous deny-list');
-  ok(policy.ANONYMOUS_SURFACE_NEVER_INCLUDES_PLATE_RECORDS === true, 'the anonymous surface still carries no plate record — the plate is confirmed, never served in the passport');
-  var api = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
-  // Bounded to the handler's own body — the file also contains the
-  // authenticated plate routes, which legitimately read idauto_plates.
-  var start = api.indexOf('async function handlePublicPassportRoute');
-  var body = api.slice(start, api.indexOf('\nasync function', start + 40));
-  ok(body.length > 400, 'the public passport handler body was located');
-  ok(!/idauto_plates/.test(body), 'the public passport handler selects no plate row');
-  ok(!/current_plate_ref/.test(body), 'and sets no current_plate_ref');
+  ok(policy.deniedFactKeys().indexOf('vin') !== -1, 'vin is STILL on the anonymous-surface deny-list');
+  ok(policy.deniedFactKeys().indexOf('plate_number') !== -1,
+    'plate_number STAYS on the FACT deny-list — the public plate is the authoritative record, not somebody typed text');
+  ok(policy.ANONYMOUS_SURFACE_INCLUDES_AUTHORITATIVE_PLATE_RECORD === true, 'the withdrawn invariant is replaced, not silently deleted');
 
-  var home = fs.readFileSync(path.join(WEB, 'citizen', 'home.js'), 'utf8');
-  ok(/&plate=/.test(home), 'the homepage passes the plate as a hint');
-  ok(/ivid=/.test(home), 'the IVID remains what opens the passport');
+  var api = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
+  var start = api.indexOf('async function handlePublicPassportRoute');
+  var bodyRaw = api.slice(start, api.indexOf('\nasync function', start + 40));
+  // Comments stripped: the handler's own notes name the governorate and the
+  // VIN in order to explain why neither is selected. A prohibition must be
+  // checked against code.
+  var body = bodyRaw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  ok(body.length > 400, 'the public passport handler body was located');
+  ok(/FROM idauto_plates/.test(body), 'the public route now reads the authoritative plate');
+  ok(/plate_number/.test(body) && /format_code/.test(body), 'and selects what renders a plate');
+  ok(!/governorate/.test(body), 'it does NOT select the governorate — a coarse location nobody asked to publish');
+  ok(!/valid_until/.test(body) && !/p\.status,/.test(body), 'nor the validity dates or administrative status');
+  ok(/deniedFactKeys\(\)/.test(body), 'the fact deny-list is still applied on the same route');
+  ok(/access_scope = \$2/.test(body), 'and facts are still filtered by scope in SQL');
+  ok(!/\bvin\b/.test(body.replace(/vehicle_ivid|subject_ivid|ivid/g, '')), 'the handler selects no VIN column');
+
+  // The private routes must not have been widened by any of this.
+  ok(/requireAuth/.test(api), 'the authenticated gate is still in place');
+  var v = fs.readFileSync(path.join(BASE, 'reference', 'writes.js'), 'utf8');
+  ok(/refusing to write without an attributable audit actor/.test(v), 'writes still refuse an unattributable actor');
 }
 
 async function main() {
   markupCases();
-  await confirmedCase();
-  await mismatchCase();
-  await noHintCase();
+  await byIvidCase();
+  await byPlateCase();
+  await noPlateCase();
+  await noUrlInfluenceCase();
+  await malformedPlateCase();
   untouchedCases();
-  realLog('\nIDA-V5 passport plate display: ' + pass + ' passed, ' + fail + ' failed');
+  privacyCases();
+  realLog('\nIDA-V6 public plate on the passport: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);
 }
 main().catch(function (e) { console.error('FATAL: ' + (e && e.message ? e.message : e)); process.exit(1); });

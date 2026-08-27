@@ -926,8 +926,42 @@ async function handlePublicPassportRoute(req, res, pathname) {
   // response; see that function's own header for the full mapping.
   var publicVehicle = buildProtocolConformantVehicle(vehicleRow);
 
+  // IDA-V6, 2026-08-27 — OWNER DECISION: the registration plate is public
+  // data. The passport shows it however it was reached — by plate, by IVID,
+  // or by scanning the QR. This replaces the A5-PLATE rule that withheld
+  // plate records from the anonymous surface; see
+  // reference/public-surface-policy.js for the withdrawn constant.
+  //
+  // The protocol layer already agreed: passport-assembly.js treats a plate
+  // with no access_scope as public-visible, citing PRIVACY_ARCHITECTURE §3's
+  // "Public" list. Only this route withheld it.
+  //
+  // WHAT IS SELECTED, AND WHAT IS NOT. plate_number and format_code are what
+  // render a plate. The governorate is deliberately NOT selected: it is a
+  // coarse location, nobody asked for it on the public surface, and the
+  // narrowest query is the one that cannot leak what it never read. status
+  // and the validity dates stay behind the authenticated route as before.
+  var platesResult = await db.query(
+    'SELECT p.id, p.plate_number, p.format_code, p.created_at ' +
+    'FROM idauto_plates p WHERE p.vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
+    "AND p.status = 'active' ORDER BY p.id",
+    [candidate]
+  );
+
+  var publicPlates = platesResult.rows.map(function (row) {
+    return {
+      protocol_version: '0.1.0-draft',
+      id: String(row.id),
+      subject_ivid: vehicleRow.ivid,
+      plate_number: row.plate_number,
+      format_code: row.format_code || null,
+      valid_from: toIsoString(row.created_at)
+    };
+  });
+
   var passport = passportAssembly.assemblePassport({
     vehicle: publicVehicle,
+    plates: publicPlates,
     facts: factsResult.rows.map(factRowToPassportFact),
     scope: 'public', // HARDCODED — never caller-influenced.
     now: new Date()

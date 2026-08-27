@@ -19,7 +19,7 @@
   var plateBlock = document.querySelector("[data-plate-block]");
   var plateSerie = document.querySelector("[data-plate-serie]");
   var plateNumero = document.querySelector("[data-plate-numero]");
-  var plateCaption = document.querySelector("[data-plate-caption]");
+  var plateWord = document.querySelector("[data-plate-word]");
   var live = document.getElementById("ida-live");
 
   function say(message) { if (live) live.textContent = message; }
@@ -33,40 +33,37 @@
     say(title);
   }
 
-  /* IDA-V5 — the vehicle's plate, shown beside its IVID.
+  /* IDA-V6, 2026-08-27 — the vehicle's plate, shown beside its IVID.
    *
-   * WHERE IT COMES FROM. Not from the passport: the anonymous passport does
-   * not carry plate records, and that invariant is untouched here. The plate
-   * arrives as a HINT in the query string when the visitor came from a plate
-   * search, and is then CONFIRMED against the server — GET /public/plates/:plate
-   * must return this exact IVID before anything is drawn. A hint that does not
-   * confirm draws nothing.
+   * OWNER DECISION: the registration plate is public data, so the passport
+   * carries it and the page simply renders what it was served — by plate, by
+   * IVID, or straight from a QR, the block appears the same way. The earlier
+   * URL-hint-and-confirm dance is gone with the rule that forced it.
    *
-   * That confirmation is what makes this real vehicle data rather than
-   * caller-supplied text: a crafted link carrying someone else's plate
-   * resolves to a different IVID, or to nothing, and the block stays hidden.
-   * It also opens no new surface — plate → IVID has been public since IDA-V2,
-   * so this asks the server a question anyone could already ask.
+   * Rendering only. The plate comes from passport.plates, which the server
+   * built from the authoritative idauto_plates row; nothing here reads the
+   * query string, so no caller-supplied text can reach this component.
    *
-   * Opened straight from a QR (?ivid= alone) there is no hint to confirm, so
-   * no plate block appears. */
-  async function showConfirmedPlate(ivid, plateHint) {
-    if (!plateHint || !plateBlock) return;
-    var parts = /^(\d{1,3})\s+TUN\s+(\d{1,4})$/.exec(String(plateHint).trim().toUpperCase().replace(/\s+/g, " "));
-    if (!parts) return;
-    try {
-      var resp = await fetch("/public/plates/" + encodeURIComponent(parts[1] + " TUN " + parts[2]));
-      if (!resp.ok) return;
-      var body = await resp.json();
-      if (!body || body.ivid !== ivid) return;      /* not this vehicle — draw nothing */
+   * The série/numéro split is presentational: PlateDisplay draws
+   * SSS تونس NNNN, and the stored plate_number is the catalogue's canonical
+   * "SSS TUN NNNN". A plate that does not match that shape is shown whole in
+   * the same component rather than guessed at or dropped. */
+  function renderPlate(passport) {
+    if (!plateBlock) return;
+    var plates = (passport && Array.isArray(passport.plates)) ? passport.plates : [];
+    if (!plates.length || !plates[0].plate_number) { plateBlock.hidden = true; return; }
+    var number = String(plates[0].plate_number).trim();
+    var parts = /^(\d{1,3})\s+TUN\s+(\d{1,4})$/.exec(number.toUpperCase().replace(/\s+/g, " "));
+    if (parts) {
       plateSerie.textContent = parts[1];
       plateNumero.textContent = parts[2];
-      plateCaption.textContent = "Plaque confirmée pour cet IVID.";
-      plateBlock.hidden = false;
-    } catch (e) {
-      /* A failed confirmation shows nothing. Silence is the safe outcome:
-       * an unconfirmed plate must never be drawn as if it were the car's. */
+      plateWord.hidden = false;
+    } else {
+      plateSerie.textContent = number;
+      plateNumero.textContent = "";
+      plateWord.hidden = true;
     }
+    plateBlock.hidden = false;
   }
 
   async function load(ivid) {
@@ -93,7 +90,7 @@
       /* Independent of the passport rendering below, deliberately: the plate
        * confirmation answers its own question against its own route, so a
        * hiccup in either one cannot take the other down with it. */
-      showConfirmedPlate(ivid, new URLSearchParams(window.location.search).get("plate"));
+      renderPlate(passport);
       resultHost.appendChild(IdaPassportRender.render(passport, ivid));
       resultHost.hidden = false;
       say("Passeport chargé");
