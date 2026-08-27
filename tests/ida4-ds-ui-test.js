@@ -323,6 +323,23 @@ ok(navMarkup.indexOf(">Passeport<") !== -1, "the second item is Passeport");
 ok(/data-theme-toggle/.test(navMarkup), "the third item is the theme toggle");
 ok(navMarkup.indexOf("◐") !== -1, "the theme toggle keeps its glyph");
 
+/* ---------- the IVID chip must fit its container (regression) ----------
+ * An IVID is one unbreakable 24-character identifier, and .ida-ivid carries
+ * it between a label and a copy button. At 320px the three together measured
+ * 330px inside a 305px column and pushed six elements past the edge — the
+ * last horizontal overflow on the passport page.
+ *
+ * Pinned as declarations, not as a layout metric: the browser measurement
+ * lives in the browser QA, and a unit test that re-measures a font would be
+ * measuring the font, not the rule. */
+const ividRule = (componentsCss.match(/\.ida-ivid\s*\{[\s\S]*?\}/) || [""])[0];
+ok(ividRule !== "", "the .ida-ivid rule exists");
+ok(/flex-wrap\s*:\s*wrap/.test(ividRule), "the IVID chip wraps rather than pushing past its container");
+ok(/max-width\s*:\s*100%/.test(ividRule), "and can never exceed the width available to it");
+ok(/\.ida-ivid\s*>\s*span\s*\{[^}]*overflow-wrap\s*:\s*anywhere/.test(componentsCss),
+  "the identifier itself may break when even one line is too narrow for it");
+ok(/display\s*:\s*inline-flex/.test(ividRule), "the chip is still the same inline-flex component — wrapping only, no restyle");
+
 /* ---------- report ---------- */
 console.log(`ida4-ds-ui: ${passed} passed / ${failed} failed`);
 process.exit(failed ? 1 : 0);
