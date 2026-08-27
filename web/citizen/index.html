@@ -61,14 +61,31 @@
           </div>
         </form>
 
-        <!-- A5-PLATE: public resolution is IVID-only. Shown when an anonymous
-             visitor submits a plate. -->
-        <div class="ida-alert ida-alert--info ida-u-maxch-52 ida-u-mx-auto" data-plate-public-notice hidden>
+        <!-- IDA-V2 — owner decision: a plate resolves publicly. The result of
+             that resolution renders here: plate, IVID, the public identity,
+             and the way through to the passport. -->
+        <div class="ida-alert ida-alert--info ida-u-maxch-52 ida-u-mx-auto" data-plate-message hidden>
           <div>
-            <p class="ida-alert-title">La consultation publique se fait par IVID</p>
-            <p class="ida-small">Pour protéger la vie privée, une plaque ne permet pas de consulter
-            un passeport publiquement. Scannez le QR IDauto du véhicule ou saisissez son IVID
-            ci-dessous.</p>
+            <p class="ida-alert-title" data-plate-message-title></p>
+            <p class="ida-small" data-plate-message-body></p>
+          </div>
+        </div>
+
+        <div class="ida-card ida-stack ida-u-maxch-52 ida-u-mx-auto" data-plate-result hidden aria-live="polite">
+          <p class="ida-label">Identité du véhicule</p>
+          <p class="ida-h4" data-result-summary></p>
+          <dl class="ida-stack">
+            <div>
+              <dt class="ida-caption">Plaque</dt>
+              <dd class="ida-id" data-result-plate></dd>
+            </div>
+            <div>
+              <dt class="ida-caption">IVID</dt>
+              <dd class="ida-id" data-result-ivid></dd>
+            </div>
+          </dl>
+          <div class="ida-search-actions">
+            <a class="ida-btn ida-btn--primary" data-result-passport href="#">Ouvrir le passeport</a>
           </div>
         </div>
 

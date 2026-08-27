@@ -1,15 +1,23 @@
 /* IDauto citizen UI — home.js
- * Homepage behavior — V1 PERSONAL: one public flow, no key or token,
- * mirroring the A5-PLATE ruling exactly:
  *
- * ANONYMOUS (public phase): a plate NEVER resolves anything — submitting a
- * plate shows the IVID-only explainer (no request is made; no public
- * plate-lookup path exists server-side either). IVID entry navigates to
- * /passport?ivid=… where the public route is queried.
+ * IDA-V2, 2026-08-27 — OWNER DECISION: a plate resolves publicly.
  *
- * The professional plate-lookup UI was removed by owner decision (V1
- * personal). The authenticated server routes are unchanged and remain
- * inaccessible without credentials. */
+ * This replaces the A5-PLATE rule that a plate must never resolve on the
+ * public surface. Both paths are now real, and neither asks for a key:
+ *
+ *   PLATE  → GET /public/plates/:plate  → IVID
+ *          → GET /public/passport/:ivid → public identity → passport
+ *   IVID   → GET /public/passport/:ivid → public identity → passport
+ *
+ * Privacy is unchanged, and is enforced on the server, not here. The plate
+ * route returns exactly two fields (plate_number, ivid) and no vehicle
+ * attribute; everything shown below comes from the public passport route,
+ * which applies the access_scope filter and the reviewed deny-list, so VIN,
+ * plate facts, PII and mis-scoped facts never reach this page. This module
+ * renders what it is given and never asks for more.
+ *
+ * No key, no token, no Authorization header — V1 is personal use and the
+ * citizen surface asks the visitor for nothing. */
 
 (function () {
   "use strict";
@@ -17,55 +25,141 @@
   var plateForm = document.querySelector("[data-plate-form]");
   var plateEl = plateForm.querySelector(".ida-plate-input");
   var plateErr = plateForm.querySelector("[data-plate-error]");
-  var publicNotice = document.querySelector("[data-plate-public-notice]");
+  var message = document.querySelector("[data-plate-message]");
+  var messageTitle = document.querySelector("[data-plate-message-title]");
+  var messageBody = document.querySelector("[data-plate-message-body]");
+  var result = document.querySelector("[data-plate-result]");
+  var resultSummary = document.querySelector("[data-result-summary]");
+  var resultPlate = document.querySelector("[data-result-plate]");
+  var resultIvid = document.querySelector("[data-result-ivid]");
+  var resultPassport = document.querySelector("[data-result-passport]");
+  var submitButton = plateForm.querySelector("button[type=submit]");
   var live = document.getElementById("ida-live");
 
   var plateApi = IdaPlate.enhance(plateEl, {
-    onChange: function () { plateErr.hidden = true; publicNotice.hidden = true; }
+    onChange: function () { plateErr.hidden = true; }
   });
 
-  function say(message) { if (live) live.textContent = message; }
+  function say(text) { if (live) live.textContent = text; }
 
-  function showPlateError(message) {
-    plateErr.textContent = message;
+  function clearOutcome() {
+    message.hidden = true;
+    result.hidden = true;
+    plateErr.hidden = true;
+  }
+
+  function showPlateError(text) {
+    plateErr.textContent = text;
     plateErr.hidden = false;
+  }
+
+  /* Every user-facing failure goes through here. A raw server error, a
+   * status code or a driver message must never reach the page — the visitor
+   * gets a sentence they can act on, and nothing about the internals. */
+  function showMessage(title, body) {
+    messageTitle.textContent = title;
+    messageBody.textContent = body;
+    message.hidden = false;
+    say(title);
+  }
+
+  function summarize(vehicle) {
+    if (!vehicle || !vehicle.summary) return "Identité publique disponible";
+    var s = vehicle.summary;
+    var words = [s.make, s.model, s.variant].filter(Boolean).join(" ");
+    if (s.year) words = words ? words + " (" + s.year + ")" : String(s.year);
+    return words || "Identité publique disponible";
+  }
+
+  function showResult(plateNumber, ividValue, passport) {
+    resultSummary.textContent = summarize(passport && passport.vehicle);
+    resultPlate.textContent = plateNumber;
+    resultIvid.textContent = ividValue;
+    resultPassport.setAttribute("href", "/passport?ivid=" + encodeURIComponent(ividValue));
+    result.hidden = false;
+    say("Véhicule trouvé");
+  }
+
+  /* Fetches the public passport for an IVID. A failure here is not fatal to
+   * the flow: the plate resolved, so the IVID and the passport link are
+   * still shown — only the one-line summary is omitted. */
+  async function fetchPublicPassport(ividValue) {
+    try {
+      var response = await fetch("/public/passport/" + encodeURIComponent(ividValue));
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function resolvePlate(canonicalPlate, displayPlate) {
+    plateApi.setState("loading");
+    submitButton.disabled = true;
+    try {
+      var response = await fetch("/public/plates/" + encodeURIComponent(canonicalPlate));
+
+      if (response.status === 404) {
+        plateApi.setState("invalid");
+        showMessage("Aucun véhicule pour cette plaque",
+          "Cette plaque n'est enregistrée dans IDauto. Vérifiez la série et le numéro, ou ouvrez le passeport directement avec l'IVID imprimé sous le QR du véhicule.");
+        return;
+      }
+      if (response.status === 429) {
+        plateApi.setState("invalid");
+        showMessage("Trop de recherches",
+          "Vous avez fait trop de recherches en peu de temps. Patientez une minute avant de réessayer.");
+        return;
+      }
+      if (!response.ok) {
+        plateApi.setState("invalid");
+        showMessage("Consultation momentanément indisponible",
+          "La recherche n'a pas abouti. Réessayez dans un instant.");
+        return;
+      }
+
+      var body = await response.json();
+      if (!body || !body.ivid) {
+        plateApi.setState("invalid");
+        showMessage("Aucun véhicule pour cette plaque",
+          "Cette plaque n'est reliée à aucun véhicule identifié dans IDauto.");
+        return;
+      }
+
+      plateApi.setState("verified");
+      var passport = await fetchPublicPassport(body.ivid);
+      showResult(body.plate_number || displayPlate, body.ivid, passport);
+    } catch (e) {
+      plateApi.setState("invalid");
+      showMessage("Connexion interrompue",
+        "La recherche n'a pas pu aboutir. Vérifiez votre connexion et réessayez.");
+    } finally {
+      submitButton.disabled = false;
+    }
   }
 
   plateForm.addEventListener("submit", function (e) {
     e.preventDefault();
+    clearOutcome();
     var res = plateApi.validate();
     if (!res.valid) {
       plateApi.setState("invalid");
-      showPlateError("Plaque incomplète ou invalide — série (1 à 3 chiffres) puis numéro (1 à 4 chiffres).");
+      /* Focus FIRST, then show the error. plate.js binds refresh() to `blur`,
+       * and refresh() calls onChange below, which clears the error — so
+       * showing it before moving the focus would hide it again immediately.
+       * Same race that IDA-V1D removed from the resolution path; here the
+       * focus move is genuinely wanted (it puts the caret on the bad field),
+       * so the order is what changes, not the behaviour. */
       var firstBad = Object.keys(res.errors)[0];
       var input = plateEl.querySelector(".ida-plate-" + firstBad);
       if (input) input.focus();
+      showPlateError("Plaque incomplète ou invalide — série (1 à 3 chiffres) puis numéro (1 à 4 chiffres).");
       return;
     }
-    /* A5-PLATE: public resolution is IVID-only — no request is made.
-     *
-     * IDA-V1D, 2026-08-27 — the focus used to move to #q-ivid here. Two
-     * reasons it is gone, and must not come back:
-     *
-     * 1. It defeated its own message. plate.js binds refresh() to `blur` on
-     *    the plate inputs, and refresh() calls this module's onChange, which
-     *    sets publicNotice.hidden = true. Moving the focus away from the
-     *    plate field therefore re-hid the notice the line above had just
-     *    shown — measured on both gestures, keyboard and click. The visible
-     *    result was a button that did nothing except move the cursor into
-     *    "IVID du véhicule", which reads as the plate having been sent
-     *    there. (Before the [hidden] reset landed, .ida-alert's display rule
-     *    overrode the attribute and the notice was permanently visible, so
-     *    this race was invisible.)
-     *
-     * 2. A5-PLATE. A plate must never lead the citizen surface to discover
-     *    or pre-fill an IVID. Nothing here ever wrote #q-ivid — the field
-     *    stayed empty — but steering the cursor into it is the same claim
-     *    made with the caret instead of a value.
-     *
-     * The notice names the next step; the visitor takes it. */
-    publicNotice.hidden = false;
-    say("La consultation publique se fait par IVID, pas par plaque.");
+    /* canonical() is the machine form the API matches on (SSS TUN NNNN);
+     * format.display() is the human form with تونس, used only if the server
+     * does not echo the stored plate back. */
+    resolvePlate(plateApi.canonical(), plateApi.format.display(plateApi.getParts()));
   });
 
   var ividForm = document.querySelector("[data-ivid-form]");
@@ -78,6 +172,7 @@
       ividErr.hidden = false;
       return;
     }
+    ividErr.hidden = true;
     window.location.href = "/passport?ivid=" + encodeURIComponent(raw);
   });
 })();

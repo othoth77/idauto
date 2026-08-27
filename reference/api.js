@@ -59,6 +59,7 @@ var ivid = require('./ivid.js');
 var passportAssembly = require('./passport-assembly.js');
 var rateLimit = require('./rate-limit.js');
 var publicSurfacePolicy = require('./public-surface-policy.js');
+var plateValidator = require('./plate-validator.js');
 var session = require('./session.js');
 
 //
@@ -697,7 +698,84 @@ function buildProtocolConformantPlate(plateRow, subjectIvid) {
   };
 }
 
+//
+// IDA-V2, 2026-08-27 — PUBLIC PLATE RESOLUTION. Owner decision.
+//
+// GET /public/plates/:plate → { plate_number, ivid }
+//
+// This REPLACES the A5-PLATE rule that a plate must never resolve on the
+// public surface. The owner has decided that on idauto.tn a Tunisian plate
+// alone resolves to the vehicle's IVID, and from there to the public
+// passport. That decision is recorded in the commit and PR for this change.
+//
+// What this route deliberately does NOT do, so the privacy model the owner
+// kept is not widened by accident:
+//
+//   - It returns TWO fields: the normalised plate and the IVID. Nothing
+//     else. Not internal_ref, not vehicle_id, not the governorate, not the
+//     plate status, not valid_from/valid_until — the authenticated
+//     GET /api/plates/:plate still returns those and still requires a
+//     credential. The IVID is the public resolution credential and was
+//     never a secret (it is printed under the QR on the vehicle).
+//   - It exposes no vehicle attributes at all. The caller takes the IVID to
+//     GET /public/passport/:ivid, which is unchanged and still applies the
+//     access_scope filter AND the reviewed deny-list — so VIN, plate facts,
+//     PII and every mis-scoped fact stay excluded exactly as before.
+//   - It shares the public_resolution limiter bucket with the passport
+//     route, so opening plate lookup does not open a second, unmetered way
+//     to enumerate the database.
+//   - It answers the SAME 404 for a well-formed unknown plate as for a
+//     malformed one, and stays behind the same phase gate: with
+//     public_resolution.enabled false, this route does not exist.
+async function handlePublicPlateRoute(req, res, m) {
+  // Phase gate before anything, including the method gate — identical
+  // discipline to the passport route: when disabled the route must be
+  // indistinguishable from an unknown path.
+  if (!loadPublicResolutionConfig().enabled) return notFound(res);
+
+  if (req.method !== 'GET') {
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'GET' });
+    return res.end(JSON.stringify({ error: 'method not allowed' }));
+  }
+
+  // FORMAT GATE BEFORE ANY DATABASE TOUCH. A decode failure is a format
+  // failure, same 404, still zero DB touch — as on the passport route.
+  var candidate;
+  try {
+    candidate = decodeURIComponent(m[1]);
+  } catch (_) {
+    return notFound(res);
+  }
+  var normalized = plateValidator.normalizePlate(candidate);
+  if (!normalized || !plateValidator.isValidPlate(normalized)) return notFound(res);
+
+  // Same bucket as the passport route: one public resolution budget per
+  // client, whichever door they come through.
+  var limitResult = await rateLimit.enforcePublicResolution(db, clientIpHash(req), loadPublicResolutionConfig());
+  if (!limitResult.allowed) {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSeconds(limitResult.retry_at)) });
+    return res.end(JSON.stringify({ error: 'rate limit exceeded' }));
+  }
+
+  // Two columns. The join reads idauto_vehicles for `ivid` alone — no other
+  // vehicle column is selected here, so none can leak through this route
+  // even if the response shape were later widened by mistake.
+  var result = await db.query(
+    'SELECT p.plate_number, v.ivid AS ivid ' +
+    'FROM idauto_plates p JOIN idauto_vehicles v ON v.id = p.vehicle_id ' +
+    'WHERE p.plate_number = $1',
+    [normalized]
+  );
+  if (result.rows.length === 0 || !result.rows[0].ivid) return notFound(res);
+
+  sendJson(res, 200, { plate_number: result.rows[0].plate_number, ivid: result.rows[0].ivid });
+}
+
 async function handlePublicPassportRoute(req, res, pathname) {
+  // IDA-V2: /public/plates/:plate is the second shape under /public/.
+  var plateMatch = /^\/public\/plates\/([^/]+)$/.exec(pathname);
+  if (plateMatch) return handlePublicPlateRoute(req, res, plateMatch);
+
   // 1. Path gate: only exactly this shape exists under /public/. Any
   // other path (e.g. /public/plate/xyz, /public/, /public/passport/)
   // is 404 regardless of method — matching this file's existing
