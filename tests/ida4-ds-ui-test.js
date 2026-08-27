@@ -227,8 +227,15 @@ const passportJs = read("citizen/passport.js");
 const renderJs = read("citizen/passport-render.js");
 ok(!/\/public\/plate|plate=|\/public\/[^p]/.test(homeJs + passportJs + renderJs),
   "citizen JS never constructs a public plate lookup");
+// IDA-V1D: this assertion used to be labelled "anonymous plate submit shows
+// the IVID-only notice and makes no request". It cannot show any such thing —
+// it searches home.js for a string. It stayed green throughout the regression
+// where the notice was shown and then instantly re-hidden by the focus move
+// blurring the plate input. Relabelled to what it actually proves; the
+// behaviour is asserted for real, on both gestures, in
+// tests/ida-v1d-plate-no-public-resolution-test.js.
 ok(/publicNotice\.hidden = false/.test(homeJs) && !/fetch\s*\(/.test(homeJs),
-  "anonymous plate submit shows the IVID-only notice and makes no request");
+  "home.js source still contains the notice-showing line and no fetch (behaviour: see ida-v1d suite)");
 // V1 PERSONAL: no key or token is ever asked of the user — the citizen
 // surface carries no Authorization header, no bearer, no token input.
 ok(!/Authorization|Bearer/i.test(homeJs + passportJs + renderJs),
