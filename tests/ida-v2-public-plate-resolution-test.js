@@ -432,6 +432,8 @@ async function uiFoundCase() {
   ok(text('[data-result-plate]', dom) === '217 TUN 424', 'the plate is displayed');
   ok(/Peugeot 208 \(2019\)/.test(text('[data-result-summary]', dom)), 'the public identity is displayed');
   var link = dom.doc.querySelector('[data-result-passport]');
+  // IDA-V6: the hint is gone with the rule that forced it — the passport now
+  // carries the plate itself, so the link is back to the IVID alone.
   ok(link.getAttribute('href') === '/passport?ivid=' + encodeURIComponent('ivid:1:ABCDEFGHJKMNPQRS:AB'), 'the passport link carries the IVID');
   ok(dom.doc.querySelector('[data-plate-message]').hidden === true, 'no error message is shown on success');
 }

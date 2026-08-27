@@ -16,6 +16,10 @@
   var errorTitle = document.querySelector("[data-passport-error-title]");
   var errorDetail = document.querySelector("[data-passport-error-detail]");
   var resultHost = document.querySelector("[data-passport-result]");
+  var plateBlock = document.querySelector("[data-plate-block]");
+  var plateSerie = document.querySelector("[data-plate-serie]");
+  var plateNumero = document.querySelector("[data-plate-numero]");
+  var plateWord = document.querySelector("[data-plate-word]");
   var live = document.getElementById("ida-live");
 
   function say(message) { if (live) live.textContent = message; }
@@ -27,6 +31,39 @@
     errorDetail.textContent = detail;
     errorBox.hidden = false;
     say(title);
+  }
+
+  /* IDA-V6, 2026-08-27 — the vehicle's plate, shown beside its IVID.
+   *
+   * OWNER DECISION: the registration plate is public data, so the passport
+   * carries it and the page simply renders what it was served — by plate, by
+   * IVID, or straight from a QR, the block appears the same way. The earlier
+   * URL-hint-and-confirm dance is gone with the rule that forced it.
+   *
+   * Rendering only. The plate comes from passport.plates, which the server
+   * built from the authoritative idauto_plates row; nothing here reads the
+   * query string, so no caller-supplied text can reach this component.
+   *
+   * The série/numéro split is presentational: PlateDisplay draws
+   * SSS تونس NNNN, and the stored plate_number is the catalogue's canonical
+   * "SSS TUN NNNN". A plate that does not match that shape is shown whole in
+   * the same component rather than guessed at or dropped. */
+  function renderPlate(passport) {
+    if (!plateBlock) return;
+    var plates = (passport && Array.isArray(passport.plates)) ? passport.plates : [];
+    if (!plates.length || !plates[0].plate_number) { plateBlock.hidden = true; return; }
+    var number = String(plates[0].plate_number).trim();
+    var parts = /^(\d{1,3})\s+TUN\s+(\d{1,4})$/.exec(number.toUpperCase().replace(/\s+/g, " "));
+    if (parts) {
+      plateSerie.textContent = parts[1];
+      plateNumero.textContent = parts[2];
+      plateWord.hidden = false;
+    } else {
+      plateSerie.textContent = number;
+      plateNumero.textContent = "";
+      plateWord.hidden = true;
+    }
+    plateBlock.hidden = false;
   }
 
   async function load(ivid) {
@@ -50,6 +87,10 @@
       var passport = await resp.json();
       loading.hidden = true;
       resultHost.textContent = "";
+      /* Independent of the passport rendering below, deliberately: the plate
+       * confirmation answers its own question against its own route, so a
+       * hiccup in either one cannot take the other down with it. */
+      renderPlate(passport);
       resultHost.appendChild(IdaPassportRender.render(passport, ivid));
       resultHost.hidden = false;
       say("Passeport chargé");

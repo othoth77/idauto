@@ -65,7 +65,26 @@ var ANONYMOUS_SURFACE_DENIED_FACT_KEYS = ['vin', 'plate_number'];
 // this module; it is not itself an executable check (the executable
 // proof is tests/ida4-option-c-test.js's own assertions against the
 // live route).
-var ANONYMOUS_SURFACE_NEVER_INCLUDES_PLATE_RECORDS = true;
+// IDA-V6, 2026-08-27 — OWNER DECISION. WITHDRAWN.
+//
+// This constant used to be `true` and documented the A5-PLATE rule that a
+// vehicle's plate record never appeared on the anonymous surface. The owner
+// has decided that the registration plate is public data in IDauto V1: the
+// public passport shows it however it was reached — by plate, by IVID, or by
+// scanning the QR.
+//
+// The protocol layer already agreed: reference/passport-assembly.js treats a
+// plate with no access_scope as public-visible, citing
+// docs/PRIVACY_ARCHITECTURE.md §3, which lists registration-plate assignment
+// under "Public" base vehicle data. It was this API's route that withheld it.
+//
+// WHAT DID NOT CHANGE, and must not: 'vin' stays on the deny-list below, and
+// so does 'plate_number'. The plate now served publicly is the AUTHORITATIVE
+// record from idauto_plates. A community-submitted FACT keyed 'plate_number'
+// is a different thing — arbitrary text somebody typed — and it stays
+// excluded, so this decision cannot be used to smuggle unverified strings
+// onto the public surface under a trusted-looking key.
+var ANONYMOUS_SURFACE_INCLUDES_AUTHORITATIVE_PLATE_RECORD = true;
 
 // Returns a FRESH COPY of the anonymous-surface deny-list every call —
 // callers must never mutate the module's own array. reference/api.js is
@@ -76,5 +95,5 @@ function deniedFactKeys() {
 
 module.exports = {
   deniedFactKeys: deniedFactKeys,
-  ANONYMOUS_SURFACE_NEVER_INCLUDES_PLATE_RECORDS: ANONYMOUS_SURFACE_NEVER_INCLUDES_PLATE_RECORDS
+  ANONYMOUS_SURFACE_INCLUDES_AUTHORITATIVE_PLATE_RECORD: ANONYMOUS_SURFACE_INCLUDES_AUTHORITATIVE_PLATE_RECORD
 };
