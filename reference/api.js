@@ -111,22 +111,103 @@ function resolveOwnerSession(req) {
   return verified ? verified.ref : null;
 }
 
+//
+// IDA-V1C, 2026-08-27 — BEARER PARSING AND AUTH LOGGING.
+//
+// Diagnosed on 2026-08-27: a valid admin token was reported "refused" by
+// /admin. It was not. The token is base64 — it contains '/' and ends with
+// '=' — and both characters break double-click selection, so what reached
+// the header was a truncated copy. The server was right to refuse it, but
+// nothing on this host could say so: api.js logged only its own startup
+// line, and /var/log/nginx/access.log is www-data:adm 0640 while `deploy`
+// is in neither group. An authentication failure left no trace the operator
+// could read. These two changes fix the diagnosis path, not the tokens.
+//
+// PARSING. The old /^Bearer (.+)$/ was stricter than RFC 7235 in two ways
+// that can only ever reject a caller who meant well:
+//
+//   - the scheme is case-INSENSITIVE per RFC 7235 §2.1, so `bearer x` is a
+//     valid credential this regex rejected;
+//   - the scheme and credential are separated by 1*SP, so `Bearer  x` (two
+//     spaces) parsed to a credential with a leading space and failed.
+//
+// Neither loosening admits anything that was not already a correctly formed
+// credential, and no stored token changes. The credential itself is matched
+// as [^ \t]+ — deliberately NOT (.+) — so an embedded space is a parse
+// failure rather than becoming part of the compared string.
+//
+// Case-folding the CREDENTIAL is deliberately not done: it would collapse
+// the token alphabet and weaken every token on this host.
+var BEARER_RE = /^Bearer[ \t]+([^ \t]+)[ \t]*$/i;
+
+function extractBearer(headerValue) {
+  var match = BEARER_RE.exec(String(headerValue == null ? '' : headerValue).trim());
+  return match ? match[1] : null;
+}
+
+// LOGGING. One structured line per authentication decision, to journald via
+// the unit's StandardOutput=journal.
+//
+// What is NEVER written: the credential, in whole or in part. Not a prefix,
+// not a suffix, not a hash of it — a prefix is a piece of the secret and a
+// hash of a low-entropy guess is reversible. The `credential_length` field
+// appears ONLY on a denial, where the value is the caller's own rejected
+// input and is exactly what distinguishes "truncated paste" (39) from
+// "wrong token entirely" (44). A granted decision logs no length, so a
+// successful request never records the real token's shape.
+//
+// The client is identified by the first 16 hex of clientIpHash() — the same
+// per-client hash the public limiter buckets on (IDA-SHIP-2), so no raw IP
+// is written here either.
+function logAuthDecision(req, fields) {
+  var entry = {
+    at: new Date().toISOString(),
+    event: 'auth',
+    result: fields.result,
+    reason: fields.reason,
+    method: req.method,
+    path: url.parse(req.url).pathname
+  };
+  try { entry.client = clientIpHash(req).slice(0, 16); } catch (_) { entry.client = null; }
+  if (fields.actor) entry.actor = fields.actor;
+  if (typeof fields.credentialLength === 'number') entry.credential_length = fields.credentialLength;
+  console.log(JSON.stringify(entry));
+}
+
 function requireAuth(req, res) {
-  var header = req.headers['authorization'] || '';
-  var match = /^Bearer (.+)$/.exec(header);
-  var token = match ? match[1] : null;
+  var header = req.headers['authorization'];
+  var token = extractBearer(header);
   var resolved = identity.resolveIdentity(token);
+  var via = resolved ? 'bearer' : null;
   // IDA-V1B: the owner cookie is a fallback, never an override — a request
   // carrying a valid Bearer token is resolved by the token exactly as
   // before. The cookie yields the same actor_ref the token would have, so
   // req.mythosIdentity and every audit record downstream are unchanged.
-  if (!resolved) resolved = resolveOwnerSession(req);
   if (!resolved) {
+    resolved = resolveOwnerSession(req);
+    if (resolved) via = 'owner_session';
+  }
+  if (!resolved) {
+    // Three distinguishable denials. None is an oracle about the correct
+    // token: the caller already knows what it sent, and no field here is
+    // derived from the stored value. `no_credentials` vs `invalid_credentials`
+    // is the difference the admin UI needs to tell "you pasted nothing" from
+    // "what you pasted is not a token".
+    var reason = !header ? 'no_credentials' : (token === null ? 'malformed_authorization' : 'unknown_credential');
+    logAuthDecision(req, {
+      result: 'denied',
+      reason: reason,
+      credentialLength: token === null ? undefined : token.length
+    });
     res.writeHead(401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'unauthorized — a recognized admin identity token is required' }));
+    res.end(JSON.stringify({
+      error: 'unauthorized — a recognized admin identity token is required',
+      reason: reason === 'no_credentials' ? 'no_credentials' : 'invalid_credentials'
+    }));
     return false;
   }
   req.mythosIdentity = resolved;
+  logAuthDecision(req, { result: 'granted', reason: via, actor: resolved });
   return true;
 }
 
@@ -1350,5 +1431,8 @@ module.exports = {
   // IDA-V1B: exported for tests/ida-v1b-owner-session-test.js, which asserts
   // the owner-session grant is exactly these two reads and no more.
   _ownerSessionRoutes: OWNER_SESSION_ROUTES,
-  _ownerSessionAllows: ownerSessionAllows
+  _ownerSessionAllows: ownerSessionAllows,
+  // IDA-V1C: exported for tests/ida-v1c-auth-diagnostics-test.js, which pins
+  // the RFC-conformant parse and proves no credential reaches the log.
+  _extractBearer: extractBearer
 };

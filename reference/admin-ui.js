@@ -11,12 +11,35 @@
     });
     return object;
   }
+  // IDA-V1C — the token is base64: it contains '/' and ends with '='. Both
+  // break double-click selection, so the commonest way to get here with a
+  // "refused" token is a truncated paste of a perfectly valid one. This
+  // message says that, and says it without ever echoing the value.
+  var TOKEN_PASTE_HELP = 'Token refused. The token is one line of base64 — it contains "/" and ends with "=", ' +
+    'so a double-click selects only part of it. Select the whole line (triple-click) and paste again.';
+
+  // Local shape check, before any request. It reports what the operator
+  // typed — never what the server expects — so it leaks nothing about the
+  // real token while still catching the mistakes that actually happen.
+  function tokenProblem(raw) {
+    if (!raw) return 'Enter the Bearer token above first.';
+    if (/\s/.test(raw)) return 'The token contains a space or line break — it must be a single unbroken string. Re-copy the whole line.';
+    return null;
+  }
+
   async function apiRequest(path, token, options) {
     var settings = options || {};
     settings.headers = Object.assign({}, settings.headers, { Authorization: 'Bearer ' + token });
     var response = await fetch(path, settings);
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(path + ': ' + (body.error || ('Request failed (' + response.status + ')')));
+    if (!response.ok) {
+      // A 401 is about the credential, not about this route — say so plainly
+      // instead of surfacing "/api/vehicles: unauthorized …".
+      if (response.status === 401) {
+        throw new Error(body.reason === 'no_credentials' ? 'No token was sent. Enter the Bearer token above.' : TOKEN_PASTE_HELP);
+      }
+      throw new Error(path + ': ' + (body.error || ('Request failed (' + response.status + ')')));
+    }
     return body;
   }
   function jsonPost(path, token, body) {
@@ -101,9 +124,10 @@
     enrollButton.addEventListener('click', async function () {
       var token = document.getElementById('admin-token').value.trim();
       enrollResult.className = '';
-      if (!token) {
+      var tokenIssue = tokenProblem(token);
+      if (tokenIssue) {
         enrollResult.className = 'error';
-        enrollResult.textContent = 'Enter the Bearer token above first.';
+        enrollResult.textContent = tokenIssue;
         return;
       }
       enrollButton.disabled = true;
@@ -114,7 +138,7 @@
           enrollResult.textContent = 'This browser is recognised. Plate lookup now works on idauto.tn.';
         } else if (response.status === 401) {
           enrollResult.className = 'error';
-          enrollResult.textContent = 'Token refused.';
+          enrollResult.textContent = TOKEN_PASTE_HELP;
         } else if (response.status === 503) {
           enrollResult.className = 'error';
           enrollResult.textContent = 'Owner sessions are not configured on this host (IDAUTO_SESSION_SECRET is unset).';
@@ -153,7 +177,13 @@
     result.textContent = 'Creating entry…';
     button.disabled = true;
     try {
-      var created = await createEntry(form, document.getElementById('admin-token').value);
+      // IDA-V1C — trim, then shape-check before spending a request. The
+      // field was previously read raw while every other field went through
+      // value(), which trims.
+      var adminToken = document.getElementById('admin-token').value.trim();
+      var problem = tokenProblem(adminToken);
+      if (problem) throw new Error(problem);
+      var created = await createEntry(form, adminToken);
       result.className = 'success';
       result.textContent = 'Created vehicle ' + created.vehicle.internal_ref + ' and observation ' + created.observation.id + '.';
       form.reset();
