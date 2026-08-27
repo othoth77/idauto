@@ -4,6 +4,15 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The `hidden` attribute must win over any component that sets `display`.
+ * The UA rule for [hidden] is `display: none`, but it loses to an author
+ * class of equal specificity — so `.ida-alert`, `.ida-card`, `.ida-stack`
+ * and `.ida-field .ida-error-msg`, which all set `display`, rendered their
+ * elements even while marked hidden. Observed live on the homepage: the
+ * IVID-only notice carried `hidden` and was shown on every page load.
+ * !important because the component rules are the ones being overridden. */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {
