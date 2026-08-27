@@ -42,11 +42,30 @@
       if (input) input.focus();
       return;
     }
-    /* A5-PLATE: public resolution is IVID-only — no request is made. */
+    /* A5-PLATE: public resolution is IVID-only — no request is made.
+     *
+     * IDA-V1D, 2026-08-27 — the focus used to move to #q-ivid here. Two
+     * reasons it is gone, and must not come back:
+     *
+     * 1. It defeated its own message. plate.js binds refresh() to `blur` on
+     *    the plate inputs, and refresh() calls this module's onChange, which
+     *    sets publicNotice.hidden = true. Moving the focus away from the
+     *    plate field therefore re-hid the notice the line above had just
+     *    shown — measured on both gestures, keyboard and click. The visible
+     *    result was a button that did nothing except move the cursor into
+     *    "IVID du véhicule", which reads as the plate having been sent
+     *    there. (Before the [hidden] reset landed, .ida-alert's display rule
+     *    overrode the attribute and the notice was permanently visible, so
+     *    this race was invisible.)
+     *
+     * 2. A5-PLATE. A plate must never lead the citizen surface to discover
+     *    or pre-fill an IVID. Nothing here ever wrote #q-ivid — the field
+     *    stayed empty — but steering the cursor into it is the same claim
+     *    made with the caret instead of a value.
+     *
+     * The notice names the next step; the visitor takes it. */
     publicNotice.hidden = false;
     say("La consultation publique se fait par IVID, pas par plaque.");
-    var ividInput = document.getElementById("q-ivid");
-    if (ividInput) ividInput.focus();
   });
 
   var ividForm = document.querySelector("[data-ivid-form]");
