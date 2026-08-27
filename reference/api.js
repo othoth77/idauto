@@ -59,12 +59,68 @@ var ivid = require('./ivid.js');
 var passportAssembly = require('./passport-assembly.js');
 var rateLimit = require('./rate-limit.js');
 var publicSurfacePolicy = require('./public-surface-policy.js');
+var session = require('./session.js');
+
+//
+// IDA-V1B, 2026-08-27 — OWNER SESSION.
+//
+// V1 is personal use: the citizen surface must never ask for a key, yet a
+// plate alone must open the passport for the owner — while A5-PLATE keeps a
+// plate from resolving for the public. Those hold together only if the
+// owner's browser carries something the public does not, which the owner
+// never types. That is reference/session.js: a signed, HttpOnly cookie
+// installed once from /admin, where the owner is already authenticated.
+//
+// The grant is deliberately tiny. These two READ routes and nothing else:
+// plate -> IVID, and the private passport for an IVID. Every write route,
+// the review queue, ingestion and media stay Bearer-only, so this credential
+// cannot create or change anything even if it is stolen. Widening this list
+// is the one edit that would widen the grant — there is no other path.
+var OWNER_SESSION_ROUTES = [
+  { method: 'GET', pattern: /^\/api\/plates\/[^/]+$/ },
+  { method: 'GET', pattern: /^\/api\/passport\/[^/]+$/ }
+];
+
+// CSRF, second defence. The cookie is SameSite=Strict, so a browser will not
+// attach it to a cross-site request in the first place. This header is the
+// belt to that pair of braces: a cross-site <form> or <img> cannot set a
+// custom header at all, and a cross-site fetch() that tries turns the
+// request into a CORS preflight this server never answers. Required on the
+// cookie-authenticated reads AND on every /session route.
+var OWNER_HEADER = 'x-idauto-owner';
+
+function nowSeconds() { return Math.floor(Date.now() / 1000); }
+
+function ownerSessionAllows(method, pathname) {
+  return OWNER_SESSION_ROUTES.some(function (route) {
+    return route.method === method && route.pattern.test(pathname);
+  });
+}
+
+// Returns the actor_ref this cookie was issued for, or null. Every gate is
+// checked here rather than at the call site so there is exactly one place
+// where a cookie can become an identity.
+function resolveOwnerSession(req) {
+  if (!session.isEnabled()) return null;
+  if (req.headers[OWNER_HEADER] !== '1') return null;
+  var pathname = url.parse(req.url).pathname;
+  if (!ownerSessionAllows(req.method, pathname)) return null;
+  var raw = session.readCookie(req);
+  if (!raw) return null;
+  var verified = session.verify(raw, nowSeconds());
+  return verified ? verified.ref : null;
+}
 
 function requireAuth(req, res) {
   var header = req.headers['authorization'] || '';
   var match = /^Bearer (.+)$/.exec(header);
   var token = match ? match[1] : null;
   var resolved = identity.resolveIdentity(token);
+  // IDA-V1B: the owner cookie is a fallback, never an override — a request
+  // carrying a valid Bearer token is resolved by the token exactly as
+  // before. The cookie yields the same actor_ref the token would have, so
+  // req.mythosIdentity and every audit record downstream are unchanged.
+  if (!resolved) resolved = resolveOwnerSession(req);
   if (!resolved) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'unauthorized — a recognized admin identity token is required' }));
@@ -77,6 +133,71 @@ function requireAuth(req, res) {
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
+}
+
+function sendMethodNotAllowed(res, allowed) {
+  res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': allowed });
+  res.end(JSON.stringify({ error: 'method not allowed' }));
+}
+
+// IDA-V1B — the three owner-session routes. Handled before requireAuth()
+// because two of them must answer without a Bearer token: GET /session tells
+// the citizen page whether this browser is the owner's, and POST
+// /session/logout must work for a browser whose cookie has already expired.
+// Returns true when it has answered the request.
+//
+// /session/enroll is NOT in OWNER_SESSION_ROUTES, so the cookie cannot
+// authenticate it: only a real Bearer admin token can mint a new cookie.
+function handleSessionRoute(req, res, pathname) {
+  if (pathname !== '/session' && pathname !== '/session/enroll' && pathname !== '/session/logout') return false;
+
+  if (req.headers[OWNER_HEADER] !== '1') {
+    sendJson(res, 403, { error: 'owner session requests must carry X-IDauto-Owner: 1' });
+    return true;
+  }
+
+  if (pathname === '/session') {
+    if (req.method !== 'GET') { sendMethodNotAllowed(res, 'GET'); return true; }
+    // Never 401 here. This route's whole purpose is to answer "is this
+    // browser the owner's?", and "no" is a perfectly good answer that the
+    // public page needs in order to render itself.
+    var raw = session.isEnabled() ? session.readCookie(req) : null;
+    var verified = raw ? session.verify(raw, nowSeconds()) : null;
+    if (!verified) { sendJson(res, 200, { owner: false }); return true; }
+    // Rolling renewal past half-life. The citizen page calls this on every
+    // visit, so a browser in regular use never reaches the 180-day expiry.
+    if (session.needsRenewal(verified, nowSeconds())) {
+      var renewed = session.issue(verified.ref, nowSeconds());
+      if (renewed) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': session.setCookieHeader(renewed) });
+        res.end(JSON.stringify({ owner: true }));
+        return true;
+      }
+    }
+    sendJson(res, 200, { owner: true });
+    return true;
+  }
+
+  if (pathname === '/session/enroll') {
+    if (req.method !== 'POST') { sendMethodNotAllowed(res, 'POST'); return true; }
+    if (!session.isEnabled()) {
+      sendJson(res, 503, { error: 'owner sessions are not configured on this host' });
+      return true;
+    }
+    if (!requireAuth(req, res)) return true;
+    var issued = session.issue(req.mythosIdentity, nowSeconds());
+    if (!issued) { sendJson(res, 503, { error: 'owner sessions are not configured on this host' }); return true; }
+    res.writeHead(204, { 'Set-Cookie': session.setCookieHeader(issued) });
+    res.end();
+    return true;
+  }
+
+  // /session/logout — clearing your own cookie needs no credential, and
+  // must keep working when the cookie it clears is already invalid.
+  if (req.method !== 'POST') { sendMethodNotAllowed(res, 'POST'); return true; }
+  res.writeHead(204, { 'Set-Cookie': session.clearCookieHeader() });
+  res.end();
+  return true;
 }
 
 function notFound(res) {
@@ -1179,6 +1300,11 @@ function createServer() {
       return;
     }
 
+    // IDA-V1B — owner-session routes. Before requireAuth() because two of
+    // the three deliberately answer without a Bearer token; see the
+    // function's header.
+    if (handleSessionRoute(req, res, pathname)) return;
+
     if (!requireAuth(req, res)) return;
 
     var matchedPath = ROUTES.filter(function (r) { return r.pattern.test(pathname); });
@@ -1220,5 +1346,9 @@ module.exports = {
   // IDA-DS-1: exported for tests/ida4-ds-ui-test.js (structural checks on
   // the citizen asset map and its phase gate). Not a public API.
   _citizenAssets: CITIZEN_ASSETS,
-  _serveCitizenAsset: serveCitizenAsset
+  _serveCitizenAsset: serveCitizenAsset,
+  // IDA-V1B: exported for tests/ida-v1b-owner-session-test.js, which asserts
+  // the owner-session grant is exactly these two reads and no more.
+  _ownerSessionRoutes: OWNER_SESSION_ROUTES,
+  _ownerSessionAllows: ownerSessionAllows
 };
