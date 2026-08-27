@@ -21,6 +21,20 @@
         <p class="hint">Held in this page only; never saved in browser storage.</p>
       </section>
 
+      <!-- IDA-V1B — owner session. Installs a signed, HttpOnly cookie in
+           THIS browser so idauto.tn can resolve a plate without ever asking
+           for a key on the citizen surface. Grants two reads only (plate →
+           IVID, private passport); it can create and change nothing. -->
+      <section>
+        <h2>This browser</h2>
+        <p class="hint">Recognise this browser so plate lookup works on idauto.tn without
+        entering a token. Valid 180 days, renewed automatically while in use. Grants
+        read-only plate and passport lookup — nothing else.</p>
+        <button id="enroll-button" type="button">Recognise this browser</button>
+        <button id="forget-button" type="button">Forget this browser</button>
+        <div id="enroll-result" role="status" aria-live="polite"></div>
+      </section>
+
       <section>
         <h2>1 · Vehicle</h2>
         <div class="grid">

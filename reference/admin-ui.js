@@ -81,6 +81,72 @@
   var form = document.getElementById('entry-form');
   var result = document.getElementById('result');
   var button = document.getElementById('submit-button');
+
+  // IDA-V1B — owner session. The Bearer token is read from the same
+  // in-page field as every other admin action and is never stored; the
+  // server answers with a Set-Cookie the browser keeps from then on.
+  var enrollButton = document.getElementById('enroll-button');
+  var forgetButton = document.getElementById('forget-button');
+  var enrollResult = document.getElementById('enroll-result');
+
+  function sessionRequest(path, headers) {
+    return fetch(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: Object.assign({ 'X-IDauto-Owner': '1' }, headers || {})
+    });
+  }
+
+  if (enrollButton) {
+    enrollButton.addEventListener('click', async function () {
+      var token = document.getElementById('admin-token').value.trim();
+      enrollResult.className = '';
+      if (!token) {
+        enrollResult.className = 'error';
+        enrollResult.textContent = 'Enter the Bearer token above first.';
+        return;
+      }
+      enrollButton.disabled = true;
+      try {
+        var response = await sessionRequest('/session/enroll', { Authorization: 'Bearer ' + token });
+        if (response.status === 204) {
+          enrollResult.className = 'success';
+          enrollResult.textContent = 'This browser is recognised. Plate lookup now works on idauto.tn.';
+        } else if (response.status === 401) {
+          enrollResult.className = 'error';
+          enrollResult.textContent = 'Token refused.';
+        } else if (response.status === 503) {
+          enrollResult.className = 'error';
+          enrollResult.textContent = 'Owner sessions are not configured on this host (IDAUTO_SESSION_SECRET is unset).';
+        } else {
+          enrollResult.className = 'error';
+          enrollResult.textContent = 'Enrolment failed (' + response.status + ').';
+        }
+      } catch (err) {
+        enrollResult.className = 'error';
+        enrollResult.textContent = 'Network error — try again.';
+      } finally {
+        enrollButton.disabled = false;
+      }
+    });
+  }
+
+  if (forgetButton) {
+    forgetButton.addEventListener('click', async function () {
+      forgetButton.disabled = true;
+      enrollResult.className = '';
+      try {
+        await sessionRequest('/session/logout');
+        enrollResult.className = 'success';
+        enrollResult.textContent = 'This browser is no longer recognised.';
+      } catch (err) {
+        enrollResult.className = 'error';
+        enrollResult.textContent = 'Network error — try again.';
+      } finally {
+        forgetButton.disabled = false;
+      }
+    });
+  }
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     result.className = '';

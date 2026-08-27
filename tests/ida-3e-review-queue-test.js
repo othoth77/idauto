@@ -79,7 +79,22 @@ async function staticCases() {
   ok(!/public[^\n]*review|anonymous[^\n]*review/i.test(apiSource), 'no public or anonymous review route exists');
   ok(/if \(!requireAuth\(req, res\)\) return;[\s\S]*route\.handler/.test(apiSource), 'existing global auth gate still precedes route handlers');
   ok((apiSource.match(/\.listen\s*\(/g) || []).length === 1 && (apiSource.match(/'127\.0\.0\.1'/g) || []).length === 1, 'no second listener or bind-host change');
-  ok(!/require\s*\(\s*['"][^'"]*(?:jwt|oauth|session|cookie)[^'"]*['"]\s*\)|req\.(?:cookies|session)|set-cookie/i.test(apiSource), 'no JWT, OAuth, session, or cookie auth added');
+  // IDA-V1B, 2026-08-27 — narrowed, not dropped. See the twin assertion in
+  // tests/ida-3d-private-ingest-route-test.js for the full rationale: the
+  // owner sanctioned reference/session.js (signed HttpOnly cookie, two READ
+  // routes) and this guard now admits that module alone. A JWT, an OAuth
+  // library, any external session package, req.cookies/req.session, or a
+  // Set-Cookie written by hand still fails here.
+  //
+  // What matters for THIS suite specifically: the review queue is not in the
+  // owner-session grant, so the cookie cannot reach it. That is asserted
+  // directly in tests/ida-v1b-owner-session-test.js.
+  // jsonwebtoken/jose named explicitly — neither contains "jwt". See the
+  // twin assertion in ida-3d for why "passport" is not in this list.
+  ok(!/require\s*\(\s*['"](?!\.{1,2}\/session\.js['"])[^'"]*(?:jwt|jsonwebtoken|jose|oauth|session|cookie)[^'"]*['"]\s*\)/i.test(apiSource),
+    'no JWT, OAuth or third-party session/cookie library added');
+  ok(!/req\.(?:cookies|session)\b/.test(apiSource), 'no framework-implicit cookie or session auth added');
+  ok(!/api\\\/review[^\n]*(?:ownerSession|OWNER_SESSION)/.test(apiSource), 'no review route was added to the owner-session grant');
   ok(!/CREATE\s+(?:TABLE|INDEX)|ALTER\s+TABLE/i.test(changedSource), 'modified sources contain no DDL');
   ok(!/DELETE\s+FROM|TRUNCATE\s|DROP\s/i.test(writesSource.slice(writesSource.indexOf('async function reviewFact'))), 'fact review path contains no destructive SQL');
   var publicRead = /FROM idauto_vehicle_facts WHERE vehicle_id = \$1 AND access_scope != \$2 ORDER BY fact_key/.test(apiSource);

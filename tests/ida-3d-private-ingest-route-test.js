@@ -81,7 +81,30 @@ async function staticCases() {
   ok((source.match(/\.listen\s*\(/g) || []).length === 1, 'no second listener was added');
   ok((source.match(/'127\.0\.0\.1'/g) || []).length === 1, 'loopback bind host remains unchanged');
   ok(!/api\\\/v1\\\/ingest|anonymous[^\n]*route/i.test(source), 'no public or anonymous ingestion route was added');
-  ok(!/require\s*\(\s*['"][^'"]*(?:jwt|oauth|session|cookie)[^'"]*['"]\s*\)|req\.(?:cookies|session)|set-cookie/i.test(source), 'no JWT, OAuth, session, or cookie auth was added');
+  // IDA-V1B, 2026-08-27 — this guard used to forbid cookie auth outright.
+  // The owner has since sanctioned exactly one such mechanism:
+  // reference/session.js, a signed HttpOnly cookie granting two READ routes
+  // and nothing else (see that file's header and
+  // tests/ida-v1b-owner-session-test.js, which pins the grant surface).
+  //
+  // The guard is NARROWED, not dropped. It still fails on a JWT or OAuth
+  // library, on any external session/cookie package, on framework-implicit
+  // auth (req.cookies / req.session), and on any Set-Cookie in api.js that
+  // does not come from the sanctioned module. Adding a SECOND session
+  // mechanism still breaks the build, which is what this assertion is for.
+  // `jsonwebtoken` and `jose` are named explicitly: neither string contains
+  // "jwt", so the original alternation missed the two most common JWT
+  // libraries outright. Closed here rather than left as-is. "passport" is
+  // deliberately NOT in the list — reference/passport-assembly.js would
+  // trip it, and the auth library of that name is not what this repo means
+  // by a passport.
+  ok(!/require\s*\(\s*['"](?!\.{1,2}\/session\.js['"])[^'"]*(?:jwt|jsonwebtoken|jose|oauth|session|cookie)[^'"]*['"]\s*\)/i.test(source),
+    'no JWT, OAuth or third-party session/cookie library was added');
+  ok(!/req\.(?:cookies|session)\b/.test(source), 'no framework-implicit cookie or session auth was added');
+  var cookieWrites = source.match(/Set-Cookie['"]?\s*:\s*[^,\n}]+/gi) || [];
+  ok(cookieWrites.length > 0 && cookieWrites.every(function (line) {
+    return /session\.(setCookieHeader|clearCookieHeader)\(/.test(line);
+  }), 'every Set-Cookie in api.js comes from the sanctioned session module');
   ok(!/CREATE\s+(?:TABLE|INDEX)|ALTER\s+TABLE/i.test(source), 'api.js contains no DDL');
   // A5 OPTION C, 2026-08-19: api.js may now CALL reference/rate-limit.js for
   // the public passport route (IDA-4 Option C requires that route to be
