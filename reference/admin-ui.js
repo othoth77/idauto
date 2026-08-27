@@ -105,6 +105,34 @@
   var result = document.getElementById('result');
   var button = document.getElementById('submit-button');
 
+  // IDA-V3 — a plate that resolved to nothing on the public surface arrives
+  // here as ?plate=SSS TUN NNNN, so the operator does not retype what they
+  // just searched for. This PRE-FILLS ONLY: nothing is submitted, nothing is
+  // invented, and every other field stays empty for a human to complete or
+  // leave blank. The vehicle is created by the existing audited endpoints
+  // when the form is submitted, and the IVID is issued server-side — there is
+  // no field here, and no query parameter, that can propose one.
+  (function prefillFromQuery() {
+    if (typeof window === 'undefined' || !window.location || !window.location.search) return;
+    var params = new URLSearchParams(window.location.search);
+    var plate = (params.get('plate') || '').trim();
+    if (!plate) return;
+    // Accepted only in the catalogue's canonical machine form (SSS TUN NNNN).
+    // Anything else is ignored rather than pasted into the form, so a crafted
+    // link cannot seed arbitrary text into an audited write.
+    if (!/^\d{1,3} TUN \d{1,4}$/.test(plate)) return;
+    if (form.elements.plate_number && !form.elements.plate_number.value) {
+      form.elements.plate_number.value = plate;
+    }
+    if (form.elements.format_code && !form.elements.format_code.value) {
+      form.elements.format_code.value = 'TUN_STD';
+    }
+    if (result) {
+      result.className = '';
+      result.textContent = 'Plate ' + plate + ' carried over from the public search. Fill in only what you know.';
+    }
+  }());
+
   // IDA-V1B — owner session. The Bearer token is read from the same
   // in-page field as every other admin action and is never stored; the
   // server answers with a Set-Cookie the browser keeps from then on.

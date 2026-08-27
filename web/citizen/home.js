@@ -29,6 +29,9 @@
   var messageTitle = document.querySelector("[data-plate-message-title]");
   var messageBody = document.querySelector("[data-plate-message-body]");
   var result = document.querySelector("[data-plate-result]");
+  var unknown = document.querySelector("[data-plate-unknown]");
+  var unknownPlate = document.querySelector("[data-unknown-plate]");
+  var unknownRegister = document.querySelector("[data-unknown-register]");
   var resultSummary = document.querySelector("[data-result-summary]");
   var resultPlate = document.querySelector("[data-result-plate]");
   var resultIvid = document.querySelector("[data-result-ivid]");
@@ -45,6 +48,7 @@
   function clearOutcome() {
     message.hidden = true;
     result.hidden = true;
+    unknown.hidden = true;
     plateErr.hidden = true;
   }
 
@@ -69,6 +73,22 @@
     var words = [s.make, s.model, s.variant].filter(Boolean).join(" ");
     if (s.year) words = words ? words + " (" + s.year + ")" : String(s.year);
     return words || "Identité publique disponible";
+  }
+
+  /* IDA-V3 — the unregistered-vehicle surface. It creates nothing itself:
+   * it hands the plate to /admin, the existing audited manual-entry form,
+   * which already carries every field this workflow needs (vehicle, plate,
+   * observation, fact, document image) and writes through writes.js's
+   * withAudit() — so provenance and audit are the ones already in place, and
+   * there is no second vehicle store and no second creation path.
+   *
+   * The IVID is issued by the server on creation. Nothing here can propose,
+   * influence or carry one. */
+  function showUnknown(canonicalPlate, displayPlate) {
+    unknownPlate.textContent = displayPlate;
+    unknownRegister.setAttribute("href", "/admin?plate=" + encodeURIComponent(canonicalPlate));
+    unknown.hidden = false;
+    say("Véhicule non enregistré — la recherche est conservée dans l'historique");
   }
 
   function showResult(plateNumber, ividValue, passport) {
@@ -100,9 +120,11 @@
       var response = await fetch("/public/plates/" + encodeURIComponent(canonicalPlate));
 
       if (response.status === 404) {
+        /* IDA-V3 — not an error. The server has already recorded the search
+         * in the audit trail; here the visitor is offered the registration
+         * path, with the plate carried through. */
         plateApi.setState("invalid");
-        showMessage("Aucun véhicule pour cette plaque",
-          "Cette plaque n'est enregistrée dans IDauto. Vérifiez la série et le numéro, ou ouvrez le passeport directement avec l'IVID imprimé sous le QR du véhicule.");
+        showUnknown(canonicalPlate, displayPlate);
         return;
       }
       if (response.status === 429) {
