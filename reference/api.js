@@ -1454,7 +1454,17 @@ async function postReviewDecision(req, res, observationId) {
 async function postFactReviewDecision(req, res, factId) {
   if (!/^\d+$/.test(factId)) return notFound(res);
   var body = await readJsonBody(req);
-  var record = await writes.reviewFact(factId, body.decision, req.mythosIdentity);
+  // IDA-V4 — verification, publication, source and confidence are separate
+  // dimensions. access_scope, confidence_score and evidence_type are all
+  // optional: omitted, the fact keeps the scope and confidence it already
+  // had, so verifying something never publishes it as a side effect.
+  // writes.js validates each one; nothing here is trusted unchecked.
+  var record = await writes.reviewFact(factId, body.decision, req.mythosIdentity, {
+    access_scope: body.access_scope,
+    confidence_score: body.confidence_score,
+    evidence_type: body.evidence_type,
+    weight: body.weight
+  });
   sendJson(res, 200, record);
 }
 
