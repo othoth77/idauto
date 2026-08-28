@@ -426,6 +426,24 @@ async function burstAndRecovery() {
     "      }).on('error', reject);",
     "    });",
     "  }",
+    // IDA-V10 deploy verification, 2026-08-28 — ALIGN THE BURST TO THE
+    // WINDOW. The remaining ~3-8% flake this suite's comment above predicted
+    // is not the bucket collision that comment fixed; it is simpler.
+    // floorPublicResolutionWindow() floors to ABSOLUTE 2-second boundaries
+    // (Math.floor(t / 2000) * 2000). If the three rapid requests happen to
+    // straddle one of those boundaries, the third lands in a NEW window with
+    // a fresh count and is correctly allowed — so it answers 200 and the
+    // "third request returns 429" assertion fails. The limiter is right; the
+    // test was asserting a property that only holds when all three requests
+    // share one window, and never arranged for them to.
+    // Waiting until just past a boundary gives the burst the full 2 seconds
+    // (it needs single-digit milliseconds), which makes the assertion
+    // deterministic WITHOUT weakening it: it still proves the third request
+    // over the limit is refused. Caught by running this suite 13 times during
+    // the IDA-V10 production deploy; reproduced at 1-in-13 there and 0-in-5
+    // before IDA-V10 only because the added suite shifts the timing, not
+    // because anything in IDA-V10 touches rate limiting.
+    "  await new Promise(function (r) { setTimeout(r, 2000 - (Date.now() % 2000) + 50); });",
     "  var results = [];",
     "  for (var i = 0; i < 3; i++) results.push(await req());",
     "  await new Promise(function (r) { setTimeout(r, 2500); });",
