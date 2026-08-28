@@ -60,6 +60,8 @@ whole organisation's access immediately.
 | `observation:read` | `GET /api/observations/:id` |
 | `passport:read` | `GET /api/passport/:ivid` |
 | `identity:resolve` | `GET /api/vehicles/:ref/resolve` |
+| `vehicle:search` | `GET /api/search/vehicles` — every criterion except `vin` |
+| `vin:search` | the `vin=` criterion on that route. **Separate on purpose**, always audited — see §5 and §9. |
 
 **Any route not listed is administrator-only.** That includes the review
 queue, `/health`, ingestion, media, and **merge / split** — an organisation
@@ -86,6 +88,59 @@ The QR encodes **only** the IVID — never a plate, never a token.
 ---
 
 ## 5. Endpoints
+
+### Search for a vehicle — `vehicle:search`
+
+The general vehicle search. One or more criteria; **at least one is
+required** (a criterion-less call is `400`, not a dump of the register).
+
+```
+GET /api/search/vehicles?plate=188%20TUN%204523
+GET /api/search/vehicles?ivid=ivid:1:…
+GET /api/search/vehicles?internal_ref=IDA2D-…
+GET /api/search/vehicles?make=HYUNDAI&model=TUCSON&year=2015
+GET /api/search/vehicles?vin=VF1…                 ← needs vin:search, always audited
+
+→ 200 {
+    "criterion": "plate",
+    "count": 1,
+    "results": [ { "ivid", "internal_ref", "make", "model", "variant",
+                   "year", "body_type", "fuel_type", "colour",
+                   "fiche_status" } ]
+  }
+```
+
+| Criterion | Match | Notes |
+|---|---|---|
+| `plate` | exact | Spacing-insensitive: `188tun4523` finds `188 TUN 4523`. |
+| `vin` | exact | **Requires `vin:search`.** Always audited. Never echoed back. |
+| `ivid` | exact | The Vehicle ID. |
+| `internal_ref` | exact | |
+| `make`, `model` | exact, case-insensitive | Combine with each other and with `year`. |
+| `year` | exact, `YYYY` | |
+
+An exact-identifier criterion (`plate`, `vin`, `ivid`, `internal_ref`) is
+answered on its own. `make` / `model` / `year` combine.
+
+**A miss is `200` with `count: 0`, never `404`.** "This vehicle is not known
+to IDauto" is a normal, expected answer — it is the first half of the
+register-a-new-vehicle flow (§13), not an error to retry.
+
+**Merges are followed.** Every result is the **canonical** record. If your
+stored reference matched a record that has since been merged, the result adds:
+
+```
+"matched_ref": "ivid:1:…the reference you searched…",
+"is_alias": true
+```
+
+which is your cue to update the reference you hold. Nothing breaks if you
+do not — it keeps resolving forever either way.
+
+Attribute searches are capped at **50** results and the response says
+`"capped": true` when the cap was reached. There is no paging: narrow the
+criteria instead. Search never returns a VIN, an owner field, an observation
+or any atelier-private detail — see §8 and §9.
 
 ### Search a vehicle by plate — public, no credential
 
@@ -249,6 +304,29 @@ The registration **plate is public** (owner decision, 2026-08-27). The
 authoritative plate record is served on the public passport; a
 community-submitted *fact* keyed `plate_number` remains deny-listed.
 
+#### VIN search — the rule, in full (owner ruling, 2026-08-28)
+
+The VIN stays **private**. It is searchable, and only like this:
+
+1. **A dedicated scope.** `vin:search`, granted separately from
+   `vehicle:search`. Holding one never implies the other.
+2. **Always audited.** Every VIN search writes an audit row — including a
+   search that matches nothing, and including one performed by an
+   administrator. The audit is written **before** the answer is returned: if
+   it cannot be written, you get an error instead of a result. There is no
+   such thing as an unaudited VIN search.
+3. **Never anonymous.** The route is authenticated; there is no public VIN
+   surface of any kind.
+4. **Never echoed.** The VIN appears in no response body — not even in the
+   response to a VIN search — and never on the public passport.
+5. **Not stored in the audit row.** The audit records who searched, for which
+   organisation, and which IVID matched. It stores a salted, truncated
+   *digest* of the VIN, never the VIN itself: writing it there would copy a
+   private value into a table that has none of the access-scope machinery
+   that protects it.
+6. **Never crosses organisations.** A VIN search returns vehicle *identity*
+   only, which is global under §1. It exposes no other atelier's data.
+
 ---
 
 ## 10. Errors
@@ -287,6 +365,15 @@ no code path that writes data without an attributable actor. Audit rows carry
 the event type, the acting `actor_ref`, the organisation, the target, and a
 salted client hash. **Raw IP addresses are never stored.**
 
+A write made with an organisation credential is recorded with
+`actor_type = 'professional_user'` and that organisation's `org_id`; a write
+made by the operator is recorded `actor_type = 'admin'` with no organisation.
+The two are therefore distinguishable in the trail, which is what makes an
+atelier's action attributable to *it* rather than to IDauto.
+
+VIN searches are audited as `event_type = 'vehicle.search.vin'` under the
+rules in §9.
+
 Merges and splits are permanent audit records.
 
 ---
@@ -294,9 +381,18 @@ Merges and splits are permanent audit records.
 ## 13. Integration checklist
 
 1. Obtain a service credential and the scopes your integration needs.
-2. Store the **IVID** as your primary vehicle reference.
-3. Send complete provenance on every observation.
-4. Handle `403` (missing scope) distinctly from `401` (bad credential).
-5. Treat `404` as "not found **or** not yours".
-6. Call `/resolve` when a stored reference behaves unexpectedly.
-7. Never send data you have not verified. IDauto invents nothing.
+   Ask for `vin:search` only if you actually search by VIN — it is audited
+   separately and reviewed separately.
+2. Store the **IVID** as your primary vehicle reference. `GET
+   /api/vehicles/:ref` accepts it directly; you never need to hold the
+   `internal_ref` as well.
+3. Start every workflow with `GET /api/search/vehicles`. `count: 0` means
+   "not known yet" — create it, and you have a Vehicle ID immediately.
+4. Honour `is_alias` in a search result by updating the reference you store;
+   the old one keeps working regardless.
+5. Send complete provenance on every observation.
+6. Handle `403` (missing scope) distinctly from `401` (bad credential).
+7. Treat `404` as "not found **or** not yours" — but note that a *search*
+   miss is `200` with `count: 0`, not `404`.
+8. Call `/resolve` when a stored reference behaves unexpectedly.
+9. Never send data you have not verified. IDauto invents nothing.

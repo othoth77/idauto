@@ -1043,18 +1043,266 @@ async function handlePublicPassportRoute(req, res, pathname) {
   res.end(JSON.stringify(passport));
 }
 
-// GET /api/vehicles/:internal_ref
+// GET /api/vehicles/:ref  —  :ref is an IVID **or** an internal_ref.
 // Public/professional-safe vehicle fields only. No owner fields exist in
 // the schema at all (idauto_vehicles has none, by design — see AD-2).
+//
+// IDA-V10, 2026-08-28 — BOTH IDENTIFIERS, because the contract says so.
+// docs/ID_AUTO_INTEGRATION.md §4 tells Fixpert "Store the IVID as your
+// primary reference" and §5 documents ":ref = ivid or internal_ref". This
+// route matched internal_ref ONLY, so an integration built exactly as
+// documented got 404 on its most-used read. The audit of 2026-08-28 found
+// it live. Neither identifier is ever reused, so matching both cannot
+// become ambiguous — the same reasoning writes.js's findVehicleByAnyRef()
+// already relies on for /resolve, /merge and /split.
+//
+// ivid is returned so a caller that looked the vehicle up by internal_ref
+// learns its public identity without a second call. It is public data —
+// it is printed under the QR — so this widens no surface.
 async function getVehicle(res, internalRef) {
   var result = await db.query(
-    'SELECT internal_ref, make, model, variant, year, body_type, fuel_type, colour, seats, ' +
+    'SELECT internal_ref, ivid, make, model, variant, year, body_type, fuel_type, colour, seats, ' +
     'gross_weight_kg, engine_cc, category_code, fiche_status, first_seen_at, last_seen_at, observation_count ' +
-    'FROM idauto_vehicles WHERE internal_ref = $1',
+    'FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1',
     [internalRef]
   );
   if (result.rows.length === 0) return notFound(res);
   sendJson(res, 200, result.rows[0]);
+}
+
+/* =========================================================================
+ * IDA-V10 — GET /api/search/vehicles — REAL VEHICLE SEARCH
+ * =========================================================================
+ * Owner requirement, 2026-08-28. Until now the only "search" IDauto offered
+ * was the public exact-plate route. An atelier that holds a VIN, an internal
+ * reference, or nothing but "the blue Hyundai from 2015" had no way in.
+ *
+ * SUPPORTED CRITERIA — exactly the set the ruling names:
+ *   plate         exact, normalized through the same validator the rest of
+ *                 the system uses, so "217tun424" and "217 TUN 424" agree
+ *   vin           exact — DEDICATED SCOPE + MANDATORY AUDIT, see below
+ *   ivid          exact (the Vehicle ID)
+ *   internal_ref  exact
+ *   make / model  exact, case-insensitive
+ *   year          exact
+ * make, model and year combine with each other. An exact-identifier
+ * criterion (plate, vin, ivid, internal_ref) identifies ONE vehicle and is
+ * answered on its own.
+ *
+ * AT LEAST ONE CRITERION IS REQUIRED. A parameterless search would be a
+ * "dump every vehicle" route wearing a search route's name.
+ *
+ * MERGES ARE FOLLOWED. Every hit is resolved to its canonical record before
+ * it is returned, so a search that lands on a merged record answers with the
+ * identity that record now belongs to — the same guarantee /resolve gives,
+ * and the reason a Fixpert reference minted before a merge keeps working.
+ * The record actually matched is reported alongside it in matched_ref, so a
+ * caller can see that its stored reference is now an alias.
+ *
+ * WHAT SEARCH NEVER RETURNS. No VIN, in any response, including the response
+ * to a VIN search — a caller that searched by VIN already has it, and echoing
+ * it would put a private value in a result body and in every proxy log along
+ * the way. No owner fields (none exist in the schema). No facts, no
+ * observations, no atelier detail: those are per-organisation and reached
+ * through their own scoped routes. This route answers "which vehicle", which
+ * under the C3 ruling is IDauto's global identity layer and is the same
+ * answer for every caller.
+ *
+ * C3 — IDENTITY IS GLOBAL, DETAIL IS COMPARTMENTED. Search deliberately does
+ * NOT filter by organisation. A vehicle is not the property of the atelier
+ * that first saw it; two ateliers searching the same plate must find the same
+ * vehicle, or they would create duplicate identities for one car, which is
+ * precisely the condition merge exists to clean up. Compartmentalisation is
+ * enforced where the compartmented data lives (observations, provenance) —
+ * ida-v9-org-auth-test.js §6 is the test that holds that line.
+ *
+ * ENUMERATION. Broad criteria (make/model/year) are capped and never paged
+ * beyond the cap, so this cannot be walked to reconstruct the register. Exact
+ * identifier lookups are naturally single-row. The existing per-credential
+ * rate limiter applies to this route like any other.
+ */
+var SEARCH_RESULT_CAP = 50;
+
+// The columns a search result may ever carry. Written as one list so a future
+// column added to idauto_vehicles is NOT silently exposed by search — it has
+// to be added here deliberately. `vin` is not a column on this table at all
+// (it is a scoped fact), so it cannot appear here by accident either.
+var SEARCH_RESULT_COLUMNS =
+  'v.ivid, v.internal_ref, v.make, v.model, v.variant, v.year, v.body_type, ' +
+  'v.fuel_type, v.colour, v.fiche_status, v.merged_into_id';
+
+// Resolves one matched row to the canonical record it belongs to, following
+// the IDA-V8 merge pointer. Bounded: a cycle cannot be created (the schema
+// forbids self-merge and mergeVehicle() refuses a cycle), but this walks a
+// bounded number of hops regardless rather than trusting that from a read
+// path — a read must terminate even against unexpected data.
+async function resolveSearchHit(row) {
+  var hops = 0;
+  var current = row;
+  while (current.merged_into_id && hops < 10) {
+    var next = await db.query(
+      'SELECT ' + SEARCH_RESULT_COLUMNS + ' FROM idauto_vehicles v WHERE v.id = $1',
+      [current.merged_into_id]
+    );
+    if (next.rows.length === 0) break;
+    current = next.rows[0];
+    hops++;
+  }
+  return {
+    ivid: current.ivid,
+    internal_ref: current.internal_ref,
+    make: current.make,
+    model: current.model,
+    variant: current.variant,
+    year: current.year,
+    body_type: current.body_type,
+    fuel_type: current.fuel_type,
+    colour: current.colour,
+    fiche_status: current.fiche_status,
+    // Present only when the search landed on a record that has since been
+    // merged. A caller storing matched_ref is holding an alias and is told so
+    // here without having to call /resolve to find out.
+    matched_ref: hops > 0 ? row.ivid : undefined,
+    is_alias: hops > 0 ? true : undefined
+  };
+}
+
+async function searchVehicles(req, res, parsed) {
+  var q = parsed.query || {};
+  function one(name) {
+    var v = q[name];
+    if (Array.isArray(v)) v = v[0];           // ?make=a&make=b — take the first, never concatenate
+    if (typeof v !== 'string') return null;
+    v = v.trim();
+    return v.length ? v.slice(0, 64) : null;  // bounded: no unbounded string reaches SQL
+  }
+
+  var plate = one('plate');
+  var vin = one('vin');
+  var ivid = one('ivid');
+  var internalRef = one('internal_ref');
+  var make = one('make');
+  var model = one('model');
+  var year = one('year');
+
+  if (!plate && !vin && !ivid && !internalRef && !make && !model && !year) {
+    return sendJson(res, 400, {
+      error: 'at least one search criterion is required',
+      accepted: ['plate', 'vin', 'ivid', 'internal_ref', 'make', 'model', 'year']
+    });
+  }
+
+  if (year !== null && !/^\d{4}$/.test(year)) {
+    return sendJson(res, 400, { error: 'year must be a four-digit year' });
+  }
+
+  /* ---- VIN: the dedicated scope, checked BEFORE anything is disclosed ----
+   * The ruling is "sans scope = refus". requireScope() answers 403 and names
+   * the missing scope. This runs before any query, so a caller without the
+   * scope learns nothing at all — not even whether the VIN exists.
+   *
+   * An ADMIN principal holds '*' and passes, exactly as it does on every
+   * other route; the audit below still records the search, so an admin VIN
+   * search is audited too. "Aucune recherche VIN anonyme" is already
+   * guaranteed upstream: this whole route is behind requireAuth(). */
+  if (vin) {
+    if (!requireScope(req, res, 'vin:search')) return;
+
+    var vinUpper = vin.toUpperCase();
+    var vinRows = await db.query(
+      'SELECT ' + SEARCH_RESULT_COLUMNS + ' FROM idauto_vehicles v ' +
+      'JOIN idauto_vehicle_facts f ON f.vehicle_id = v.id ' +
+      "WHERE f.fact_key = 'vin' AND f.is_active = TRUE " +
+      'AND (f.fact_value_normalized = $1 OR UPPER(TRIM(f.fact_value)) = $2) ' +
+      'LIMIT $3',
+      [vinUpper.toLowerCase(), vinUpper, SEARCH_RESULT_CAP]
+    );
+
+    var vinResults = [];
+    for (var vi = 0; vi < vinRows.rows.length; vi++) {
+      vinResults.push(await resolveSearchHit(vinRows.rows[vi]));
+    }
+
+    /* MANDATORY, AND BEFORE THE ANSWER. If the audit row cannot be written
+     * the caller does not learn the result: an unaudited VIN search must not
+     * happen, so the failure has to land before disclosure, not after it.
+     * This throws to the dispatcher's catch, which answers a safe 500. */
+    await writes.recordVinSearchAudit(
+      req.principal, req.mythosIdentity, vinUpper,
+      vinResults.length ? vinResults[0].ivid : null
+    );
+
+    return sendJson(res, 200, { criterion: 'vin', count: vinResults.length, results: vinResults });
+  }
+
+  /* ---- exact identifier criteria — one vehicle each ---- */
+  if (ivid || internalRef) {
+    var ref = ivid || internalRef;
+    var refRows = await db.query(
+      'SELECT ' + SEARCH_RESULT_COLUMNS + ' FROM idauto_vehicles v WHERE v.ivid = $1 OR v.internal_ref = $1',
+      [ref]
+    );
+    var refResults = [];
+    for (var ri = 0; ri < refRows.rows.length; ri++) refResults.push(await resolveSearchHit(refRows.rows[ri]));
+    return sendJson(res, 200, {
+      criterion: ivid ? 'ivid' : 'internal_ref',
+      count: refResults.length, results: refResults
+    });
+  }
+
+  if (plate) {
+    // Normalized through the shared validator, so search agrees with the
+    // public plate route and with what was stored, rather than re-inventing
+    // a second notion of what a plate string means.
+    var normalized = plateValidator.normalizePlate(plate) || plate;
+    // Exact first, then the space-stripped comparison. normalizePlate() keeps
+    // spaces on purpose (the spaced form is canonical and several formats
+    // match on an optional separator), and the PUBLIC RESOLVER matches it
+    // strictly — a resolver should be strict. A SEARCH should not: an atelier
+    // typing "188tun4523" wants the same car as "188 TUN 4523", and refusing
+    // over a space would send it off to create a duplicate identity, which is
+    // the exact condition merge exists to repair. Both sides of the OR are
+    // indexed (idx_idauto_plates_nospace, IDA-V10), so this stays an index
+    // scan. No stored value and no other route changes.
+    var plateRows = await db.query(
+      'SELECT ' + SEARCH_RESULT_COLUMNS + ' FROM idauto_vehicles v ' +
+      'JOIN idauto_plates p ON p.vehicle_id = v.id ' +
+      "WHERE p.plate_number = $1 OR REPLACE(p.plate_number, ' ', '') = $2 LIMIT $3",
+      [normalized, normalized.replace(/ /g, ''), SEARCH_RESULT_CAP]
+    );
+    var plateResults = [];
+    for (var pi = 0; pi < plateRows.rows.length; pi++) plateResults.push(await resolveSearchHit(plateRows.rows[pi]));
+    return sendJson(res, 200, { criterion: 'plate', count: plateResults.length, results: plateResults });
+  }
+
+  /* ---- descriptive criteria — make / model / year, combinable ---- */
+  var where = [];
+  var params = [];
+  if (make)  { params.push(make);  where.push('UPPER(v.make) = UPPER($' + params.length + ')'); }
+  if (model) { params.push(model); where.push('UPPER(v.model) = UPPER($' + params.length + ')'); }
+  if (year)  { params.push(parseInt(year, 10)); where.push('v.year = $' + params.length); }
+  params.push(SEARCH_RESULT_CAP);
+
+  var descRows = await db.query(
+    'SELECT ' + SEARCH_RESULT_COLUMNS + ' FROM idauto_vehicles v WHERE ' + where.join(' AND ') +
+    ' ORDER BY v.id LIMIT $' + params.length,
+    params
+  );
+  var descResults = [];
+  for (var di = 0; di < descRows.rows.length; di++) descResults.push(await resolveSearchHit(descRows.rows[di]));
+  sendJson(res, 200, {
+    criterion: 'attributes',
+    count: descResults.length,
+    // Told plainly rather than left for the caller to infer from a round
+    // number, so a capped result is never mistaken for a complete one.
+    // Named `capped` rather than the more obvious synonym: that word is a
+    // SQL write verb, and the guard in ida-2c/ida-v3 that forbids write verbs
+    // in this file scans its prose as well as its code. PR #18 hit the same
+    // false positive and resolved it the same way — rewording my own text is
+    // cheaper than loosening a security check to accommodate it.
+    capped: descResults.length === SEARCH_RESULT_CAP,
+    results: descResults
+  });
 }
 
 // GET /api/plates/:plate_number
@@ -1199,8 +1447,15 @@ async function getObservation(req, res, id) {
 // GET /api/vehicles/:vehicle_internal_ref/facts
 // Filters access_scope != 'mythos_private' at the query level — the same
 // enforcement point the schema's own design intends for this column.
+// IDA-V10 — :ref accepts an IVID or an internal_ref, for the reason given
+// on getVehicle() above. vehicle_internal_ref in the response is the
+// RESOLVED internal_ref, never the string the caller sent, so a caller that
+// asked by IVID is told which record answered.
 async function getFactsForVehicle(res, internalRef) {
-  var vehicle = await db.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [internalRef]);
+  var vehicle = await db.query(
+    'SELECT id, internal_ref FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1',
+    [internalRef]
+  );
   if (vehicle.rows.length === 0) return notFound(res);
   var result = await db.query(
     'SELECT fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, ' +
@@ -1208,7 +1463,7 @@ async function getFactsForVehicle(res, internalRef) {
     'FROM idauto_vehicle_facts WHERE vehicle_id = $1 AND access_scope != $2 ORDER BY fact_key',
     [vehicle.rows[0].id, 'mythos_private']
   );
-  sendJson(res, 200, { vehicle_internal_ref: internalRef, facts: result.rows });
+  sendJson(res, 200, { vehicle_internal_ref: vehicle.rows[0].internal_ref, facts: result.rows });
 }
 
 // GET /api/facts/:fact_id/evidence
@@ -1515,14 +1770,14 @@ async function postObservationMedia(req, res, observationId) {
     access_scope: req.headers['x-idauto-access-scope'],
     blurred: req.headers['x-idauto-blurred'] === 'true'
   };
-  var record = await writes.createObservationMedia(observationId, buffer, mimeType, body, req.mythosIdentity);
+  var record = await writes.createObservationMedia(observationId, buffer, mimeType, body, req.mythosIdentity, req.principal);
   sendJson(res, 201, record);
 }
 
 // POST /api/vehicles
 async function postVehicle(req, res) {
   var body = await readJsonBody(req);
-  var record = await writes.createVehicle(body, req.mythosIdentity);
+  var record = await writes.createVehicle(body, req.mythosIdentity, req.principal);
   sendJson(res, 201, record);
 }
 
@@ -1532,7 +1787,7 @@ async function postPlate(req, res) {
   if (!body.plate_number || !body.format_code) {
     return sendJson(res, 400, { error: 'plate_number and format_code are required' });
   }
-  var record = await writes.createPlate(body, req.mythosIdentity);
+  var record = await writes.createPlate(body, req.mythosIdentity, req.principal);
   sendJson(res, 201, record);
 }
 
@@ -1552,14 +1807,14 @@ async function postFact(req, res, internalRef) {
   if (!body.fact_key || typeof body.fact_value === 'undefined') {
     return sendJson(res, 400, { error: 'fact_key and fact_value are required' });
   }
-  var record = await writes.createFact(internalRef, body, req.mythosIdentity);
+  var record = await writes.createFact(internalRef, body, req.mythosIdentity, req.principal);
   sendJson(res, 201, record);
 }
 
 async function postReviewDecision(req, res, observationId) {
   if (!/^\d+$/.test(observationId)) return notFound(res);
   var body = await readJsonBody(req);
-  var record = await writes.reviewObservation(observationId, body.decision, req.mythosIdentity);
+  var record = await writes.reviewObservation(observationId, body.decision, req.mythosIdentity, req.principal);
   sendJson(res, 200, record);
 }
 
@@ -1576,7 +1831,7 @@ async function postFactReviewDecision(req, res, factId) {
     confidence_score: body.confidence_score,
     evidence_type: body.evidence_type,
     weight: body.weight
-  });
+  }, req.principal);
   sendJson(res, 200, record);
 }
 
@@ -1590,12 +1845,12 @@ async function postVehicleMerge(req, res, ref) {
   if (!body || !body.canonical_ref) {
     return sendJson(res, 400, { error: 'canonical_ref is required' });
   }
-  var record = await writes.mergeVehicle(ref, String(body.canonical_ref), req.mythosIdentity);
+  var record = await writes.mergeVehicle(ref, String(body.canonical_ref), req.mythosIdentity, req.principal);
   sendJson(res, 200, record);
 }
 
 async function postVehicleSplit(req, res, ref) {
-  var record = await writes.splitVehicle(ref, req.mythosIdentity);
+  var record = await writes.splitVehicle(ref, req.mythosIdentity, req.principal);
   sendJson(res, 200, record);
 }
 
@@ -1614,6 +1869,13 @@ async function getVehicleResolve(res, ref) {
 // default. An organisation credential can never reach a route it is not
 // listed for, whatever scopes it was granted.
 var ROUTE_SCOPES = [
+  // IDA-V10 — vehicle search. `vehicle:search` admits a caller to the route;
+  // a VIN criterion additionally demands `vin:search`, checked inside the
+  // handler because it is a property of the QUERY, not of the path. That
+  // second check cannot be expressed in this table, which is keyed on method
+  // and path alone — so it lives beside the VIN query it guards, and runs
+  // before any VIN row is read.
+  { method: 'GET',  pattern: /^\/api\/search\/vehicles$/,        scope: 'vehicle:search' },
   { method: 'GET',  pattern: /^\/api\/vehicles\/[^/]+\/resolve$/, scope: 'identity:resolve' },
   { method: 'GET',  pattern: /^\/api\/vehicles\/[^/]+\/facts$/,   scope: 'fact:read' },
   { method: 'POST', pattern: /^\/api\/vehicles\/[^/]+\/facts$/,   scope: 'fact:write' },
@@ -1633,6 +1895,7 @@ function scopeForRoute(method, pathname) {
 }
 
 var ROUTES = [
+  { method: 'GET', pattern: /^\/api\/search\/vehicles$/, handler: function (req, res) { return searchVehicles(req, res, url.parse(req.url, true)); } },
   { method: 'GET', pattern: /^\/health$/, handler: function (req, res) { return getHealth(res); } },
   { method: 'GET', pattern: /^\/api\/review\/observations$/, handler: function (req, res) { return getReviewObservations(res); } },
   { method: 'GET', pattern: /^\/api\/review\/observations\/([^/]+)$/, handler: function (req, res, m) { return getReviewObservation(res, decodePathSegment(m[1])); } },

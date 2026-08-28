@@ -276,7 +276,18 @@ const dispatchOrder = apiSrc.indexOf("serveAdminAsset(req, res, pathname)") <
 ok(dispatchOrder, "dispatch order: admin assets → citizen assets → public route → auth");
 ok(/vehicle_ivid/.test(apiSrc) && /LEFT JOIN idauto_vehicles v ON v\.id = p\.vehicle_id/.test(apiSrc),
   "getPlate exposes vehicle_ivid via a JOIN on the authenticated route only");
-ok(!/vehicle_ivid/.test(apiSrc.slice(apiSrc.indexOf("async function handlePublicPassportRoute"), apiSrc.indexOf("// GET /api/vehicles/:internal_ref"))),
+// IDA-V10, 2026-08-28 — anchored on CODE, not on a comment. This slice used
+// to end at the literal comment "// GET /api/vehicles/:internal_ref"; when
+// that comment was corrected (the route accepts an IVID too), indexOf
+// returned -1, slice() silently ran to the end of the file and the assertion
+// failed for a reason that had nothing to do with the public route. The
+// property is unchanged — it is the anchor that is now stable. Both ends are
+// asserted present first, so a future rename fails loudly instead of
+// silently mis-slicing.
+const publicStart = apiSrc.indexOf("async function handlePublicPassportRoute");
+const publicEnd = apiSrc.indexOf("async function getVehicle(");
+ok(publicStart !== -1 && publicEnd > publicStart, "public-route slice anchors both resolve");
+ok(!/vehicle_ivid/.test(apiSrc.slice(publicStart, publicEnd)),
   "the public route is untouched by the vehicle_ivid addition");
 
 /* ---------- 11. motion + touch discipline ---------- */
