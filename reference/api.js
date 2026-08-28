@@ -319,6 +319,32 @@ function decodePathSegment(segment) {
   }
 }
 
+/* IDA-ADMIN-DS, 2026-08-28 — THE ADMIN SURFACE USES THE REAL DESIGN SYSTEM.
+ *
+ * The admin pages carried their own stylesheet with hand-written colours
+ * (#0b1220, #72d7c5) that predate the IDauto Design System. They looked like
+ * a different product from idauto.tn and /passport. They now use the SAME
+ * tokens.css / base.css / components.css as the citizen surface.
+ *
+ * WHY THEY ARE SERVED HERE AND NOT REUSED FROM '/assets/…'.
+ * The citizen map below is PHASE-GATED: serveCitizenAsset() declines every
+ * path when public_resolution.enabled is false (the A5-PLATE gate). Pointing
+ * the admin pages at '/assets/tokens.css' would therefore make the operator's
+ * own console lose all styling the moment the citizen surface is switched to
+ * the PRIVATE phase — coupling an internal tool to a public-surface switch it
+ * has nothing to do with. The dispatch order (admin BEFORE citizen) exists to
+ * keep admin independent, and this preserves that.
+ *
+ * THE SAME FILES, NOT COPIES. Each entry below points at the very file the
+ * citizen surface serves. There is no second copy of the Design System to
+ * drift out of sync — one source, two mount points. `root` names which
+ * directory the file is resolved against; entries without it keep resolving
+ * against reference/, exactly as before.
+ *
+ * Still a map, still GET-only, still no concatenation of request input into a
+ * path — the traversal properties are unchanged. */
+var WEB_ROOT = path.join(__dirname, '..', 'web');
+
 var ADMIN_ASSETS = {
   '/admin': { file: 'admin.html', contentType: 'text/html; charset=utf-8' },
   '/admin/': { file: 'admin.html', contentType: 'text/html; charset=utf-8' },
@@ -326,7 +352,15 @@ var ADMIN_ASSETS = {
   '/admin/admin.css': { file: 'admin.css', contentType: 'text/css; charset=utf-8' },
   '/admin/review': { file: 'review.html', contentType: 'text/html; charset=utf-8' },
   '/admin/review/': { file: 'review.html', contentType: 'text/html; charset=utf-8' },
-  '/admin/review-ui.js': { file: 'review-ui.js', contentType: 'application/javascript; charset=utf-8' }
+  '/admin/review-ui.js': { file: 'review-ui.js', contentType: 'application/javascript; charset=utf-8' },
+
+  // The Design System itself — the same files web/ serves to the citizen
+  // surface, mounted under /admin/ so they are never phase-gated.
+  '/admin/assets/tokens.css': { root: WEB_ROOT, file: 'design-system/tokens/tokens.css', contentType: 'text/css; charset=utf-8' },
+  '/admin/assets/base.css': { root: WEB_ROOT, file: 'design-system/css/base.css', contentType: 'text/css; charset=utf-8' },
+  '/admin/assets/components.css': { root: WEB_ROOT, file: 'design-system/css/components.css', contentType: 'text/css; charset=utf-8' },
+  '/admin/assets/ui.js': { root: WEB_ROOT, file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' }
 };
 
 // The admin shell contains no data or credentials. API calls made by the
@@ -335,7 +369,7 @@ var ADMIN_ASSETS = {
 function serveAdminAsset(req, res, pathname) {
   var asset = ADMIN_ASSETS[pathname];
   if (!asset || req.method !== 'GET') return false;
-  fs.readFile(path.join(__dirname, asset.file), function (err, content) {
+  fs.readFile(path.join(asset.root || __dirname, asset.file), function (err, content) {
     if (err) return sendJson(res, 500, { error: 'admin UI unavailable' });
     res.writeHead(200, {
       'Content-Type': asset.contentType,

@@ -3,33 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ID Auto — Review queue</title>
+  <title>IDauto — Review queue</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-DS — same Design System files as /admin and the citizen
+       surface, mounted under /admin/ so they are never phase-gated. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body>
-  <main>
-    <header>
-      <p class="eyebrow">Mythos OS · ID Auto</p>
+<a class="ida-skip-link" href="#main">Skip to content</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — home">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Admin navigation">
+      <ul class="ida-nav-links">
+        <li><a href="/admin">Entry</a></li>
+        <li><a href="/admin/review" aria-current="page">Review</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Toggle light or dark theme">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
       <h1>Review queue</h1>
-      <p>Review pending observations through the existing audited ID Auto workflow.</p>
+      <p class="ida-muted ida-u-maxch-52">Review pending observations through the existing audited IDauto workflow.</p>
     </header>
-    <section class="review-auth">
-      <label>Bearer token <input id="review-token" type="password" autocomplete="off"></label>
-      <button id="load-queue" type="button">Load queue</button>
-      <p class="hint">Held in this page only; never saved in browser storage.</p>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-auth">
+      <h2 id="sec-auth" class="ida-h3">Admin identity</h2>
+      <div class="review-auth">
+        <div class="ida-field">
+          <label for="review-token">Bearer token</label>
+          <input class="ida-input" id="review-token" type="password" autocomplete="off">
+        </div>
+        <button id="load-queue" type="button" class="ida-btn ida-btn--primary">Load queue</button>
+        <p class="ida-hint">Held in this page only; never saved in browser storage.</p>
+      </div>
     </section>
+
     <div id="queue-status" role="status" aria-live="polite">Enter an admin token to load the queue.</div>
+
     <div class="review-layout">
-      <section>
-        <h2>Pending observations</h2>
+      <section class="ida-card ida-stack" aria-labelledby="sec-pending">
+        <h2 id="sec-pending" class="ida-h3">Pending observations</h2>
         <div id="queue-list"></div>
       </section>
-      <section>
-        <h2>Observation detail</h2>
+      <section class="ida-card ida-stack" aria-labelledby="sec-detail">
+        <h2 id="sec-detail" class="ida-h3">Observation detail</h2>
         <div id="review-detail" class="empty">Select an observation.</div>
       </section>
     </div>
-  </main>
-  <script src="/admin/review-ui.js"></script>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — operator console. Every decision made here is audited.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/review-ui.js"></script>
 </body>
 </html>
