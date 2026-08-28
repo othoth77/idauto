@@ -420,6 +420,35 @@ var CITIZEN_ASSETS = {
   '/assets/home.js': { file: 'citizen/home.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/favicon.svg': { file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
+
+  /* IDA-V11 — the plate scanner's OCR engine, vendored under web/vendor like
+   * qrcodegen.js. Served from this origin so connect-src stays 'self' and the
+   * engine can never reach a CDN for its model. Listed one path at a time,
+   * like every other entry: no request input is concatenated into a path.
+   * Nothing here is fetched until the visitor actually taps "Scanner la
+   * plaque" — the homepage's first paint is unchanged. */
+  '/assets/plate-scanner.js': { file: 'citizen/plate-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/tesseract/tesseract.min.js': { file: 'vendor/tesseract/tesseract.min.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/tesseract/worker.min.js': { file: 'vendor/tesseract/worker.min.js', contentType: 'application/javascript; charset=utf-8' },
+  /* THE THREE CORES. The engine feature-detects and asks for ONE of these:
+   * Chrome takes relaxedsimd, older engines plain simd, and the rest the
+   * non-SIMD build. It imports the `.wasm.js` glue, which then fetches the
+   * `.wasm` beside it — BOTH halves of a pair are required, and a missing
+   * variant is a hard failure, not a fallback (found by the engine 404ing on
+   * relaxedsimd during IDA-V11 browser QA). All three pairs are vendored so
+   * the choice never has to leave this origin. A visitor downloads exactly
+   * one pair, and only after tapping "Scanner la plaque".
+   */
+  '/assets/tesseract/tesseract-core-lstm.wasm.js': { file: 'vendor/tesseract/tesseract-core-lstm.wasm.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/tesseract/tesseract-core-lstm.wasm': { file: 'vendor/tesseract/tesseract-core-lstm.wasm', contentType: 'application/wasm' },
+  '/assets/tesseract/tesseract-core-simd-lstm.wasm.js': { file: 'vendor/tesseract/tesseract-core-simd-lstm.wasm.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/tesseract/tesseract-core-simd-lstm.wasm': { file: 'vendor/tesseract/tesseract-core-simd-lstm.wasm', contentType: 'application/wasm' },
+  '/assets/tesseract/tesseract-core-relaxedsimd-lstm.wasm.js': { file: 'vendor/tesseract/tesseract-core-relaxedsimd-lstm.wasm.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/tesseract/tesseract-core-relaxedsimd-lstm.wasm': { file: 'vendor/tesseract/tesseract-core-relaxedsimd-lstm.wasm', contentType: 'application/wasm' },
+  // Served as opaque bytes with NO Content-Encoding: tesseract.js fetches the
+  // .gz and inflates it itself. Advertising gzip here would make the browser
+  // decompress first, and the engine would then try to inflate plain data.
+  '/assets/tesseract/eng.traineddata.gz': { file: 'vendor/tesseract/eng.traineddata.gz', contentType: 'application/octet-stream' },
   '/favicon.ico': { file: 'citizen/favicon.svg', contentType: 'image/svg+xml' }
 };
 
@@ -453,7 +482,36 @@ function serveCitizenAsset(req, res, pathname) {
       'Content-Type': asset.contentType,
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+      /* IDA-V11, 2026-08-28 — 'wasm-unsafe-eval' ADDED TO script-src, HERE ONLY.
+       *
+       * THE DIAGNOSIS. The plate scanner runs Tesseract's OCR engine, which is
+       * WebAssembly. Chrome refuses WebAssembly.instantiate() outright when a
+       * CSP is present and script-src carries neither 'unsafe-eval' nor
+       * 'wasm-unsafe-eval' — the page throws
+       *     CompileError: WebAssembly.instantiate(): Refused to compile
+       *     ... because 'wasm-unsafe-eval' is not an allowed source
+       * script-src is therefore the exact and only directive that blocks it.
+       *
+       * WHY THIS TOKEN AND NOT 'unsafe-eval'. 'wasm-unsafe-eval' permits
+       * compiling WebAssembly and NOTHING ELSE. It does not enable eval(),
+       * new Function(), inline <script>, or javascript: URLs — all of which
+       * 'unsafe-eval' would have re-opened. It is the narrowest token that
+       * makes the feature possible.
+       *
+       * WHAT IT DOES NOT WIDEN. The source list is still 'self': no external
+       * origin, no CDN, no inline script becomes loadable. Every OCR asset is
+       * vendored under web/vendor/tesseract and served from this origin
+       * through the map below, so connect-src stays 'self' and the engine
+       * cannot fetch a model from anywhere else. The worker is a same-origin
+       * URL (workerBlobURL:false in plate-scanner.js), so blob: is NOT added
+       * to worker-src either. default-src, style-src, img-src, connect-src,
+       * base-uri and frame-ancestors are byte-identical to before.
+       *
+       * WHERE IT DOES NOT APPLY. serveAdminAsset()'s CSP is untouched: the
+       * operator console runs no WebAssembly and must not be able to. The
+       * public passport route's CSP is untouched for the same reason. This
+       * header covers the citizen surface alone. */
+      'Content-Security-Policy': "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
     });
     res.end(content);
   });

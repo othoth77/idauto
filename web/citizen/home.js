@@ -184,6 +184,71 @@
     resolvePlate(plateApi.canonical(), plateApi.format.display(plateApi.getParts()));
   });
 
+  /* IDA-V11 — "Scanner la plaque".
+   *
+   * The scanner is a second way to FILL THE PLATE FIELD, never a second search
+   * path. It writes the série and numéro into the very inputs the visitor
+   * would have typed into, calls plateApi.refresh() so the Design System
+   * component revalidates exactly as it does after typing, and then calls the
+   * SAME resolvePlate() the form's submit handler calls. Everything downstream
+   * — the found case, the unknown-vehicle case, rate limiting, the audit trail
+   * — is therefore identical whether the plate was typed or scanned. There is
+   * no scanner-specific search, and no scanner-specific result rendering.
+   *
+   * If the reading was uncertain the scanner has already made the visitor
+   * confirm it; `auto` records which of the two happened, and an uncertain
+   * reading never reaches this function without a human having seen it. */
+  function applyScannedPlate(read) {
+    var serieInput = plateEl.querySelector(".ida-plate-serie");
+    var numeroInput = plateEl.querySelector(".ida-plate-numero");
+    if (!serieInput || !numeroInput) return;
+
+    serieInput.value = read.serie;
+    numeroInput.value = read.numero;
+    plateApi.refresh();
+
+    clearOutcome();
+    var res = plateApi.validate();
+    if (!res.valid) {
+      /* The scanner's own checks and the component's disagree — which can only
+       * mean the read produced something the catalogue does not accept. Say so
+       * and leave the visitor on the field, rather than searching for a plate
+       * the format does not recognise. */
+      plateApi.setState("invalid");
+      showPlateError("La plaque lue n'est pas valide — corrigez la série (1 à 3 chiffres) et le numéro (1 à 4 chiffres).");
+      serieInput.focus();
+      return;
+    }
+    say(read.auto
+      ? "Plaque lue automatiquement — recherche en cours"
+      : "Plaque confirmée — recherche en cours");
+    resolvePlate(plateApi.canonical(), plateApi.format.display(plateApi.getParts()));
+  }
+
+  (function wireScanner() {
+    var openBtn = document.querySelector("[data-scan-open]");
+    var root = document.querySelector("[data-scan-root]");
+    if (!openBtn || !root || typeof IdaPlateScanner === "undefined") return;
+
+    /* Offered only where it can actually work. A browser with no camera API at
+     * all (or a page not in a secure context) would fail on the first tap, so
+     * the button stays hidden and the typed field remains the whole surface —
+     * which is exactly what the page was before this feature. */
+    if (!IdaPlateScanner.cameraSupported()) return;
+    openBtn.hidden = false;
+
+    var els = {
+      root: root,
+      video: root.querySelector("[data-scan-video]"),
+      opener: openBtn
+    };
+    IdaPlateScanner.bind(els);
+
+    openBtn.addEventListener("click", function () {
+      IdaPlateScanner.open({ els: els, onPlate: applyScannedPlate });
+    });
+  }());
+
   var ividForm = document.querySelector("[data-ivid-form]");
   var ividErr = ividForm.querySelector("[data-ivid-error]");
   ividForm.addEventListener("submit", function (e) {

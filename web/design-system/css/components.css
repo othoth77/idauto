@@ -634,3 +634,69 @@
 .ida-qr-svg svg { width: 100%; height: 100%; display: block; }
 .ida-qr-svg .ida-qr-dark { fill: var(--ida-text); }
 .ida-qr-svg .ida-qr-light { fill: var(--ida-surface); }
+
+/* ============ Plate scanner (IDA-V11) ============
+ * Layout only. Every colour, space, radius and duration below is an existing
+ * token — this introduces no new visual decision, and no existing component
+ * rule is modified. The overlay reuses .ida-card for its panel, .ida-btn for
+ * every control, .ida-field/.ida-input for the confirmation fields and
+ * .ida-alert for both the uncertainty note and the error state. */
+.ida-scan {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ida-space-4);
+  background: var(--ida-scrim);
+  overflow-y: auto;
+}
+.ida-scan-panel {
+  width: 100%;
+  max-width: 30rem;
+  max-height: calc(100vh - var(--ida-space-6));
+  overflow-y: auto;
+  box-shadow: var(--ida-shadow-3);
+}
+.ida-scan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ida-space-3);
+}
+/* 16:9 stage. The guide rectangle marks the band plate-scanner.js actually
+ * crops before OCR, so what the visitor frames is what the engine reads. */
+.ida-scan-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--ida-plate-field);
+  border-radius: var(--ida-radius-card);
+  overflow: hidden;
+}
+.ida-scan-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ida-scan-guide {
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: 35%;
+  bottom: 35%;
+  border: 2px solid var(--ida-plate-glyph);
+  border-radius: var(--ida-radius-plate);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.ida-scan-skeleton { height: var(--ida-space-8); border-radius: var(--ida-radius-card); }
+.ida-scan-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--ida-space-3);
+}
+@media (max-width: 380px) {
+  .ida-scan-fields { grid-template-columns: 1fr; }
+}

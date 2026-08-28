@@ -35,6 +35,24 @@
 <main id="main" class="ida-container ida-u-pad-section">
   <div class="ida-stack-lg">
 
+    <!-- IDA-V11 — the unregistered-vehicle handoff.
+         Shown ONLY when this page was reached from a public plate search that
+         found nothing (?plate=SSS TUN NNNN). admin-ui.js reveals it and
+         prefills the plate, so the plate is never retyped between the search
+         and the registration. Both languages are given in full: the visitor
+         who searched may read either, and a French-only notice on a Tunisian
+         surface is a half-delivered message. -->
+    <div class="ida-alert ida-alert--info" data-unregistered-notice hidden>
+      <div class="ida-stack">
+        <p class="ida-alert-title">Véhicule non enregistré</p>
+        <p class="ida-small">Cette voiture n'est pas encore enregistrée dans IDauto.
+        Vous pouvez compléter son enregistrement avec les informations dont vous disposez.</p>
+        <p class="ida-small" lang="ar" dir="rtl">هذه السيارة غير مسجلة بعد في IDauto.
+        يمكنكم إتمام تسجيلها بإدخال المعلومات المتوفرة لديكم.</p>
+        <p class="ida-caption" data-unregistered-plate></p>
+      </div>
+    </div>
+
     <header class="ida-stack">
       <p class="ida-label">Mythos OS · IDauto</p>
       <h1>Admin manual entry</h1>

@@ -58,6 +58,11 @@
           <p class="ida-error-msg" data-plate-error hidden></p>
           <div class="ida-search-actions">
             <button type="submit" class="ida-btn ida-btn--primary">Consulter l'identité</button>
+            <!-- IDA-V11 — the scanner fills the SAME plate field above and runs
+                 the SAME search. It is a second way in, never a second flow.
+                 Hidden when the browser exposes no camera at all, so it is
+                 never offered where it cannot work. -->
+            <button type="button" class="ida-btn ida-btn--secondary" data-scan-open hidden>Scanner la plaque</button>
           </div>
         </form>
 
@@ -151,6 +156,84 @@
   </section>
 </main>
 
+<!-- IDA-V11 — plate scanner. Built from the same Design System components as
+     the rest of the surface (.ida-card, .ida-btn, .ida-field, .ida-input,
+     .ida-alert); no new visual language. Inert until opened: hidden carries
+     display:none from base.css, the camera is requested only by an explicit
+     tap on "Autoriser et ouvrir la caméra", and the OCR engine is not even
+     downloaded until then. -->
+<div class="ida-scan" data-scan-root hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+  <div class="ida-scan-panel ida-card ida-stack">
+    <div class="ida-scan-head">
+      <h2 id="scan-title" class="ida-h3">Scanner la plaque</h2>
+      <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-scan-action="close" aria-label="Fermer le scanner">✕</button>
+    </div>
+
+    <!-- 1. before the camera is touched -->
+    <div data-scan-intro>
+      <p class="ida-small ida-muted">La caméra ne s'ouvre qu'après votre accord. L'image reste sur votre
+      téléphone&nbsp;: elle n'est ni envoyée ni enregistrée. Seul le numéro lu sert à la recherche.</p>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="start" data-scan-start>Autoriser et ouvrir la caméra</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Saisir à la main</button>
+      </div>
+    </div>
+
+    <!-- 2. live camera -->
+    <div data-scan-live hidden>
+      <div class="ida-scan-stage">
+        <video data-scan-video playsinline muted autoplay></video>
+        <div class="ida-scan-guide" aria-hidden="true"></div>
+      </div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="capture">Lire la plaque</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Annuler</button>
+      </div>
+    </div>
+
+    <!-- 3. reading -->
+    <div data-scan-busy hidden>
+      <div class="ida-skeleton ida-scan-skeleton" aria-hidden="true"></div>
+      <p class="ida-small ida-muted ida-u-mbs-2">Lecture en cours — la caméra est déjà refermée.</p>
+    </div>
+
+    <!-- 4. confirm / correct — shown whenever the reading is not certain -->
+    <div data-scan-confirm hidden>
+      <p class="ida-alert ida-alert--warning ida-small" data-scan-confirm-note></p>
+      <div class="ida-scan-fields ida-u-mbs-3">
+        <div class="ida-field">
+          <label for="scan-serie">Série</label>
+          <input class="ida-input ida-id" id="scan-serie" data-scan-confirm-serie inputmode="numeric" maxlength="3" autocomplete="off">
+        </div>
+        <div class="ida-field">
+          <label for="scan-numero">Numéro</label>
+          <input class="ida-input ida-id" id="scan-numero" data-scan-confirm-numero inputmode="numeric" maxlength="4" autocomplete="off">
+        </div>
+      </div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="confirm">Confirmer et rechercher</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-scan-action="retry">Reprendre une photo</button>
+      </div>
+    </div>
+
+    <!-- 5. camera refused / unavailable / engine failed -->
+    <div data-scan-error hidden>
+      <div class="ida-alert ida-alert--danger">
+        <div>
+          <p class="ida-alert-title" data-scan-error-title></p>
+          <p class="ida-small" data-scan-error-body></p>
+        </div>
+      </div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="close">Saisir la plaque à la main</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="retry">Réessayer</button>
+      </div>
+    </div>
+
+    <p class="ida-caption ida-u-mbs-2" data-scan-status role="status" aria-live="polite"></p>
+  </div>
+</div>
+
 <footer class="ida-footer">
   <div class="ida-container ida-footer-inner">
     <p>IDauto — l'identité et l'historique numériques de votre véhicule.</p>
@@ -162,6 +245,7 @@
 <script src="/assets/qrcodegen.js"></script>
 <script src="/assets/passport-render.js"></script>
 <script src="/assets/ui.js"></script>
+<script src="/assets/plate-scanner.js"></script>
 <script src="/assets/home.js"></script>
 </body>
 </html>

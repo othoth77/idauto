@@ -127,6 +127,19 @@
     if (form.elements.format_code && !form.elements.format_code.value) {
       form.elements.format_code.value = 'TUN_STD';
     }
+    /* IDA-V11 — the notice belongs at the TOP of the page, where someone
+     * arriving from the public search is actually looking, and in both
+     * languages. #result is the SUBMIT outcome area at the foot of the form;
+     * using it to announce an arrival put the message where nobody had reason
+     * to look yet, and only in English. The banner is static markup revealed
+     * here — no text is built in JavaScript, so neither language can be
+     * mangled by string concatenation. */
+    var notice = document.querySelector('[data-unregistered-notice]');
+    if (notice) {
+      var plateLine = notice.querySelector('[data-unregistered-plate]');
+      if (plateLine) plateLine.textContent = 'Plaque reprise de la recherche — الرقم المنقول من البحث : ' + plate;
+      notice.hidden = false;
+    }
     if (result) {
       result.className = '';
       result.textContent = 'Plate ' + plate + ' carried over from the public search. Fill in only what you know.';
