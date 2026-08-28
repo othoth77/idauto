@@ -38,6 +38,15 @@ var ividIssuance = require('./ivid-issuance.js');
 
 // Maps a Postgres error to a safe {status, error} pair — never echoes the
 // driver's raw message (it can include table/column/value fragments).
+/* IDA-V10, 2026-08-28 — ONE lookup for "the vehicle this reference names",
+ * used by every write that takes a vehicle reference. Both identifiers are
+ * permanent and neither is ever reused, so matching both is unambiguous.
+ * The read side does the same (api.js getVehicle/getFactsForVehicle), and
+ * findVehicleByAnyRef() below is the richer variant merge/split/resolve
+ * need. Written once so a future write path cannot forget one of them. */
+var VEHICLE_ID_BY_ANY_REF =
+  'SELECT id FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1';
+
 function mapDbError(err) {
   if (err.code === '23505') return { status: 409, error: 'conflict — a record with this value already exists' };
   if (err.code === '23503') return { status: 400, error: 'invalid reference — a related record does not exist' };
@@ -56,22 +65,40 @@ function mapDbError(err) {
 // closed (throws before opening a transaction at all) if `identity` is
 // falsy — there is no code path that writes data without an attributable
 // audit actor.
+/* IDA-V10, 2026-08-28 — THE ORGANISATION IS RECORDED, not just the actor.
+ *
+ * idauto_audit_log has carried an org_id column since before IDA-V9, and
+ * docs/ID_AUTO_INTEGRATION.md §12 promises callers that "audit rows carry
+ * … the organisation". No code path ever wrote it: every row in production
+ * had org_id NULL, and an atelier's write was recorded actor_type='admin',
+ * indistinguishable from an action by the operator. The audit of
+ * 2026-08-28 found this. `principal` is optional and absent means exactly
+ * what it meant before — an admin actor with no organisation — so every
+ * existing caller keeps its behaviour unchanged.
+ *
+ * actor_type 'professional_user' is not new vocabulary: schema.sql's
+ * chk_audit_actor has always allowed it. It was simply never used. */
 async function withAudit(auditMeta, identity, work) {
   if (!identity) {
     throw Object.assign(new Error('no authenticated identity — refusing to write without an attributable audit actor'), { httpStatus: 401 });
   }
+  var principal = auditMeta.principal;
+  var isOrg = !!(principal && principal.kind === 'organisation' && principal.org_id);
+  var actorType = isOrg ? 'professional_user' : 'admin';
+  var actorOrgId = isOrg ? principal.org_id : null;
   var client = await db.getClientForTransaction();
   try {
     await client.query('BEGIN');
     var outcome = await work(client);
     if (!outcome.skipAudit) {
       await client.query(
-        'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, new_value_json) ' +
-        'VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, org_id, target_type, target_ref, change_summary, new_value_json) ' +
+        'VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
         [
           auditMeta.event_type,
-          'admin',
+          actorType,
           identity,
+          actorOrgId,
           auditMeta.target_type,
           String(outcome.auditTargetRef),
           auditMeta.change_summary,
@@ -106,10 +133,10 @@ function genInternalRef() {
 // atomic write would double the audit-row count for this one write,
 // which tests/ida-2d-write-api-and-audit-test.js's §2 asserts is
 // exactly one.
-async function createVehicle(body, identity) {
+async function createVehicle(body, identity, principal) {
   var internalRef = genInternalRef();
   return withAudit(
-    { event_type: 'vehicle.create', target_type: 'idauto_vehicles', change_summary: 'Manual admin vehicle entry' },
+    { principal: principal, event_type: 'vehicle.create', target_type: 'idauto_vehicles', change_summary: 'Manual admin vehicle entry' },
     identity,
     async function (client) {
       var result = await client.query(
@@ -128,14 +155,15 @@ async function createVehicle(body, identity) {
 }
 
 // POST /api/plates
-async function createPlate(body, identity) {
+async function createPlate(body, identity, principal) {
   return withAudit(
-    { event_type: 'plate.create', target_type: 'idauto_plates', change_summary: 'Manual admin plate entry' },
+    { principal: principal, event_type: 'plate.create', target_type: 'idauto_plates', change_summary: 'Manual admin plate entry' },
     identity,
     async function (client) {
       var vehicleId = null;
       if (body.vehicle_internal_ref) {
-      var v = await client.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [body.vehicle_internal_ref]);
+      // IDA-V10 — an IVID is accepted here too. See getVehicle() in api.js.
+      var v = await client.query(VEHICLE_ID_BY_ANY_REF, [body.vehicle_internal_ref]);
         if (v.rows.length === 0) {
           var e = new Error('vehicle_internal_ref not found');
           e.code = '23503';
@@ -173,7 +201,7 @@ var ALLOWED_OBSERVATION_STATUS = ['received', 'processing', 'pending_confirmatio
  * An admin principal writes exactly what it wrote before: org_id NULL. */
 async function createObservation(body, identity, principal) {
   return withAudit(
-    { event_type: 'observation.create', target_type: 'idauto_observations', change_summary: 'Manual admin observation entry' },
+    { principal: principal, event_type: 'observation.create', target_type: 'idauto_observations', change_summary: 'Manual admin observation entry' },
     identity,
     async function (client) {
         // Provenance is decided here, from the AUTHENTICATED principal — never
@@ -198,7 +226,8 @@ async function createObservation(body, identity, principal) {
           source_reference: String(body.source_reference).trim().slice(0, 200)
         };
       }
-      var v = await client.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [body.vehicle_internal_ref]);
+      // IDA-V10 — an IVID is accepted here too. See getVehicle() in api.js.
+      var v = await client.query(VEHICLE_ID_BY_ANY_REF, [body.vehicle_internal_ref]);
       if (v.rows.length === 0) {
         var e1 = new Error('vehicle_internal_ref not found');
         e1.code = '23503';
@@ -230,13 +259,13 @@ async function createObservation(body, identity, principal) {
 // The row lock makes concurrent decisions deterministic. Repeating the same
 // decision is a no-op (and therefore creates no duplicate audit event); trying
 // to reverse a completed decision fails closed with 409.
-async function reviewObservation(observationId, decision, identity) {
+async function reviewObservation(observationId, decision, identity, principal) {
   var targetStatus = decision === 'accept' ? 'accepted' : decision === 'reject' ? 'rejected' : null;
   if (!targetStatus) {
     throw Object.assign(new Error('decision must be accept or reject'), { httpStatus: 400 });
   }
   return withAudit(
-    { event_type: 'observation.review.' + decision, target_type: 'idauto_observations', change_summary: 'Admin review decision: ' + targetStatus },
+    { principal: principal, event_type: 'observation.review.' + decision, target_type: 'idauto_observations', change_summary: 'Admin review decision: ' + targetStatus },
     identity,
     async function (client) {
       var current = await client.query(
@@ -286,13 +315,13 @@ async function reviewObservation(observationId, decision, identity) {
 // opts: { access_scope, confidence_score, evidence_type, weight }, all
 // optional and all validated before use — an unknown value is a 400, never a
 // silent write.
-async function reviewFact(factId, decision, identity, opts) {
+async function reviewFact(factId, decision, identity, opts, principal) {
   var targetStatus = decision === 'accept' ? 'verified' : decision === 'reject' ? 'rejected' : null;
   if (!targetStatus) {
     throw Object.assign(new Error('decision must be accept or reject'), { httpStatus: 400 });
   }
   return withAudit(
-    { event_type: 'fact.review.' + decision, target_type: 'idauto_vehicle_facts', change_summary: 'Admin review decision: ' + targetStatus },
+    { principal: principal, event_type: 'fact.review.' + decision, target_type: 'idauto_vehicle_facts', change_summary: 'Admin review decision: ' + targetStatus },
     identity,
     async function (client) {
       var current = await client.query(
@@ -365,12 +394,13 @@ var ALLOWED_EVIDENCE_TYPE = ['user_confirmation', 'cross_source_match', 'vin_dec
 // POST /api/vehicles/:internal_ref/facts
 // Optionally creates one idauto_fact_evidence row in the same transaction
 // if evidence_type is supplied — one audit record covers both.
-async function createFact(vehicleInternalRef, body, identity) {
+async function createFact(vehicleInternalRef, body, identity, principal) {
   return withAudit(
-    { event_type: 'fact.create', target_type: 'idauto_vehicle_facts', change_summary: 'Manual admin fact entry for ' + vehicleInternalRef },
+    { principal: principal, event_type: 'fact.create', target_type: 'idauto_vehicle_facts', change_summary: 'Manual admin fact entry for ' + vehicleInternalRef },
     identity,
     async function (client) {
-      var v = await client.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1', [vehicleInternalRef]);
+      // IDA-V10 — an IVID is accepted here too. See getVehicle() in api.js.
+      var v = await client.query(VEHICLE_ID_BY_ANY_REF, [vehicleInternalRef]);
       if (v.rows.length === 0) {
         var e1 = new Error('vehicle not found');
         e1.code = '23503';
@@ -427,7 +457,7 @@ var ALLOWED_MEDIA_TYPE = ['original_image', 'plate_crop', 'vehicle_crop', 'proce
 // content-addressed: two different observations uploading identical
 // bytes get the same key, so a naive unconditional delete could remove
 // a file a different, already-committed row still needs).
-async function createObservationMedia(observationId, buffer, mimeType, body, identity) {
+async function createObservationMedia(observationId, buffer, mimeType, body, identity, principal) {
   var checkClient = await db.getClientForTransaction();
   var observationExists;
   try {
@@ -447,7 +477,7 @@ async function createObservationMedia(observationId, buffer, mimeType, body, ide
 
   try {
     return await withAudit(
-      { event_type: 'observation_media.create', target_type: 'idauto_observation_media', change_summary: 'Manual admin media attachment for observation ' + observationId },
+      { principal: principal, event_type: 'observation_media.create', target_type: 'idauto_observation_media', change_summary: 'Manual admin media attachment for observation ' + observationId },
       identity,
       async function (client) {
         var result = await client.query(
@@ -494,6 +524,58 @@ async function createObservationMedia(observationId, buffer, mimeType, body, ide
  * paths, where refusing to answer because a log row could not be written
  * would turn the audit trail into an availability weapon. It therefore
  * throws, and the caller decides — it does not swallow errors itself. */
+/* IDA-V10, 2026-08-28 — THE MANDATORY VIN-SEARCH AUDIT.
+ *
+ * Owner ruling, 2026-08-28: VIN stays private; VIN search requires a
+ * dedicated scope; "recherche VIN toujours auditée; aucune recherche VIN
+ * anonyme". This function is that audit record.
+ *
+ * IT FAILS CLOSED, and that is the one place this codebase deliberately
+ * differs from recordAnonymousAuditEvent() above. That one is best-effort
+ * because it sits on an ANONYMOUS read path, where refusing to answer over a
+ * log row would let anyone disable the public surface by making audit writes
+ * fail. This one sits behind an authenticated credential that had to be
+ * granted `vin:search` on purpose, and the ruling is that the search is
+ * ALWAYS audited — so "audited" cannot degrade to "audited when convenient".
+ * If the audit row cannot be written, the caller must not learn the answer.
+ * The caller therefore lets this throw BEFORE it discloses anything.
+ *
+ * WHAT IS RECORDED, and what deliberately is not: the searching actor, its
+ * organisation, whether the search matched, and — when it did — the IVID that
+ * matched, which is public data. The VIN ITSELF IS NEVER STORED IN THE AUDIT
+ * ROW. Writing the searched VIN into idauto_audit_log would copy the private
+ * value into a table with none of idauto_vehicle_facts' access_scope
+ * machinery, and would hand anyone with audit-log read access exactly the
+ * value the scope exists to protect. A salted, truncated digest identifies
+ * repeat searches for the same VIN without being reversible to it.
+ *
+ * The audit table's own [NO PII] contract is what this is respecting, not an
+ * extra precaution on top of it. */
+function vinSearchDigest(vin) {
+  // Salted with the deployment's session secret so a digest cannot be
+  // matched against a precomputed table of candidate VINs. Truncated to 16
+  // hex: enough to correlate repeat searches, far too little to invert.
+  var salt = process.env.IDAUTO_SESSION_SECRET || '';
+  return crypto.createHmac('sha256', salt).update(String(vin).toUpperCase()).digest('hex').slice(0, 16);
+}
+
+async function recordVinSearchAudit(principal, identity, vin, matchedIvid) {
+  var isOrg = !!(principal && principal.kind === 'organisation' && principal.org_id);
+  await db.query(
+    'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, org_id, target_type, target_ref, change_summary) ' +
+    'VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    [
+      'vehicle.search.vin',
+      isOrg ? 'professional_user' : 'admin',
+      identity,
+      isOrg ? principal.org_id : null,
+      'idauto_vehicles',
+      matchedIvid || null,
+      'VIN search (' + (matchedIvid ? 'match' : 'no match') + ') vin_digest=' + vinSearchDigest(vin)
+    ]
+  );
+}
+
 async function recordAnonymousAuditEvent(entry) {
   await db.query(
     'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, target_type, target_ref, change_summary, ip_hash) ' +
@@ -573,9 +655,9 @@ async function findVehicleByAnyRef(client, ref) {
  * same record; the source is already merged (split it first — a re-merge would
  * silently discard where it pointed before); or the target resolves back to
  * the source, which would create a cycle. */
-async function mergeVehicle(sourceRef, canonicalRef, identity) {
+async function mergeVehicle(sourceRef, canonicalRef, identity, principal) {
   return withAudit(
-    { event_type: 'vehicle.merge', target_type: 'idauto_vehicles',
+    { principal: principal, event_type: 'vehicle.merge', target_type: 'idauto_vehicles',
       change_summary: 'Merged ' + sourceRef + ' into ' + canonicalRef },
     identity,
     async function (client) {
@@ -619,9 +701,9 @@ async function mergeVehicle(sourceRef, canonicalRef, identity) {
  * Clears the pointer and restores the status the record held before. Nothing
  * has to be moved back, because nothing was moved: this is why the merge was
  * built as a pointer and not as a data migration. */
-async function splitVehicle(sourceRef, identity) {
+async function splitVehicle(sourceRef, identity, principal) {
   return withAudit(
-    { event_type: 'vehicle.split', target_type: 'idauto_vehicles',
+    { principal: principal, event_type: 'vehicle.split', target_type: 'idauto_vehicles',
       change_summary: 'Split ' + sourceRef + ' back out of its merge' },
     identity,
     async function (client) {
@@ -676,6 +758,7 @@ module.exports = {
   splitVehicle: splitVehicle,
   resolveVehicleRef: resolveVehicleRef,
   recordAnonymousAuditEvent: recordAnonymousAuditEvent,
+  recordVinSearchAudit: recordVinSearchAudit,
   createPlate: createPlate,
   createObservation: createObservation,
   reviewObservation: reviewObservation,
