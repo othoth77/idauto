@@ -463,7 +463,7 @@ function adminPrefillCases() {
     'the write path still refuses to create anything without an attributable actor');
   ok(/INSERT INTO idauto_audit_log/.test(writes), 'creation is audited by the existing write path');
   ok(/evidence_type/.test(adminHtml), 'provenance (evidence type) is captured on the fact');
-  ok(/capture method is fixed by the API/i.test(adminHtml), 'the capture method is server-set, not caller-set');
+  ok(/La méthode de capture est fixée par l'API/i.test(adminHtml), 'the capture method is server-set, not caller-set');
 }
 
 function noSecondStoreCases() {
