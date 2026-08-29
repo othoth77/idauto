@@ -15,15 +15,15 @@
   // break double-click selection, so the commonest way to get here with a
   // "refused" token is a truncated paste of a perfectly valid one. This
   // message says that, and says it without ever echoing the value.
-  var TOKEN_PASTE_HELP = 'Token refused. The token is one line of base64 — it contains "/" and ends with "=", ' +
-    'so a double-click selects only part of it. Select the whole line (triple-click) and paste again.';
+  var TOKEN_PASTE_HELP = 'Jeton refusé. Le jeton est une seule ligne en base64 — il contient « / » et se termine par « = », ' +
+    'si bien qu\'un double-clic n\'en sélectionne qu\'une partie. Sélectionnez la ligne entière (triple-clic) et collez à nouveau.';
 
   // Local shape check, before any request. It reports what the operator
   // typed — never what the server expects — so it leaks nothing about the
   // real token while still catching the mistakes that actually happen.
   function tokenProblem(raw) {
-    if (!raw) return 'Enter the Bearer token above first.';
-    if (/\s/.test(raw)) return 'The token contains a space or line break — it must be a single unbroken string. Re-copy the whole line.';
+    if (!raw) return 'Saisissez d\'abord le jeton Bearer ci-dessus.';
+    if (/\s/.test(raw)) return 'Le jeton contient une espace ou un retour à la ligne — il doit former une seule chaîne ininterrompue. Recopiez la ligne entière.';
     return null;
   }
 
@@ -36,9 +36,9 @@
       // A 401 is about the credential, not about this route — say so plainly
       // instead of surfacing "/api/vehicles: unauthorized …".
       if (response.status === 401) {
-        throw new Error(body.reason === 'no_credentials' ? 'No token was sent. Enter the Bearer token above.' : TOKEN_PASTE_HELP);
+        throw new Error(body.reason === 'no_credentials' ? 'Aucun jeton n\'a été envoyé. Saisissez le jeton Bearer ci-dessus.' : TOKEN_PASTE_HELP);
       }
-      throw new Error(path + ': ' + (body.error || ('Request failed (' + response.status + ')')));
+      throw new Error(path + ' : ' + (body.error || ('Échec de la requête (' + response.status + ')')));
     }
     return body;
   }
@@ -59,7 +59,7 @@
     }));
     var plate = null;
     if (value(form, 'plate_number')) {
-      if (!value(form, 'format_code')) throw new Error('Format code is required when a plate is entered.');
+      if (!value(form, 'format_code')) throw new Error('Le code format est obligatoire dès qu\'une plaque est saisie.');
       plate = await jsonPost('/api/plates', token, compact({
         plate_number: value(form, 'plate_number'), format_code: value(form, 'format_code'),
         governorate_code: value(form, 'governorate_code'), vehicle_internal_ref: vehicle.internal_ref
@@ -72,7 +72,7 @@
     });
     var fact = null;
     if (value(form, 'fact_key') || value(form, 'fact_value')) {
-      if (!value(form, 'fact_key') || !value(form, 'fact_value')) throw new Error('Fact key and value must be entered together.');
+      if (!value(form, 'fact_key') || !value(form, 'fact_value')) throw new Error('La clé et la valeur de la donnée doivent être saisies ensemble.');
       fact = await jsonPost('/api/vehicles/' + encodeURIComponent(vehicle.internal_ref) + '/facts', token, compact({
         fact_key: value(form, 'fact_key'), fact_value: value(form, 'fact_value'),
         observation_id: observation.id,
@@ -128,21 +128,24 @@
       form.elements.format_code.value = 'TUN_STD';
     }
     /* IDA-V11 — the notice belongs at the TOP of the page, where someone
-     * arriving from the public search is actually looking, and in both
-     * languages. #result is the SUBMIT outcome area at the foot of the form;
-     * using it to announce an arrival put the message where nobody had reason
-     * to look yet, and only in English. The banner is static markup revealed
-     * here — no text is built in JavaScript, so neither language can be
-     * mangled by string concatenation. */
+     * arriving from the public search is actually looking. #result is the
+     * SUBMIT outcome area at the foot of the form; using it to announce an
+     * arrival put the message where nobody had reason to look yet. The
+     * sentences of the banner are static markup revealed here — no prose is
+     * built in JavaScript, so the wording cannot be mangled by string
+     * concatenation.
+     * IDA-ADMIN-FR — French only on this surface, and the plate below is the
+     * one the search actually carried over: it is read from the query string
+     * and appended here, never hard-coded. */
     var notice = document.querySelector('[data-unregistered-notice]');
     if (notice) {
       var plateLine = notice.querySelector('[data-unregistered-plate]');
-      if (plateLine) plateLine.textContent = 'Plaque reprise de la recherche — الرقم المنقول من البحث : ' + plate;
+      if (plateLine) plateLine.textContent = 'Plaque reprise de la recherche — ' + plate;
       notice.hidden = false;
     }
     if (result) {
       result.className = '';
-      result.textContent = 'Plate ' + plate + ' carried over from the public search. Fill in only what you know.';
+      result.textContent = 'Plaque ' + plate + ' reprise de la recherche publique. Ne renseignez que ce que vous savez.';
     }
   }());
 
@@ -176,20 +179,20 @@
         var response = await sessionRequest('/session/enroll', { Authorization: 'Bearer ' + token });
         if (response.status === 204) {
           enrollResult.className = 'success';
-          enrollResult.textContent = 'This browser is recognised. Plate lookup now works on idauto.tn.';
+          enrollResult.textContent = 'Ce navigateur est reconnu. La recherche de plaque fonctionne désormais sur idauto.tn.';
         } else if (response.status === 401) {
           enrollResult.className = 'error';
           enrollResult.textContent = TOKEN_PASTE_HELP;
         } else if (response.status === 503) {
           enrollResult.className = 'error';
-          enrollResult.textContent = 'Owner sessions are not configured on this host (IDAUTO_SESSION_SECRET is unset).';
+          enrollResult.textContent = 'Les sessions propriétaire ne sont pas configurées sur cet hôte (IDAUTO_SESSION_SECRET n\'est pas défini).';
         } else {
           enrollResult.className = 'error';
-          enrollResult.textContent = 'Enrolment failed (' + response.status + ').';
+          enrollResult.textContent = 'Échec de l\'enrôlement (' + response.status + ').';
         }
       } catch (err) {
         enrollResult.className = 'error';
-        enrollResult.textContent = 'Network error — try again.';
+        enrollResult.textContent = 'Erreur réseau — réessayez.';
       } finally {
         enrollButton.disabled = false;
       }
@@ -203,10 +206,10 @@
       try {
         await sessionRequest('/session/logout');
         enrollResult.className = 'success';
-        enrollResult.textContent = 'This browser is no longer recognised.';
+        enrollResult.textContent = 'Ce navigateur n\'est plus reconnu.';
       } catch (err) {
         enrollResult.className = 'error';
-        enrollResult.textContent = 'Network error — try again.';
+        enrollResult.textContent = 'Erreur réseau — réessayez.';
       } finally {
         forgetButton.disabled = false;
       }
@@ -215,7 +218,7 @@
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     result.className = '';
-    result.textContent = 'Creating entry…';
+    result.textContent = 'Enregistrement en cours…';
     button.disabled = true;
     try {
       // IDA-V1C — trim, then shape-check before spending a request. The
@@ -226,7 +229,7 @@
       if (problem) throw new Error(problem);
       var created = await createEntry(form, adminToken);
       result.className = 'success';
-      result.textContent = 'Created vehicle ' + created.vehicle.internal_ref + ' and observation ' + created.observation.id + '.';
+      result.textContent = 'Véhicule ' + created.vehicle.internal_ref + ' et observation ' + created.observation.id + ' créés.';
       form.reset();
     } catch (err) {
       result.className = 'error';

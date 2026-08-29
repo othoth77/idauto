@@ -182,7 +182,7 @@ async function main() {
   var page = await get('/admin');
   ok(page.status === 200, 'GET /admin still serves the page');
   var html = page.raw.toString('utf8');
-  ok(html.indexOf('Admin manual entry') !== -1 && html.indexOf('Review queue') === -1,
+  ok(html.indexOf("Enregistrement manuel d'un véhicule") !== -1 && html.indexOf('Review queue') === -1,
     'it is still the manual-entry page only (IDA-2G invariant)');
   ok(html.indexOf('admin-token') !== -1 && html.indexOf('localStorage') === -1,
     'still takes a token with no browser-storage persistence (IDA-2G invariant)');

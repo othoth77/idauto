@@ -199,7 +199,7 @@ function adminUiCases() {
 
   ok(/getElementById\('admin-token'\)\.value\.trim\(\)/.test(source), 'the token field is trimmed before use');
   ok(!/getElementById\('admin-token'\)\.value(?!\.trim)/.test(source), 'the token field is never read untrimmed');
-  ok(/triple-click/i.test(source), 'the 401 message tells the operator to select the whole line');
+  ok(/triple-clic/i.test(source), 'the 401 message tells the operator to select the whole line');
   ok(/response\.status === 401/.test(source), 'a 401 is handled distinctly from other failures');
   ok(/no_credentials/.test(source), 'the UI distinguishes "nothing sent" from "not a token"');
   ok(/function tokenProblem/.test(source), 'a local shape check runs before any request is spent');

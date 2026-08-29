@@ -48,7 +48,7 @@ function fakeForm(seed) {
   console.log('\n1. ADMIN SHELL — static only, no credential disclosure');
   var page = await request('GET', '/admin');
   ok(page.status === 200 && /^text\/html/.test(page.headers['content-type']), 'GET /admin serves the manual-entry page');
-  ok(page.raw.indexOf('Admin manual entry') !== -1 && page.raw.indexOf('Review queue') === -1, 'Page is manual-entry UI only (no review queue)');
+  ok(page.raw.indexOf("Enregistrement manuel d'un véhicule") !== -1 && page.raw.indexOf('Review queue') === -1, 'Page is manual-entry UI only (no review queue)');
   ok(page.raw.indexOf('admin-token') !== -1 && page.raw.indexOf('localStorage') === -1, 'Page accepts a token without browser-storage persistence');
   ok((page.headers['content-security-policy'] || '').indexOf("default-src 'self'") !== -1, 'Admin shell has a restrictive same-origin CSP');
   var js = await request('GET', '/admin/admin-ui.js');

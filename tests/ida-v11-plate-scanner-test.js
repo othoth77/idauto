@@ -44,6 +44,10 @@ var homeJs = fs.readFileSync(path.join(BASE, 'web', 'citizen', 'home.js'), 'utf8
 var scanJs = fs.readFileSync(path.join(BASE, 'web', 'citizen', 'plate-scanner.js'), 'utf8');
 var adminHtml = fs.readFileSync(path.join(BASE, 'reference', 'admin.html'), 'utf8');
 var adminJs = fs.readFileSync(path.join(BASE, 'reference', 'admin-ui.js'), 'utf8');
+/* IDA-ADMIN-FR — the operator console is French only. Matched by Unicode
+ * block rather than by phrase, so a NEW Arabic string fails this too; a
+ * verbatim-phrase check would only have caught the two sentences removed. */
+var ARABIC = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 
 async function main() {
   server = api.createServer();
@@ -218,26 +222,32 @@ async function main() {
   ok(/form\.elements\.plate_number\.value = plate/.test(adminJs), 'the plate field is prefilled');
   ok(/form\.elements\.format_code\.value = 'TUN_STD'/.test(adminJs), 'with its format, so nothing is retyped');
 
-  say('\n8. THE BILINGUAL NOTICE');
+  /* IDA-ADMIN-FR — this notice used to be bilingual. The operator console is
+   * now a French-only surface, so what is asserted here is the French wording
+   * verbatim AND the absence of any Arabic on the page. */
+  say('\n8. THE UNREGISTERED-VEHICLE NOTICE — French only');
   ok(/data-unregistered-notice/.test(adminHtml), 'the notice exists at the top of the registration page');
   ok(adminHtml.indexOf('data-unregistered-notice') < adminHtml.indexOf('<h1>'),
     'ABOVE the page title, where someone arriving from the search is looking');
   ok(/hidden/.test((adminHtml.match(/<div class="ida-alert ida-alert--info" data-unregistered-notice[^>]*>/) || [''])[0]),
     'hidden by default — it appears only when arriving from a plate search');
+  ok(adminHtml.indexOf('Véhicule non enregistré') !== -1,
+    'the notice title is present, verbatim');
   ok(adminHtml.indexOf("Cette voiture n'est pas encore enregistrée dans IDauto.") !== -1,
     'the French sentence is present, verbatim');
   ok(adminHtml.indexOf('Vous pouvez compléter son enregistrement avec les informations dont vous disposez.') !== -1,
     'including the second French sentence');
-  ok(adminHtml.indexOf('هذه السيارة غير مسجلة بعد في IDauto.') !== -1,
-    'the Arabic sentence is present, verbatim');
-  ok(adminHtml.indexOf('يمكنكم إتمام تسجيلها بإدخال المعلومات المتوفرة لديكم.') !== -1,
-    'including the second Arabic sentence');
-  ok(adminHtml.indexOf('التراجي للتعمير') === -1,
-    'the forbidden phrase "التراجي للتعمير" appears nowhere');
-  ok(/lang="ar" dir="rtl"/.test(adminHtml), 'the Arabic is marked lang="ar" and dir="rtl"');
+  ok(!ARABIC.test(adminHtml), 'no Arabic character is rendered anywhere on /admin');
+  ok(!ARABIC.test(adminJs), 'and none is built in JavaScript either');
+  ok(!/lang="ar"|dir="rtl"/.test(adminHtml), 'no Arabic language or RTL direction is declared');
   ok(/notice\.hidden = false/.test(adminJs), 'admin-ui.js reveals it when a plate was carried over');
-  ok(!/هذه السيارة/.test(adminJs),
-    'neither language is built in JavaScript — the text is static markup, so it cannot be mangled');
+  /* The plate is the ONE part of the notice that is not static markup — it is
+   * whatever the search carried over, appended to a fixed French label. A
+   * hard-coded plate here would be the bug this asserts against. */
+  ok(/'Plaque reprise de la recherche — ' \+ plate/.test(adminJs),
+    'the plate line is the fixed French label plus the plate from the search');
+  ok(!/\d{1,3} TUN \d{1,4}/.test(adminJs) && !/\d{1,3} TUN \d{1,4}/.test(adminHtml),
+    'no literal plate number is hard-coded in the page or its script');
 
   /* ===================================================================== */
   say('\n9. NOTHING PRIVATE, NOTHING PUBLIC, NOTHING CHANGED');

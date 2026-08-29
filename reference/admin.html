@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IDauto — Admin manual entry</title>
+  <title>IDauto — Enregistrement manuel d'un véhicule</title>
   <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
   <!-- IDA-ADMIN-DS — the same three Design System files the citizen surface
        loads, mounted under /admin/ so the operator console is never affected
@@ -15,18 +15,18 @@
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body>
-<a class="ida-skip-link" href="#main">Skip to content</a>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
 
 <header class="ida-nav">
   <div class="ida-container ida-nav-inner">
-    <a class="ida-wordmark" href="/" aria-label="IDauto — home">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
       <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
     </a>
-    <nav aria-label="Admin navigation">
+    <nav aria-label="Navigation administrateur">
       <ul class="ida-nav-links">
-        <li><a href="/admin" aria-current="page">Entry</a></li>
-        <li><a href="/admin/review">Review</a></li>
-        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Toggle light or dark theme">◐</button></li>
+        <li><a href="/admin" aria-current="page">Saisie</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
       </ul>
     </nav>
   </div>
@@ -39,34 +39,35 @@
          Shown ONLY when this page was reached from a public plate search that
          found nothing (?plate=SSS TUN NNNN). admin-ui.js reveals it and
          prefills the plate, so the plate is never retyped between the search
-         and the registration. Both languages are given in full: the visitor
-         who searched may read either, and a French-only notice on a Tunisian
-         surface is a half-delivered message. -->
+         and the registration.
+         IDA-ADMIN-FR — the operator console is a French-only surface. The
+         Arabic half of this notice was removed here; the French half is now
+         the whole message. The plate line below is still filled in by
+         admin-ui.js from the plate the search actually carried over — it is
+         never hard-coded in this markup. -->
     <div class="ida-alert ida-alert--info" data-unregistered-notice hidden>
       <div class="ida-stack">
         <p class="ida-alert-title">Véhicule non enregistré</p>
         <p class="ida-small">Cette voiture n'est pas encore enregistrée dans IDauto.
         Vous pouvez compléter son enregistrement avec les informations dont vous disposez.</p>
-        <p class="ida-small" lang="ar" dir="rtl">هذه السيارة غير مسجلة بعد في IDauto.
-        يمكنكم إتمام تسجيلها بإدخال المعلومات المتوفرة لديكم.</p>
         <p class="ida-caption" data-unregistered-plate></p>
       </div>
     </div>
 
     <header class="ida-stack">
       <p class="ida-label">Mythos OS · IDauto</p>
-      <h1>Admin manual entry</h1>
-      <p class="ida-muted ida-u-maxch-52">Create one vehicle observation using the existing audited IDauto APIs.</p>
+      <h1>Enregistrement manuel d'un véhicule</h1>
+      <p class="ida-muted ida-u-maxch-52">Créez une fiche véhicule à partir des informations disponibles.</p>
     </header>
 
     <form id="entry-form" class="ida-stack-lg">
 
       <section class="ida-card ida-stack" aria-labelledby="sec-identity">
-        <h2 id="sec-identity" class="ida-h3">Admin identity</h2>
+        <h2 id="sec-identity" class="ida-h3">Identité administrateur</h2>
         <div class="ida-field">
-          <label for="admin-token">Bearer token</label>
+          <label for="admin-token">Jeton Bearer</label>
           <input class="ida-input" id="admin-token" type="password" autocomplete="off" required>
-          <p class="ida-hint">Held in this page only; never saved in browser storage.</p>
+          <p class="ida-hint">Conservé uniquement sur cette page ; jamais enregistré dans le navigateur.</p>
         </div>
       </section>
 
@@ -75,114 +76,114 @@
            for a key on the citizen surface. Grants two reads only (plate →
            IVID, private passport); it can create and change nothing. -->
       <section class="ida-card ida-stack" aria-labelledby="sec-browser">
-        <h2 id="sec-browser" class="ida-h3">This browser</h2>
-        <p class="ida-small ida-muted ida-u-maxch-52">Recognise this browser so plate lookup works on idauto.tn without
-        entering a token. Valid 180 days, renewed automatically while in use. Grants
-        read-only plate and passport lookup — nothing else.</p>
+        <h2 id="sec-browser" class="ida-h3">Ce navigateur</h2>
+        <p class="ida-small ida-muted ida-u-maxch-52">Faites reconnaître ce navigateur pour que la recherche de plaque
+        fonctionne sur idauto.tn sans saisir de jeton. Valable 180 jours, renouvelé automatiquement
+        tant qu'il reste utilisé. N'autorise que la consultation d'une plaque et d'un passeport — rien d'autre.</p>
         <div class="ida-admin-actions">
-          <button id="enroll-button" type="button" class="ida-btn ida-btn--secondary">Recognise this browser</button>
-          <button id="forget-button" type="button" class="ida-btn ida-btn--ghost">Forget this browser</button>
+          <button id="enroll-button" type="button" class="ida-btn ida-btn--secondary">Reconnaître ce navigateur</button>
+          <button id="forget-button" type="button" class="ida-btn ida-btn--ghost">Oublier ce navigateur</button>
         </div>
         <div id="enroll-result" role="status" aria-live="polite"></div>
       </section>
 
       <section class="ida-card ida-stack" aria-labelledby="sec-vehicle">
-        <h2 id="sec-vehicle" class="ida-h3">1 · Vehicle</h2>
+        <h2 id="sec-vehicle" class="ida-h3">1 · Véhicule</h2>
         <div class="ida-admin-grid">
-          <div class="ida-field"><label for="f-make">Make</label><input class="ida-input" id="f-make" name="make" required></div>
-          <div class="ida-field"><label for="f-model">Model</label><input class="ida-input" id="f-model" name="model" required></div>
-          <div class="ida-field"><label for="f-variant">Variant</label><input class="ida-input" id="f-variant" name="variant"></div>
-          <div class="ida-field"><label for="f-year">Year</label><input class="ida-input" id="f-year" name="year" type="number" min="1886" max="2100"></div>
-          <div class="ida-field"><label for="f-body">Body type</label><input class="ida-input" id="f-body" name="body_type"></div>
-          <div class="ida-field"><label for="f-fuel">Fuel type</label><input class="ida-input" id="f-fuel" name="fuel_type"></div>
-          <div class="ida-field"><label for="f-colour">Colour</label><input class="ida-input" id="f-colour" name="colour"></div>
-          <div class="ida-field"><label for="f-seats">Seats</label><input class="ida-input" id="f-seats" name="seats" type="number" min="1"></div>
-          <div class="ida-field"><label for="f-weight">Gross weight (kg)</label><input class="ida-input" id="f-weight" name="gross_weight_kg" type="number" min="1"></div>
-          <div class="ida-field"><label for="f-engine">Engine (cc)</label><input class="ida-input" id="f-engine" name="engine_cc" type="number" min="1"></div>
-          <div class="ida-field"><label for="f-category">Category code</label><input class="ida-input" id="f-category" name="category_code"></div>
+          <div class="ida-field"><label for="f-make">Marque</label><input class="ida-input" id="f-make" name="make" required></div>
+          <div class="ida-field"><label for="f-model">Modèle</label><input class="ida-input" id="f-model" name="model" required></div>
+          <div class="ida-field"><label for="f-variant">Version</label><input class="ida-input" id="f-variant" name="variant"></div>
+          <div class="ida-field"><label for="f-year">Année</label><input class="ida-input" id="f-year" name="year" type="number" min="1886" max="2100"></div>
+          <div class="ida-field"><label for="f-body">Type de carrosserie</label><input class="ida-input" id="f-body" name="body_type"></div>
+          <div class="ida-field"><label for="f-fuel">Carburant</label><input class="ida-input" id="f-fuel" name="fuel_type"></div>
+          <div class="ida-field"><label for="f-colour">Couleur</label><input class="ida-input" id="f-colour" name="colour"></div>
+          <div class="ida-field"><label for="f-seats">Places</label><input class="ida-input" id="f-seats" name="seats" type="number" min="1"></div>
+          <div class="ida-field"><label for="f-weight">Poids total en charge (kg)</label><input class="ida-input" id="f-weight" name="gross_weight_kg" type="number" min="1"></div>
+          <div class="ida-field"><label for="f-engine">Cylindrée (cm³)</label><input class="ida-input" id="f-engine" name="engine_cc" type="number" min="1"></div>
+          <div class="ida-field"><label for="f-category">Code catégorie</label><input class="ida-input" id="f-category" name="category_code"></div>
         </div>
       </section>
 
       <section class="ida-card ida-stack" aria-labelledby="sec-plate">
-        <h2 id="sec-plate" class="ida-h3">2 · Plate <span class="ida-muted">(optional)</span></h2>
+        <h2 id="sec-plate" class="ida-h3">2 · Plaque <span class="ida-muted">(facultatif)</span></h2>
         <div class="ida-admin-grid">
-          <div class="ida-field"><label for="f-plate">Plate number</label><input class="ida-input" id="f-plate" name="plate_number"></div>
-          <div class="ida-field"><label for="f-format">Format code</label><input class="ida-input" id="f-format" name="format_code"></div>
-          <div class="ida-field"><label for="f-gov">Governorate code</label><input class="ida-input" id="f-gov" name="governorate_code"></div>
+          <div class="ida-field"><label for="f-plate">Numéro de plaque</label><input class="ida-input" id="f-plate" name="plate_number"></div>
+          <div class="ida-field"><label for="f-format">Code format</label><input class="ida-input" id="f-format" name="format_code"></div>
+          <div class="ida-field"><label for="f-gov">Code gouvernorat</label><input class="ida-input" id="f-gov" name="governorate_code"></div>
         </div>
       </section>
 
       <section class="ida-card ida-stack" aria-labelledby="sec-obs">
         <h2 id="sec-obs" class="ida-h3">3 · Observation</h2>
         <div class="ida-field">
-          <label for="f-status">Status</label>
+          <label for="f-status">Statut</label>
           <select class="ida-input" id="f-status" name="status">
-            <option value="received">Received</option>
-            <option value="pending_confirmation">Pending confirmation</option>
-            <option value="pending_review">Pending review</option>
-            <option value="accepted">Accepted</option>
-            <option value="rejected">Rejected</option>
+            <option value="received">Reçue</option>
+            <option value="pending_confirmation">En attente de confirmation</option>
+            <option value="pending_review">En attente de revue</option>
+            <option value="accepted">Acceptée</option>
+            <option value="rejected">Rejetée</option>
           </select>
-          <p class="ida-hint">Capture method is fixed by the API to <code class="ida-id">manual_admin</code>.</p>
+          <p class="ida-hint">La méthode de capture est fixée par l'API à <code class="ida-id">manual_admin</code>.</p>
         </div>
       </section>
 
       <section class="ida-card ida-stack" aria-labelledby="sec-fact">
-        <h2 id="sec-fact" class="ida-h3">4 · Fact <span class="ida-muted">(optional)</span></h2>
+        <h2 id="sec-fact" class="ida-h3">4 · Donnée <span class="ida-muted">(facultatif)</span></h2>
         <div class="ida-admin-grid">
-          <div class="ida-field"><label for="f-factkey">Fact key</label><input class="ida-input" id="f-factkey" name="fact_key"></div>
-          <div class="ida-field"><label for="f-factvalue">Fact value</label><input class="ida-input" id="f-factvalue" name="fact_value"></div>
-          <div class="ida-field"><label for="f-confidence">Confidence</label><input class="ida-input" id="f-confidence" name="confidence_score" type="number" min="0" max="1" step="0.01" value="0.5"></div>
+          <div class="ida-field"><label for="f-factkey">Clé de la donnée</label><input class="ida-input" id="f-factkey" name="fact_key"></div>
+          <div class="ida-field"><label for="f-factvalue">Valeur de la donnée</label><input class="ida-input" id="f-factvalue" name="fact_value"></div>
+          <div class="ida-field"><label for="f-confidence">Indice de confiance</label><input class="ida-input" id="f-confidence" name="confidence_score" type="number" min="0" max="1" step="0.01" value="0.5"></div>
           <div class="ida-field">
-            <label for="f-scope">Access scope</label>
+            <label for="f-scope">Portée d'accès</label>
             <select class="ida-input" id="f-scope" name="access_scope">
               <option value="public">Public</option>
-              <option value="professional">Professional</option>
-              <option value="mythos_private">Mythos private</option>
+              <option value="professional">Professionnel</option>
+              <option value="mythos_private">Mythos privé</option>
             </select>
           </div>
           <div class="ida-field">
-            <label for="f-evidence">Evidence type</label>
+            <label for="f-evidence">Type de preuve</label>
             <select class="ida-input" id="f-evidence" name="evidence_type">
-              <option value="">None</option>
-              <option value="admin_validation">Admin validation</option>
-              <option value="document_scan">Document scan</option>
-              <option value="professional_assertion">Professional assertion</option>
-              <option value="user_confirmation">User confirmation</option>
+              <option value="">Aucune</option>
+              <option value="admin_validation">Validation administrateur</option>
+              <option value="document_scan">Scan de document</option>
+              <option value="professional_assertion">Attestation professionnelle</option>
+              <option value="user_confirmation">Confirmation de l'utilisateur</option>
             </select>
           </div>
         </div>
       </section>
 
       <section class="ida-card ida-stack" aria-labelledby="sec-media">
-        <h2 id="sec-media" class="ida-h3">5 · Observation image <span class="ida-muted">(optional)</span></h2>
+        <h2 id="sec-media" class="ida-h3">5 · Photo de l'observation <span class="ida-muted">(facultatif)</span></h2>
         <div class="ida-admin-grid">
           <div class="ida-field"><label for="f-media">Image</label><input class="ida-input" id="f-media" name="media" type="file" accept="image/jpeg,image/png,image/webp,image/heic"></div>
           <div class="ida-field">
-            <label for="f-mediatype">Media type</label>
+            <label for="f-mediatype">Type de média</label>
             <select class="ida-input" id="f-mediatype" name="media_type">
-              <option value="original_image">Original image</option>
-              <option value="plate_crop">Plate crop</option>
-              <option value="vehicle_crop">Vehicle crop</option>
-              <option value="processed_derivative">Processed derivative</option>
+              <option value="original_image">Image d'origine</option>
+              <option value="plate_crop">Recadrage sur la plaque</option>
+              <option value="vehicle_crop">Recadrage sur le véhicule</option>
+              <option value="processed_derivative">Dérivé retraité</option>
             </select>
           </div>
           <div class="ida-field">
-            <label for="f-mediascope">Media access</label>
+            <label for="f-mediascope">Accès au média</label>
             <select class="ida-input" id="f-mediascope" name="media_access_scope">
-              <option value="mythos_private">Mythos private</option>
-              <option value="professional">Professional</option>
+              <option value="mythos_private">Mythos privé</option>
+              <option value="professional">Professionnel</option>
               <option value="public">Public</option>
             </select>
           </div>
           <div class="ida-field ida-admin-check">
-            <label for="f-blurred"><input id="f-blurred" name="blurred" type="checkbox"> Blurred</label>
+            <label for="f-blurred"><input id="f-blurred" name="blurred" type="checkbox"> Floutée</label>
           </div>
         </div>
       </section>
 
       <div class="ida-admin-actions">
-        <button id="submit-button" type="submit" class="ida-btn ida-btn--primary">Create audited entry</button>
+        <button id="submit-button" type="submit" class="ida-btn ida-btn--primary">Créer l'enregistrement audité</button>
       </div>
       <div id="result" role="status" aria-live="polite"></div>
     </form>
@@ -191,7 +192,7 @@
 
 <footer class="ida-footer">
   <div class="ida-container ida-footer-inner">
-    <p>IDauto — operator console. Every entry made here is audited.</p>
+    <p>IDauto — console opérateur. Chaque enregistrement effectué ici est audité.</p>
   </div>
 </footer>
 
