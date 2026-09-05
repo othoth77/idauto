@@ -264,6 +264,7 @@
       <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="close" aria-label="Fermer">✕</button>
     </div>
     <p class="ida-caption" data-cg-status aria-live="polite"></p>
+    <p class="ida-small ida-muted">Caméra, galerie / fichier, ou collage d'une image (Ctrl+V). Seules les images sont acceptées.</p>
     <p class="ida-small" data-cg-detect-flag aria-live="polite"></p>
 
     <div class="ida-stack" data-cg-faces>
@@ -275,6 +276,7 @@
           <div class="ida-search-actions" data-cg-pick-1>
             <label class="ida-btn ida-btn--primary ida-btn--sm">Scanner la face 1<input type="file" accept="image/*" capture="environment" data-cg-file="1" hidden></label>
             <label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="1" hidden></label>
+            <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="paste-1" title="Coller une image du presse-papiers (Ctrl+V)">Coller (Ctrl+V)</button>
           </div>
           <div class="ida-search-actions" data-cg-redo-1 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-1">Refaire la face 1</button></div>
         </div>
@@ -285,6 +287,7 @@
           <div class="ida-search-actions" data-cg-pick-2>
             <label class="ida-btn ida-btn--secondary ida-btn--sm">Scanner la face 2 — optionnel<input type="file" accept="image/*" capture="environment" data-cg-file="2" hidden></label>
             <label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="2" hidden></label>
+            <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="paste-2" title="Coller une image du presse-papiers (Ctrl+V)">Coller (Ctrl+V)</button>
           </div>
           <div class="ida-search-actions" data-cg-redo-2 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-2">Refaire la face 2</button></div>
         </div>

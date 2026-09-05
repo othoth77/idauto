@@ -10,7 +10,7 @@ The protocol is versioned separately from the implementation; see
 
 Owner order « Carte grise scanner V1 ». `/atelier` gains « Ouvrir le
 passeport » and « Scanner la carte grise » beside the fiche. Browser
-pipeline: camera / gallery → Scanic 1.6.0 (MIT, vendored, wasm inlined)
+pipeline: camera / gallery / clipboard paste (Ctrl+V, images only) → Scanic 1.6.0 (MIT, vendored, wasm inlined)
 corner detection + perspective correction, manual 4-corner editor as
 fallback → EXIF rotation, resize 1600 px, JPEG 0.85 + 480 px thumbnail →
 face 1 (required) / face 2 (optional, never alone) → Tesseract.js fra+ara

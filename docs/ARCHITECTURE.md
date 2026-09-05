@@ -407,7 +407,7 @@ Browser ─► GET /login ─► email + password ─► POST /api/auth/sign-in/
 ## 12. Carte grise scanner (IDA-V14, 2026-09-05)
 
 ```
-CAPTURE (camera capture=environment / gallery)
+CAPTURE (camera capture=environment / gallery / clipboard paste — Ctrl+V or « Coller », images only)
   ─► DOCUMENT SCANNER  web/citizen/registration-scanner.js + Scanic: corners, perspective; manual 4-corner editor as fallback
   ─► IMAGE OPTIMISATION  EXIF rotation → crop → resize 1600 px → JPEG 0.85 (+ 480 px thumbnail) — in the browser
   ─► FACE 1 / FACE 2     PUT /api/vehicles/:ref/registration-document/:face  (face 2 optional, never alone)

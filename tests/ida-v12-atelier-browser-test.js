@@ -48,7 +48,10 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   async function ev(expr) { var r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.result.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails.exception)); return r.result.result.value; }
   var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS ' + l); } else { fail++; console.log('  FAIL ' + l); } }
   async function waitFor(expr, ms) { var t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await ev(expr)) return true; } catch (e) {} await sleep(400); } return false; }
-  await send('Page.enable'); await send('Runtime.enable');
+  var netLog = [];
+  ws.addEventListener('message', function (m) { var d = JSON.parse(m.data); if (d.method === 'Network.responseReceived' && /\/api\/auth\//.test(d.params.response.url)) netLog.push(d.params.response.status + ' ' + d.params.response.url.replace(/^https?:\/\/[^/]+/, '')); });
+  async function loginDebug(label) { console.log('     DEBUG ' + label + ': href=' + await ev('location.href') + ' error=' + JSON.stringify(await ev('(document.querySelector("#login-error-body")||{}).textContent||""')) + ' help=' + JSON.stringify(await ev('(document.querySelector("#login-help")||{}).textContent||""')) + ' auth=' + netLog.join(' | ')); }
+  await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/atelier' });
   await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 30000); await sleep(300);
   ok(/\/login\?next=%2Fatelier$/.test(await ev('location.pathname + location.search')), '/atelier without a session lands on /login?next=/atelier');
@@ -58,6 +61,7 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   ok(/incorrect/.test(await ev('document.querySelector("#login-error-body").textContent')), 'a wrong password shows « Identifiant ou mot de passe incorrect »');
   await ev('document.querySelector("#login-password").value=' + JSON.stringify(WEB_PW) + ';document.querySelector("#login-submit").click()');
   await waitFor('location.pathname === "/atelier" && !!document.querySelector("[data-panel=identify]")', 30000); await sleep(500);
+  if (await ev('location.pathname') !== '/atelier') await loginDebug('v12 correct login');
   ok(await ev('location.pathname') === '/atelier', 'a correct login redirects to /atelier');
   ok(await ev('document.querySelector("[data-panel=identify]").getAttribute("data-state")') === 'idle', 'page loads in state idle');
   ok(await ev('Object.keys(localStorage).length === 0 && Object.keys(sessionStorage).length === 0'), 'nothing was written to localStorage or sessionStorage by the login');

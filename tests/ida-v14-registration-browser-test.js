@@ -48,13 +48,18 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
   async function ev(expr, timeoutMs) { var r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true, timeout: timeoutMs || 30000 }); if (r.result && r.result.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails.exception)); return r.result && r.result.result ? r.result.result.value : undefined; }
   function run(stmts, timeoutMs) { return ev('(async () => { ' + stmts + ' })()', timeoutMs); }   // statements with await; no return value
   async function waitFor(expr, ms) { var t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await ev(expr)) return true; } catch (e) {} await sleep(500); } return false; }
-  await send('Page.enable'); await send('Runtime.enable');
+  var netLog = [];
+  ws.addEventListener('message', function (m) { var d = JSON.parse(m.data); if (d.method === 'Network.responseReceived' && /\/api\/auth\//.test(d.params.response.url)) netLog.push(d.params.response.status + ' ' + d.params.response.url.replace(/^https?:\/\/[^/]+/, '')); });
+  async function loginDebug(label) { console.log('     DEBUG ' + label + ': href=' + await ev('location.href') + ' error=' + JSON.stringify(await ev('(document.querySelector("#login-error-body")||{}).textContent||""')) + ' help=' + JSON.stringify(await ev('(document.querySelector("#login-help")||{}).textContent||""')) + ' auth=' + netLog.join(' | ')); }
+  await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
 
   // Sign in through the form.
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/login?next=%2Fatelier' });
   await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 60000); await sleep(500);
   await ev('document.querySelector("#login-email").value=' + JSON.stringify(EMAIL) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
-  ok(await waitFor('location.pathname === "/atelier" && !!document.querySelector("#at-serie")', 20000), '1. signed in, /atelier open');
+  var signedIn = await waitFor('location.pathname === "/atelier" && !!document.querySelector("#at-serie")', 30000);
+  if (!signedIn) await loginDebug('v14 first login');
+  ok(signedIn, '1. signed in, /atelier open');
   // Identify a vehicle by manual selection so the fiche (and its buttons) exist.
   await ev('document.querySelector("#at-serie").value=' + JSON.stringify(S) + ';document.querySelector("#at-numero").value=' + JSON.stringify(N) + ';document.querySelector("[data-action=resolve-plate]").click()');
   await waitFor('document.querySelector("[data-panel=identify]").getAttribute("data-state") === "not_found"', 20000);
@@ -82,6 +87,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
     var s = Math.min((W * 0.78) / card.width, (H * 0.78) / card.height); x.scale(s, s); x.drawImage(card, -card.width / 2, -card.height / 2); x.restore();
     return new Promise(function (res) { p.toBlob(function (b) { res(new File([b], 'photo.jpg', { type: 'image/jpeg' })); }, 'image/jpeg', 0.95); });
   };
+  window.__paste = function (file, text) { var dt = new DataTransfer(); if (file) dt.items.add(file); if (text) dt.setData('text/plain', text); var ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }); document.dispatchEvent(ev); return ev.defaultPrevented; };
   window.__feed = function (selector, file) { var input = document.querySelector(selector); var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); };
   true;`;
   await ev(HELPERS);
@@ -99,15 +105,31 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
   await ev('window.__feed("input[data-cg-file=\'2\']:not([capture])", window.__verso)'); await sleep(500);
   ok(/Face 1 d'abord/.test(await ev('document.querySelector("[data-cg-error-title]").textContent')), 'face 2 before face 1 is refused with a clear message');
   await ev('document.querySelector("[data-cg-error-close]").click()'); await sleep(300);
-  await ev('window.__feed("input[data-cg-file=\'1\']:not([capture])", window.__recto)');
-  ok(await waitFor('!document.querySelector("[data-cg-preview-1]").hidden', 60000), '4-5. face 1 processed: preview shown');
+  ok(await ev('!!document.querySelector("[data-cg-action=paste-1]") && !!document.querySelector("[data-cg-action=paste-2]")'), 'each face offers « Coller (Ctrl+V) » beside camera and gallery');
+  // --- clipboard: text only → refused
+  await ev('window.__paste(null, "ceci est du texte")');
+  ok(/Aucune image dans le presse-papiers/.test(await ev('document.querySelector("[data-cg-error-title]").textContent')) && /texte/.test(await ev('document.querySelector("[data-cg-error-body]").textContent')), 'paste of text only is refused with a clear message');
+  await ev('document.querySelector("[data-cg-error-close]").click()'); await sleep(300);
+  // --- clipboard: paste to face 2 before face 1 → refused
+  await ev('document.querySelector("[data-cg-action=paste-2]").click()'); await sleep(300);
+  ok(/Face 1 d'abord/.test(await ev('document.querySelector("[data-cg-error-title]").textContent')), 'paste into face 2 before face 1 is refused');
+  await ev('document.querySelector("[data-cg-error-close]").click()'); await sleep(300);
+  // --- clipboard: an "image" whose bytes are not an image → refused
+  await ev('window.__paste(new File([new Uint8Array([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16])], "x.png", { type: "image/png" }))');
+  ok(await waitFor('/Photo illisible/.test(document.querySelector("[data-cg-error-title]").textContent) && !document.querySelector("[data-cg-error]").hidden', 20000), 'paste of an invalid image is refused (« Photo illisible »)');
+  await ev('document.querySelector("[data-cg-error-close]").click()'); await sleep(300);
+  // --- clipboard: face 1 pasted (Ctrl+V with no face chosen → first empty face)
+  ok(await ev('window.__paste(window.__recto)') === true, 'Ctrl+V with an image is consumed by the dialog');
+  ok(await waitFor('!document.querySelector("[data-cg-preview-1]").hidden', 60000), '4-5. face 1 (pasted) processed: preview shown');
   var meta1 = await ev('document.querySelector("[data-cg-meta-1]").textContent');
   ok(/Carte détectée|Recadrage manuel/.test(meta1), 'detection result reported: ' + meta1);
   var kb1 = parseInt((/(\d+) Ko \(photo/.exec(meta1) || [])[1], 10);
   ok(kb1 > 20 && kb1 < 1200, 'optimised face 1 is compact: ' + kb1 + ' Ko');
   ok(await ev('!document.querySelector("[data-cg-finish-1]").hidden && !document.querySelector("[data-cg-validate]").disabled'), '« Terminer avec la face 1 » offered — face 2 optional');
-  await ev('window.__feed("input[data-cg-file=\'2\']:not([capture])", window.__verso)');
-  ok(await waitFor('!document.querySelector("[data-cg-preview-2]").hidden', 60000), '6-7. face 2 processed: both previews shown');
+  await ev('document.querySelector("[data-cg-action=paste-2]").click()'); await sleep(400);
+  await ev('window.__paste(window.__verso)');
+  ok(await waitFor('!document.querySelector("[data-cg-preview-2]").hidden', 60000), '6-7. face 2 (pasted via « Coller ») processed: both previews shown');
+  ok(/Ko \(photo/.test(await ev('document.querySelector("[data-cg-meta-2]").textContent')), 'the pasted verso went through the same optimisation (sizes reported)');
   ok(await ev('document.documentElement.scrollWidth <= window.innerWidth'), 'dialog fits the 390px viewport');
 
   await ev('document.querySelector("[data-cg-validate]").click()');
@@ -174,6 +196,6 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
   var bad = await req('PUT', base + '/1', Buffer.from('%PDF-1.4 not an image'), 'image/jpeg');
   ok(bad.status === 415, 'a non-image file is refused (415)');
 
-  console.log('IDA-V14 carte grise browser E2E (headless Chrome, real Scanic + Tesseract on a synthetic card): ' + pass + ' passed, ' + fail + ' failed');
+  console.log('IDA-V14 carte grise browser E2E (headless Chrome, real Scanic + Tesseract on a synthetic card, gallery + clipboard): ' + pass + ' passed, ' + fail + ' failed');
   ws.close(); chrome.kill(); server.close(); await db.closePool(); process.exit(fail ? 1 : 0);
 })().catch(function (e) { console.error('FATAL', e); process.exit(1); });

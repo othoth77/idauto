@@ -1,6 +1,6 @@
 /* IDauto — carte grise scanner (IDA-V14)
  * ============================================================================
- *   CAPTURE (camera / gallery) → DOCUMENT SCANNER (Scanic: corners + perspective,
+ *   CAPTURE (camera / gallery / clipboard paste) → DOCUMENT SCANNER (Scanic: corners + perspective,
  *   manual 4-corner fallback) → IMAGE OPTIMISATION (EXIF rotation, resize,
  *   JPEG, thumbnail) → FACE 1 / FACE 2 → OCR (Tesseract.js fra+ara, in a
  *   worker) → FIELD PARSER (server, shared parser) → CONFIDENCE / CONFLICT →
@@ -24,7 +24,7 @@
   var root = typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : this);
 
   var cfg = { engineBase: "/atelier/assets/tesseract/", scanicUrl: "/atelier/assets/scanic.umd.js", maxEdge: 1600, quality: 0.85, thumbEdge: 480, thumbQuality: 0.7, processEdge: 1400, minDetectionConfidence: 0.55, languages: "fra+ara" };
-  var state = { els: null, ivid: null, onDone: null, faces: { 1: null, 2: null }, worker: null, workerLoading: null, scanicLoading: null, editor: null, ocrResult: null, urls: [] };
+  var state = { els: null, ivid: null, onDone: null, pasteTarget: null, faces: { 1: null, 2: null }, worker: null, workerLoading: null, scanicLoading: null, editor: null, ocrResult: null, urls: [] };
   var STEPS = ["capture", "detect", "correct", "ocr", "analyse", "save"];
   var STEP_FR = { capture: "Capture", detect: "Détection", correct: "Correction", ocr: "OCR", analyse: "Analyse", save: "Enregistrement" };
 
@@ -138,10 +138,63 @@
   }
   function onPick(faceNo, input) { var f = input.files && input.files[0]; input.value = ""; if (!f) return; if (!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|heic)$/i.test(f.name)) return fail("Fichier refusé", "Choisissez une image (JPEG, PNG, WebP)."); if (faceNo === 2 && !state.faces[1]) return fail("Face 1 d'abord", "Scannez le recto avant le verso."); runFace(f, faceNo, null); }
 
+  /* ---------------- clipboard (IDA-V14) ----------------
+   * A pasted image follows EXACTLY the camera / gallery path: the File goes
+   * to onPick(), so detection, crop, rotation, compression, OCR, proposal
+   * and confirmation are the same code. The clipboard original is never
+   * kept: it lives in the event for the duration of the call, nothing else.
+   * Text, HTML or non-image files are refused with a message. */
+  function imageFromClipboardItems(items) {
+    if (!items) return null;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (it.kind === "file" && /^image\//.test(it.type || "")) { var f = it.getAsFile(); if (f) return f; }
+    }
+    return null;
+  }
+  function targetFaceForPaste() {
+    if (state.pasteTarget === 1 || state.pasteTarget === 2) return state.pasteTarget;
+    return state.faces[1] ? 2 : 1;   // Ctrl+V with no face chosen: the first empty face
+  }
+  function onPasteEvent(e) {
+    if (!state.els || !state.els.root || state.els.root.hidden) return;
+    var dt = e.clipboardData;
+    var file = imageFromClipboardItems(dt && dt.items);
+    if (!file && dt && dt.files && dt.files.length) { var f0 = dt.files[0]; if (/^image\//.test(f0.type || "")) file = f0; }
+    e.preventDefault();
+    if (!file) {
+      var hasText = dt && (dt.getData && (dt.getData("text/plain") || dt.getData("text/html")));
+      return fail("Aucune image dans le presse-papiers", hasText ? "Le presse-papiers contient du texte, pas une image. Copiez une image (capture d'écran ou photo) puis collez à nouveau." : "Copiez une image puis appuyez sur Ctrl+V, ou utilisez la caméra ou la galerie.");
+    }
+    var faceNo = targetFaceForPaste();
+    state.pasteTarget = null;
+    if (faceNo === 2 && !state.faces[1]) return fail("Face 1 d'abord", "Scannez ou collez le recto avant le verso.");
+    if (state.faces[faceNo]) { state.faces[faceNo] = null; }
+    // Same entry point as the file inputs — a named File so the rest of the pipeline sees one shape.
+    var named = file.name ? file : new File([file], "clipboard." + ((file.type || "image/png").split("/")[1] || "png"), { type: file.type || "image/png" });
+    onPick(faceNo, { files: [named], value: "" });
+  }
+  async function pasteButton(faceNo) {
+    if (faceNo === 2 && !state.faces[1]) { state.pasteTarget = null; return fail("Face 1 d'abord", "Scannez ou collez le recto avant le verso."); }
+    state.pasteTarget = faceNo;
+    // Async Clipboard API when the browser grants it (secure context, user gesture); otherwise wait for Ctrl+V.
+    if (navigator.clipboard && typeof navigator.clipboard.read === "function") {
+      try {
+        var items = await navigator.clipboard.read();
+        for (var i = 0; i < items.length; i++) {
+          var type = (items[i].types || []).filter(function (t) { return /^image\//.test(t); })[0];
+          if (type) { var blob = await items[i].getType(type); var file = new File([blob], "clipboard." + (type.split("/")[1] || "png"), { type: type }); state.pasteTarget = null; return onPick(faceNo, { files: [file], value: "" }); }
+        }
+        return fail("Aucune image dans le presse-papiers", "Copiez une image (capture d'écran ou photo) puis réessayez, ou appuyez sur Ctrl+V.");
+      } catch (e) { /* permission refused or API unavailable: fall back to Ctrl+V */ }
+    }
+    status("Appuyez sur Ctrl+V (ou Cmd+V) pour coller l'image de la face " + faceNo + ".");
+  }
+
   /* ---------------- progress ---------------- */
   function resetSteps() { STEPS.forEach(function (s) { var li = el("step-" + s); if (li) { li.textContent = STEP_FR[s]; li.className = "ida-cg-step"; } }); }
   function setStep(s) { var seen = false; STEPS.forEach(function (k) { var li = el("step-" + k); if (!li) return; if (k === s) { li.className = "ida-cg-step is-active"; li.textContent = STEP_FR[k] + "…"; seen = true; } else if (!seen) { li.className = "ida-cg-step is-done"; li.textContent = "✓ " + STEP_FR[k]; } }); }
-  function fail(title, body) { el("error-title").textContent = title; el("error-body").textContent = body; show("error"); }
+  function fail(title, body) { state.pasteTarget = null; el("error-title").textContent = title; el("error-body").textContent = body; show("error"); }
 
   /* ---------------- upload + OCR ---------------- */
   async function api(method, path, body, headers) {
@@ -225,7 +278,7 @@
     renderFaces(); show("faces"); status("Photographiez le recto (face 1). Le verso est optionnel."); el("detect-flag").textContent = "";
     var first = el("pick-1"); if (first) first.focus();
   }
-  function close() { revokeAll(); if (state.editor) { try { state.editor.destroy(); } catch (e) {} state.editor = null; } if (state.els && state.els.root) { state.els.root.hidden = true; state.els.root.setAttribute("aria-hidden", "true"); } }
+  function close() { state.pasteTarget = null; revokeAll(); if (state.editor) { try { state.editor.destroy(); } catch (e) {} state.editor = null; } if (state.els && state.els.root) { state.els.root.hidden = true; state.els.root.setAttribute("aria-hidden", "true"); } }
   function bind(rootEl) {
     state.els = { root: rootEl };
     rootEl.addEventListener("change", function (e) { var t = e.target.closest("[data-cg-file]"); if (t) onPick(parseInt(t.getAttribute("data-cg-file"), 10), t); });
@@ -233,7 +286,9 @@
       var t = e.target.closest("[data-cg-action]"); if (!t) { if (e.target === rootEl) close(); return; }
       var a = t.getAttribute("data-cg-action");
       if (a === "close" || a === "cancel") return close();
-      if (a === "redo-1") { state.faces[1] = null; state.faces[2] = state.faces[2]; renderFaces(); return; }
+      if (a === "paste-1") return pasteButton(1);
+      if (a === "paste-2") return pasteButton(2);
+      if (a === "redo-1") { state.faces[1] = null; renderFaces(); return; }
       if (a === "redo-2") { state.faces[2] = null; renderFaces(); return; }
       if (a === "validate" || a === "finish-1") return validate();
       if (a === "confirm") return confirm();
@@ -241,6 +296,7 @@
       if (a === "back") { show("faces"); return; }
     });
     rootEl.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.preventDefault(); close(); } });
+    document.addEventListener("paste", onPasteEvent);
   }
 
   return { configure: configure, open: open, close: close, bind: bind, optimise: optimise, processFile: processFile, cfg: cfg };

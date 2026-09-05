@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 1 | `/atelier` → identify the test vehicle → « Scanner la carte grise » | Dialog « Carte grise », « Valider » disabled, « Face 1 — Recto », « Face 2 — Verso (optionnel) » | ☐ |
 | 2 | « Scanner la face 1 » | The rear camera opens directly (`capture="environment"`) | ☐ |
+| 2b | Desktop only: copy a screenshot of the card, « Coller (Ctrl+V) » or Ctrl+V in the dialog; then copy plain text and paste | The image goes through the same detection / optimisation; the text is refused (« Aucune image dans le presse-papiers ») | ☐ |
 | 3 | Take a **real face 1** photo, card entirely visible, flat | Progress Capture → Détection → Correction; « Carte détectée »; preview is the card only, straight; « photo : N Ko » shows the phone size, stored size a few hundred Ko at most | ☐ |
 | 4 | Note the sizes shown under the preview | Phone photo 5–10 Mo → stored ≤ ~400 Ko, still legible when zoomed on the passport | ☐ |
 | 5 | « Refaire la face 1 » → photo **tilted ~20°** | Still « Carte détectée », preview straightened; otherwise « Ajustez les coins » editor appears and dragging the 4 corners then confirming produces a straight preview | ☐ |
