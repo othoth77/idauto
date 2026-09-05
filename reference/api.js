@@ -466,6 +466,12 @@ var CITIZEN_ASSETS = {
   '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' },
   // IDA-V14 — the carte grise section of the passport (signed-in users only; the script asks the authenticated route).
   '/assets/passport-document.js': { file: 'citizen/passport-document.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-V14 (home search) — the shared carte grise scanner on the homepage: Scanic (MIT, vendored), the scanner module, the page script, the fra/ara OCR models (below, beside eng).
+  '/assets/scanic.umd.js': { file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/registration-scanner.js': { file: 'citizen/registration-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/home-registration.js': { file: 'citizen/home-registration.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/tesseract/fra.traineddata.gz': { file: 'vendor/tesseract/fra.traineddata.gz', contentType: 'application/octet-stream' },
+  '/assets/tesseract/ara.traineddata.gz': { file: 'vendor/tesseract/ara.traineddata.gz', contentType: 'application/octet-stream' },
   '/assets/document.css': { file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' },
   '/assets/favicon.svg': { file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
 

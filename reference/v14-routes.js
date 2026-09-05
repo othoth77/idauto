@@ -15,6 +15,7 @@
 //   DELETE /api/vehicles/:ref/registration-document/:face            document:delete
 //   POST   /api/vehicles/:ref/registration-document/ocr              document:write  (raw OCR text → technical fields, comparison)
 //   POST   /api/vehicles/:ref/registration-document/confirm          vehicle:write   (→ resolver.confirm(), the single write path)
+//   POST   /api/identify/registration-document                        vehicle:resolve (homepage search: OCR reads → VIN | plate | make+model; writes nothing)
 //
 // Anti-abuse: 60 uploads and 60 OCR runs per actor per 10 minutes, on the
 // same database-backed counter the public limiter uses; 6 MB per image,
@@ -94,6 +95,17 @@ function createV14(ctx) {
     sendJson(res, 200, { status: 'confirmed', vehicle: vehicle });
   }
 
+  // Homepage « Rechercher par carte grise »: identification only, no storage.
+  async function postIdentify(req, res) {
+    if (!(await throttle(req, res, 'ocr'))) return;
+    var body = await readJsonBody(req);
+    var allowVin = require('./identity.js').principalHasScope(req.principal, 'vin:search');
+    var out = await service.identify(body, actorOf(req), { resolver: resolver, allowVin: allowVin, includeVin: allowVin });
+    // A VIN lookup is a VIN search: audited like the search criterion (fails closed, before disclosure).
+    if (out.tried.indexOf('vin') !== -1) await require('./writes.js').recordVinSearchAudit(req.principal, req.mythosIdentity, body.faces && body.faces.length ? (out.ocr.vin || '') : '', out.identified_by === 'vin' && out.vehicle ? out.vehicle.id : null);
+    sendJson(res, 200, out);
+  }
+
   var scopes = [
     { method: 'GET',    pattern: /^\/api\/vehicles\/[^/]+\/registration-document$/,                 scope: 'document:read' },
     { method: 'GET',    pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/[^/]+\/image$/,   scope: 'document:read' },
@@ -101,9 +113,11 @@ function createV14(ctx) {
     { method: 'PUT',    pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/[^/]+\/thumbnail$/, scope: 'document:write' },
     { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/[^/]+$/,          scope: 'document:delete' },
     { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/ocr$/,            scope: 'document:write' },
-    { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/confirm$/,        scope: 'vehicle:write' }
+    { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/confirm$/,        scope: 'vehicle:write' },
+    { method: 'POST',   pattern: /^\/api\/identify\/registration-document$/,                             scope: 'vehicle:resolve' }
   ];
   var routes = [
+    { method: 'POST', pattern: /^\/api\/identify\/registration-document$/, handler: guard(postIdentify) },
     { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document$/, handler: guard(getDocument) },
     { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document\/ocr$/, handler: guard(postOcr) },
     { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document\/confirm$/, handler: guard(postConfirm) },

@@ -207,11 +207,60 @@ async function ocr(vehicleRef, input, actor) {
   };
 }
 
-// After confirm(): mark the faces' OCR as confirmed (called by the route that wraps resolver.confirm()).
+// IDENTIFY (homepage « Rechercher par carte grise »): the shared layer
+// registration-document → vehicle identification. Parses the OCR reads in
+// memory, then asks the resolver in this order: a valid 17-character VIN
+// (only when the actor holds vin:search), then the plate, then
+// make / model (+ motorisation). NOTHING is written: no document is
+// stored, no vehicle is created; a provider or manual "candidate" counts as
+// not found. Technical fields only come back (the parser dropped the
+// holder lines); nothing is logged beyond counters.
+async function identify(input, actor, deps) {
+  var obs = observability.shared();
+  var resolver = deps && deps.resolver;
+  if (!resolver) throw new Error('identify() needs a resolver');
+  var faces = Array.isArray(input && input.faces) ? input.faces : [];
+  faces = faces.map(function (f) { return { face: faceNo(f.face), text: typeof f.text === 'string' ? f.text.slice(0, 20000) : '', confidence: typeof f.confidence === 'number' ? f.confidence : undefined }; });
+  if (!faces.length || !faces.some(function (f) { return f.face === 1; })) throw errors.IdautoError('VALIDATION', { required: ['faces[] with face 1'] });
+  var parsed = parser.parse({ faces: faces });
+  var candidate = parser.toIdautoCandidate(parsed);
+  var allowVin = !!(deps.allowVin);
+  var includeVin = !!(deps.includeVin);
+  var tried = [], result = null, by = null;
+  obs.inc('registration_identify_runs');
+  obs.event('registration_identify_started', { faces: faces.map(function (f) { return f.face; }), fields: parsed.fields.length });
+
+  // 1. VIN — the strongest identifier, but never for a caller without vin:search.
+  if (candidate.vin) {
+    var v = vinModule.validate(String(candidate.vin));
+    if (v.ok) {
+      if (allowVin) { tried.push('vin'); var rv = await resolver.resolveByVIN(v.vin, { includeVin: includeVin }); if (rv.status === 'resolved') { result = rv; by = 'vin'; } }
+      else tried.push('vin:not_permitted');
+    }
+  }
+  // 2. Plate.
+  if (!result && candidate.plate) {
+    var pp = plateNormalizer.parsePlate(String(candidate.plate));
+    if (pp.ok) { tried.push('plate'); try { var rp = await resolver.resolveByPlate(pp.canonical, { includeVin: includeVin, confirmed: true }); if (rp.status === 'resolved') { result = rp; by = 'plate'; } } catch (e) { if (!(e && e.isIdautoError)) throw e; } }
+  }
+  // 3. Make + model (+ motorisation): only an EXACT single local match counts.
+  if (!result && candidate.manufacturer && candidate.model) {
+    tried.push('make_model');
+    var rm = await resolver.resolveByManualSelection({ manufacturer: candidate.manufacturer, model: candidate.model, motorisation: candidate.motorisation || undefined }, { includeVin: includeVin });
+    if (rm.status === 'resolved') { result = rm; by = 'make_model'; }
+  }
+  var technical = { registration: parsed.registration, manufacturer: parsed.manufacturer, model: parsed.model, vin: allowVin ? parsed.vin : (parsed.vin ? '(présent)' : null), year: parsed.year, fuel: parsed.fuel, engine_cc: parsed.engine_cc, seats: parsed.seats, confidence: parsed.confidence };
+  obs.event('registration_identify_done', { found: !!result, by: by, tried: tried, confidence: parsed.confidence });
+  if (result) { obs.inc('registration_identify_found'); return { status: 'found', identified_by: by, tried: tried, vehicle: result.vehicle, ocr: technical, warnings: parsed.warnings }; }
+  return { status: 'not_found', identified_by: null, tried: tried, vehicle: null, ocr: technical, warnings: parsed.warnings, created: false,
+    options: { search_plate: candidate.plate ? plateNormalizer.parsePlate(String(candidate.plate)).canonical || null : null, search_vin: allowVin && candidate.vin ? candidate.vin : null, search_make_model: candidate.manufacturer ? { manufacturer: candidate.manufacturer, model: candidate.model || null, motorisation: candidate.motorisation || null } : null } };
+}
+
+// After confirm(): mark the faces' OCR as confirmed (called by the route that wraps the confirm route()).
 async function markConfirmed(vehicleRef, actor) {
   var vehicle = await vehicleFor(vehicleRef);
   var rows = await repo.facesOf(vehicle.id, actor.principal);
   for (var i = 0; i < rows.length; i++) if (rows[i].ocr_status === 'extracted') await repo.setOcr(rows[i].id, 'confirmed', rows[i].ocr_confidence, rows[i].ocr_fields, actor);
 }
 
-module.exports = { store: store, setThumbnail: setThumbnail, list: list, image: image, remove: remove, ocr: ocr, markConfirmed: markConfirmed, compare: compare, LIMITS: LIMITS, inspectImage: inspectImage };
+module.exports = { store: store, setThumbnail: setThumbnail, identify: identify, list: list, image: image, remove: remove, ocr: ocr, markConfirmed: markConfirmed, compare: compare, LIMITS: LIMITS, inspectImage: inspectImage };
