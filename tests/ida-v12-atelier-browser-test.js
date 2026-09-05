@@ -27,6 +27,13 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   var server = api.createServer(); await new Promise(function (r) { server.listen(0, '127.0.0.1', r); });
   var PORT = server.address().port;
   process.env.UI_ORG = String(ORG);
+  // IDA-V13 — the page is behind /login: create a web admin and sign in
+  // through the real form, which is itself part of what this test covers.
+  process.env.IDAUTO_AUTH_BASE_URL = 'http://127.0.0.1:' + PORT;
+  var authApi = require(path.join(BASE, 'reference', 'auth', 'auth.js')).getAuth();
+  var WEB_EMAIL = 'ui-' + crypto.randomBytes(4).toString('hex') + '@idauto.test', WEB_PW = 'Ui-Browser-' + crypto.randomBytes(6).toString('hex') + '-1';
+  var webUser = await authApi.api.signUpEmail({ body: { email: WEB_EMAIL, password: WEB_PW, name: 'Chef Atelier' } });
+  await db.query('UPDATE idauto_auth_user SET "role" = $1 WHERE "id" = $2', ['admin', webUser.user.id]);
 
   var chrome = cp.spawn(CHROME, ['--headless=new', '--no-sandbox', '--disable-gpu', '--remote-debugging-port=' + CDP, '--window-size=390,1400', '--user-data-dir=/tmp/idauto-ui-e2e-' + process.pid, 'about:blank'], { stdio: 'ignore' });
   await sleep(2500);
@@ -40,9 +47,18 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS ' + l); } else { fail++; console.log('  FAIL ' + l); } }
   await send('Page.enable'); await send('Runtime.enable');
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/atelier' }); await sleep(1500);
+  ok(/\/login\?next=%2Fatelier$/.test(await ev('location.pathname + location.search')), '/atelier without a session lands on /login?next=/atelier');
+  ok(await ev('!!document.querySelector("#login-form") && /Connexion à IDauto/.test(document.body.textContent)'), 'the French sign-in form is shown');
+  await ev('document.querySelector("#login-email").value=' + JSON.stringify(WEB_EMAIL) + ';document.querySelector("#login-password").value="wrong-password-000";document.querySelector("#login-submit").click()'); await sleep(1500);
+  ok(/incorrect/.test(await ev('document.querySelector("#login-error-body").textContent')), 'a wrong password shows « Identifiant ou mot de passe incorrect »');
+  await ev('document.querySelector("#login-password").value=' + JSON.stringify(WEB_PW) + ';document.querySelector("#login-submit").click()'); await sleep(2500);
+  ok(await ev('location.pathname') === '/atelier', 'a correct login redirects to /atelier');
   ok(await ev('document.querySelector("[data-panel=identify]").getAttribute("data-state")') === 'idle', 'page loads in state idle');
+  ok(await ev('Object.keys(localStorage).length === 0 && Object.keys(sessionStorage).length === 0'), 'nothing was written to localStorage or sessionStorage by the login');
+  ok(await ev('document.cookie') === '', 'the session cookie is HttpOnly: document.cookie is empty');
+  ok(/Connecté : Chef Atelier/.test(await ev('document.querySelector("[data-user-line]").textContent')), 'the page shows who is signed in and their role');
   ok(await ev('document.documentElement.scrollWidth <= window.innerWidth') === true, 'no horizontal overflow at 390px');
-  await ev('(function(){var t=document.querySelector("#at-token"); t.value=' + JSON.stringify(TOKEN) + '; t.dispatchEvent(new Event("change"));})()'); await sleep(800);
+  await sleep(800);
   ok(/non configuré/.test(await ev('document.querySelector("[data-catalog-status]").textContent')), 'catalogue status shows « Catalogue fournisseur non configuré »');
   var S = String(100 + Math.floor(Math.random() * 899)), N = String(1000 + Math.floor(Math.random() * 8999));
   await ev('document.querySelector("#at-serie").value=' + JSON.stringify(S) + ';document.querySelector("#at-numero").value=' + JSON.stringify(N) + ';document.querySelector("[data-action=resolve-plate]").click()'); await sleep(1200);
@@ -73,6 +89,10 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   await ev('document.querySelector("[data-action=fiche-history]").click()'); await sleep(1000);
   ok(await ev('document.querySelectorAll("[data-fiche-history] li").length') >= 1, 'identification history renders');
   ok(await ev('document.documentElement.scrollWidth <= window.innerWidth') === true, 'still no horizontal overflow with every panel open at 390px');
+  await ev('document.querySelector("[data-action=logout]").click()'); await sleep(1500);
+  ok(await ev('location.pathname') === '/login', 'Déconnexion signs out and lands on /login');
+  await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/atelier' }); await sleep(1200);
+  ok(await ev('location.pathname') === '/login', 'after logout /atelier redirects to /login again');
     console.log('IDA-V12 atelier browser E2E (headless Chrome): ' + pass + ' passed, ' + fail + ' failed');
   ws.close(); chrome.kill(); server.close(); await db.closePool(); process.exit(fail ? 1 : 0);
 })().catch(function (e) { console.error('FATAL', e); process.exit(1); });

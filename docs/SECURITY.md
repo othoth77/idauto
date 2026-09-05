@@ -1,22 +1,24 @@
 # Security — implementation notes
 
-**Last updated:** 2026-09-05 (IDA-V12 audit). Vulnerability disclosure policy: root `SECURITY.md`. Threat model: `THREAT_MODEL.md`.
+**Last updated:** 2026-09-05 (IDA-V13 — login/password + sessions; IDA-V12 audit). Vulnerability disclosure policy: root `SECURITY.md`. Threat model: `THREAT_MODEL.md`.
 
 | Area | State | Where |
 |---|---|---|
 | Secrets | none in git, frontend, logs or docs. Env file 0600 outside the worktree; `.env*` ignored; `.env.example` placeholders only. Grep of the tree on 2026-09-05: only per-run test tokens and the public AWS documentation example key in the backup test. | `.gitignore`, `.env.example` |
 | Environment variables | all read once at startup; provider/TecDoc keys never echoed; mock providers refuse `NODE_ENV=production` | `reference/vehicle/providers/*`, `reference/parts/*` |
-| Authentication | Bearer → admin identity or organisation principal; owner cookie limited to two reads; RFC-conformant parsing; safe auth logging | `reference/identity.js`, `session.js`, `api.js` |
-| Authorisation | exact scopes per route (`ROUTE_SCOPES` + V12 scopes); a route absent from the table is admin-only; VIN behind `vin:search` and audited on search **and** on fiche disclosure; workshop and stock rows scoped by `org_id` in every query | `api.js`, `v12-routes.js`, repositories |
+| Authentication — web users (IDA-V13) | **email + password at `/login` → Better Auth (scrypt hash) → server-side session row → cookie `idauto.session_token` HttpOnly, SameSite=Lax, Path=/, Secure in production**; validated in the database on every request (no cookie cache); 12 h sliding expiry; sign-out and server-side revocation; password change; sign-in rate limit 5/min per client IP (`X-Real-IP` from nginx), stored in the database. No page asks for, stores or displays a token; `document.cookie` is empty. | `reference/auth/auth.js`, `reference/auth/principal.js`, `reference/login*.js`, `tests/ida-v13` |
+| Authentication — server-to-server | Bearer service credentials (`IDAUTO_ADMIN_IDENTITIES`) for organisation integrations such as atelier.fixpert.tn; never used by a browser; owner cookie (IDA-V1B) limited to two reads | `reference/identity.js`, `session.js`, `api.js` `authenticate()` |
+| Old manual admin access token | **Removed from every web surface** (`/atelier`, `/admin`, `/admin/review`). The environment map still accepts admin entries for scripts; dropping them is the follow-up step after production validation (`DEPLOYMENT.md` §4). | — |
+| Authorisation | role from `idauto_auth_user.role` (admin → `*`; manager / technician → organisation-bound scope sets), never from the browser; exact scopes per route (`ROUTE_SCOPES` + V12 scopes); a route absent from the table is admin-only; VIN behind `vin:search` and audited on search **and** on fiche disclosure; workshop and stock rows scoped by `org_id` in every query | `api.js`, `v12-routes.js`, repositories |
 | Input validation | plate → normaliser + catalogue; VIN → ISO charset/length; bounded strings, integer ranges, enum CHECK constraints in SQL; JSON bodies capped at 64 KB; `customer_ref` restricted to an opaque token pattern (no spaces) | `plate-normalizer.js`, `vin.js`, `vehicle-repository.js`, migration CHECKs |
 | Injection | parameterised SQL only; no string concatenation of user input into SQL (dynamic column lists come from a fixed whitelist); no shell | repositories |
 | Rate limiting | public surface per-client bucket (trusted-proxy IP extraction); authenticated V12 routes rely on credentials + nginx; no counter machinery in route modules (asserted) | `rate-limit.js` |
 | CORS | none needed and none enabled: same-origin pages, `connect-src 'self'`; a cross-site fetch with a Bearer header is a preflight the server never answers | CSP headers |
-| CSRF | owner cookie is `SameSite=Strict` + custom header; Bearer routes are immune by construction | `api.js` |
+| CSRF | session cookie `SameSite=Lax` **and** the header `X-IDauto-Session: 1` required on every `/api/*` call it authenticates; Better Auth refuses cookie-bearing POSTs without an `Origin`; owner cookie `SameSite=Strict` + `X-IDauto-Owner`; Bearer routes immune by construction | `api.js`, `reference/auth/principal.js` |
 | SSRF | provider and catalogue URLs come from configuration only; callers contribute a validated plate/VIN/id that is URL-encoded into a fixed template; `https` only (loopback `http` for tests) | `http-vehicle-provider.js`, `tecdoc-adapter.js` |
 | CSP | citizen and atelier: `script-src 'self' 'wasm-unsafe-eval'` (OCR engine), everything else `'self'`; admin: no wasm; all pinned whole by tests | `api.js`, `v12-routes.js`, `tests/ida-v11`, `tests/ida-v12` |
 | Database access | one pool, loopback, least-privilege user from the env; write verbs never inline in `api.js` or `v12-routes.js` (asserted); audit rows in the same transaction as the write | `db.js`, `writes.js` |
-| Logs | structured events with redaction of credential-shaped keys, truncated VIN, no IP (only the limiter's salted hash elsewhere) | `observability.js` |
+| Logs | passwords, hashes and session tokens never appear (asserted over the whole suite output); structured events with redaction of credential-shaped keys, truncated VIN, no IP (only the limiter's salted hash elsewhere) | `observability.js` |
 | Public surface | the passport route selects columns by name and never reads the V12 identification columns; VIN and plate facts on the deny-list; asserted | `api.js`, `public-surface-policy.js`, `tests/ida-v12` §9 |
-| Dependencies | `pg` only; `npm audit --omit=dev`: 0 vulnerabilities (2026-09-05) | `package.json` |
+| Dependencies | `pg`, `better-auth` 1.7.x; `npm audit --omit=dev`: 0 vulnerabilities (2026-09-05) | `package.json` |
 | Third-party sites | no credential of any other service is used or stored; no captcha handling; no scraping | `docs/VEHICLE_RESOLUTION.md` §3 |

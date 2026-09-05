@@ -118,7 +118,7 @@ async function staticCases() {
   // reference/ingestion.js's own call site.
   ok(source.indexOf('rateLimit.enforce(') === -1, 'api.js never calls the ingestion rate limiter (rateLimit.enforce) directly');
   ok(source.indexOf('FORBIDDEN_PAYLOAD_FIELDS') === -1 && source.indexOf("'capture_source_id', 'contributor_id'") === -1, 'api.js does not reimplement the forbidden-field list');
-  ok(/if \(!requireAuth\(req, res\)\) return;[\s\S]*route\.handler/.test(source), 'existing authentication gate still precedes every route handler');
+  ok(/if \(!\(await authenticate\(req, res\)\)\) return;[\s\S]*route\.handler/ /* IDA-V13: the gate is authenticate() — Bearer, owner cookie, or the signed-in session */.test(source), 'existing authentication gate still precedes every route handler');
 }
 
 var server, port, db;

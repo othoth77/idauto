@@ -123,10 +123,24 @@ async function main() {
 
   /* ===================================================================== */
   say('\n3. THE ATELIER PAGE AND THE GATES');
-  var atelier = await request('GET', '/atelier');
-  ok(atelier.status === 200 && /text\/html/.test(atelier.headers['content-type']), 'GET /atelier -> 200 html (no token: a static shell)');
+  // IDA-V13 — /atelier is a signed-in page: no session → /login; with a
+  // session (a web user created here through Better Auth) → the page.
+  var atelierAnon = await request('GET', '/atelier');
+  ok(atelierAnon.status === 302 && /\/login/.test(atelierAnon.headers.location), 'GET /atelier without a session -> 302 /login');
+  process.env.IDAUTO_AUTH_BASE_URL = 'http://127.0.0.1:' + port;
+  var authApi = require(path.join(BASE, 'reference', 'auth', 'auth.js')).getAuth();
+  var webPw = 'V12-Web-' + crypto.randomBytes(6).toString('hex') + '-pw';
+    var webEmail = 'web-' + crypto.randomBytes(4).toString('hex') + '@idauto.test';
+  var created = await authApi.api.signUpEmail({ body: { email: webEmail, password: webPw, name: 'Web V12' } });
+  await db.query('UPDATE idauto_auth_user SET "role" = $1 WHERE "id" = $2', ['admin', created.user.id]);
+  var signed = await authApi.api.signInEmail({ body: { email: webEmail, password: webPw }, returnHeaders: true });
+  var webCookie = String(signed.headers.get('set-cookie')).split(';')[0];
+  var atelier = await new Promise(function (resolve, reject) {
+    http.get({ hostname: '127.0.0.1', port: port, path: '/atelier', headers: { Cookie: webCookie } }, function (res) { var c = []; res.on('data', function (x) { c.push(x); }); res.on('end', function () { resolve({ status: res.statusCode, headers: res.headers, raw: Buffer.concat(c).toString('utf8') }); }); }).on('error', reject);
+  });
+  ok(atelier.status === 200 && /text\/html/.test(atelier.headers['content-type']), 'GET /atelier with a session -> 200 html');
   ok(atelier.headers['content-security-policy'] === "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'", 'the atelier CSP is the citizen one, pinned whole');
-  ok((await request('HEAD', '/atelier')).status === 200, 'HEAD /atelier -> 200');
+  ok((await request('HEAD', '/atelier')).status === 302, 'HEAD /atelier without a session -> 302 as well');
   ok((await request('GET', '/atelier/atelier-ui.js')).status === 200 && (await request('GET', '/atelier/assets/plate-scanner.js')).status === 200 && (await request('GET', '/atelier/assets/tesseract/worker.min.js')).status === 200, 'the atelier assets and the OCR engine are served under /atelier/');
   ok((await request('GET', '/atelier/assets/../admin.html')).status !== 200, 'no traversal through the asset map');
   var adminCsp = (await request('GET', '/admin')).headers['content-security-policy'];

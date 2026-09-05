@@ -110,7 +110,7 @@ async function staticCases() {
   ok((apiSource.match(/pattern: \/\^\\\/api\\\/review\\\/facts\\\/\(\[\^\/\]\+\)\\\/decision\$\//g) || []).length === 1, 'fact decision route occurs exactly once');
   ok(!/api\\\/review\\\/submissions\\\/[^(\n]+decision/.test(apiSource), 'no submission-level decision route exists');
   ok(!/public[^\n]*review|anonymous[^\n]*review/i.test(apiSource), 'no public or anonymous review route exists');
-  ok(/if \(!requireAuth\(req, res\)\) return;[\s\S]*route\.handler/.test(apiSource), 'existing global auth gate still precedes route handlers');
+  ok(/if \(!\(await authenticate\(req, res\)\)\) return;[\s\S]*route\.handler/ /* IDA-V13: the gate is authenticate() — Bearer, owner cookie, or the signed-in session */.test(apiSource), 'existing global auth gate still precedes route handlers');
   ok((apiSource.match(/\.listen\s*\(/g) || []).length === 1 && (apiSource.match(/'127\.0\.0\.1'/g) || []).length === 1, 'no second listener or bind-host change');
   // IDA-V1B, 2026-08-27 — narrowed, not dropped. See the twin assertion in
   // tests/ida-3d-private-ingest-route-test.js for the full rationale: the

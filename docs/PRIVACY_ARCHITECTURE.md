@@ -213,3 +213,10 @@ stated rather than assumed:
 | Off-host backup of the *media* store | **PLANNED** — the verified batch covered the database only |
 | Recurring backup schedule | **PLANNED** — one verified batch is not a regime |
 | Public capture surface | **BLOCKED** on legal review and real authentication |
+
+
+---
+
+## Addendum — staff accounts (IDA-V13, 2026-09-05)
+
+`idauto_auth_user` / `idauto_auth_account` hold the **staff** who sign in (administrators, workshop managers, technicians): name, e-mail, role, organisation, scrypt password hash. They are not citizens, not vehicle holders, not customers; no vehicle, plate, observation or visit references them, and they reference no vehicle. Audit rows name them as `user:<id>`. The public/private boundary above is unchanged.

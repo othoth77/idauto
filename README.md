@@ -118,6 +118,7 @@ Nothing in this repository pretends to be further along than it is.
 | Parts: local catalogue + organisation stock, `TecDocAdapter` (IDA-V12) | **IMPLEMENTED** — TecDoc access **NOT CONFIGURED** (« Catalogue fournisseur non configuré ») |
 | Workshop: visits, operations, orders, `/atelier` page (IDA-V12) | **IMPLEMENTED** — customer identity stays in the workshop's own system (opaque reference only) |
 | Mock providers | tests only — refuse to construct in production |
+| Web authentication: `/login` (e-mail + password, Better Auth), server-side sessions, HttpOnly + Secure cookie, roles admin / manager / technician (IDA-V13) | **IMPLEMENTED** — the manual admin access token is gone from every web page; Bearer remains for server-to-server integrations |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /
 LEGAL-REVIEW-REQUIRED in [`docs/ROADMAP.md`](docs/ROADMAP.md), and those tags are meant

@@ -25,7 +25,7 @@ through the HTTP API below. There is no other supported path.
 
 ## 2. Authentication
 
-One **service credential per organisation**, sent as a bearer token:
+**Server-to-server only (IDA-V13).** People sign in at `https://idauto.tn/login` with e-mail + password and use `/atelier`; no person ever handles a token. Integrations keep one **service credential per organisation**, sent as a bearer token:
 
 ```
 Authorization: Bearer <service-token>

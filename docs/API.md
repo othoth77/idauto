@@ -1,6 +1,21 @@
 # API
 
-**Last updated:** 2026-09-05 (IDA-V12). Base URL `https://idauto.tn`. All `/api/*` routes need `Authorization: Bearer <token>`; `401` without, `403` when an organisation credential lacks the scope. Errors from the V12 routes are `{ error: <CODE>, message_fr, details? }` — never a technical string. Full organisation contract: `ID_AUTO_INTEGRATION.md`.
+**Last updated:** 2026-09-05 (IDA-V13). Base URL `https://idauto.tn`.
+
+**Authentication (IDA-V13).** Web users sign in at `/login`; the server sets the session cookie and every `/api/*` call from a page carries it plus the header `X-IDauto-Session: 1`. Server-to-server integrations keep `Authorization: Bearer <service credential>`. `401` without either (body `{ error, reason: no_credentials|invalid_credentials, login: '/login' }`), `403` when the principal lacks the scope.
+
+| Route | Answer |
+|---|---|
+| `GET /login` | the French sign-in page |
+| `POST /api/auth/sign-in/email` `{ email, password }` | 200 + `Set-Cookie: idauto.session_token=…; HttpOnly; SameSite=Lax; Path=/` (+ `Secure` in production) · 401 `INVALID_EMAIL_OR_PASSWORD` · 429 after 5 failures/min per client |
+| `POST /api/auth/sign-out` | 200, session row deleted (needs the cookie and an `Origin` header) |
+| `GET /api/auth/get-session` | `{ session, user:{ id, name, email, role, org_id } }` or `null` |
+| `POST /api/auth/change-password` `{ currentPassword, newPassword, revokeOtherSessions? }` | 200 |
+| `GET /api/auth/list-sessions` · `POST /api/auth/revoke-session` · `/revoke-sessions` · `/revoke-other-sessions` | Better Auth session management |
+| `GET /session` (header `X-IDauto-Owner: 1`) | `{ owner, user:{ name, email, role, org_id } | null }` |
+| any other `/api/auth/*` (sign-up, social, e-mail reset) | 404 — users are provisioned with `ops/auth-users.js` |
+
+Roles: **admin** (everything, may act for an organisation by naming `org_id`), **manager** (its organisation, incl. `vin:search`), **technician** (its organisation, no VIN). A manager/technician without organisation is refused with 403 `role_without_organisation`. Errors from the V12 routes are `{ error: <CODE>, message_fr, details? }` — never a technical string. Full organisation contract: `ID_AUTO_INTEGRATION.md`.
 
 ## Public (no token)
 

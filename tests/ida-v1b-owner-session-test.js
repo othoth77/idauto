@@ -134,7 +134,7 @@ function staticCases() {
   var source = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
   ok((source.match(/\.listen\s*\(/g) || []).length === 1, 'no second listener was added');
   ok((source.match(/'127\.0\.0\.1'/g) || []).length === 1, 'loopback bind host remains unchanged');
-  ok(/if \(!requireAuth\(req, res\)\) return;[\s\S]*route\.handler/.test(source), 'the authentication gate still precedes every route handler');
+  ok(/if \(!\(await authenticate\(req, res\)\)\) return;[\s\S]*route\.handler/ /* IDA-V13: the gate is authenticate() — Bearer, owner cookie, or the signed-in session */.test(source), 'the authentication gate still precedes every route handler');
   ok(source.indexOf('rateLimit.enforce(') === -1, 'api.js still never calls the ingestion rate limiter directly');
 }
 
