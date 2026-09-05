@@ -1,0 +1,31 @@
+/* IDauto — atelier layout layer (IDA-V12)
+ * ============================================================================
+ * Like admin.css: no colour, type or spacing value of its own. Every value is
+ * a token from web/design-system/tokens/tokens.css. This file only lays out
+ * the four workshop cards and the parts list, at every viewport width.
+ */
+.ida-atelier-grid { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-3); }
+@media (min-width: 640px) { .ida-atelier-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .ida-atelier-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.ida-atelier-span2 { grid-column: span 1; }
+@media (min-width: 640px) { .ida-atelier-span2 { grid-column: span 2; } }
+.ida-atelier-actions-inline { display: flex; align-items: flex-end; gap: var(--ida-space-2); flex-wrap: wrap; }
+.ida-atelier-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ida-space-3); flex-wrap: wrap; }
+
+.ida-atelier-fiche { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-2) var(--ida-space-4); margin: 0; }
+@media (min-width: 640px) { .ida-atelier-fiche { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ida-atelier-fiche > div { display: flex; flex-direction: column; gap: var(--ida-space-1); min-width: 0; }
+.ida-atelier-fiche dt { font-size: var(--ida-size-14); color: var(--ida-text-muted); }
+.ida-atelier-fiche dd { margin: 0; overflow-wrap: anywhere; }
+
+.ida-atelier-parts { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-2); }
+@media (min-width: 720px) { .ida-atelier-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ida-atelier-part { display: flex; flex-direction: column; gap: var(--ida-space-1); padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); min-width: 0; }
+.ida-atelier-part-ref { font-family: var(--ida-font-id); overflow-wrap: anywhere; }
+.ida-atelier-part-meta { font-size: var(--ida-size-14); color: var(--ida-text-muted); }
+.ida-atelier-part.is-selected { border-color: var(--ida-primary); }
+
+.ida-atelier-history, .ida-atelier-ops { margin: 0; padding-inline-start: var(--ida-space-4); display: grid; gap: var(--ida-space-1); }
+
+[data-panel="identify"][data-state="resolving"] [data-ident-entry],
+[data-panel="identify"][data-state="resolving"] .ida-search-actions { opacity: .6; pointer-events: none; }

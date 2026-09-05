@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Atelier</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <!-- IDA-V12 — the workshop surface. Same Design System files as / and
+       /admin, mounted under /atelier/ so the page is never phase-gated.
+       No inline style, no inline script: the CSP is the citizen one plus
+       nothing (script-src 'self' 'wasm-unsafe-eval' for the OCR engine). -->
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/atelier.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/atelier" aria-label="IDauto — atelier">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation atelier">
+      <ul class="ida-nav-links">
+        <li><a href="/atelier" aria-current="page">Atelier</a></li>
+        <li><a href="/admin">Admin</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Thème clair ou sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">IDauto · Atelier</p>
+      <h1>Véhicule à l'atelier</h1>
+      <p class="ida-muted ida-u-maxch-52">Lisez la plaque, confirmez le véhicule, trouvez les pièces, enregistrez l'intervention.</p>
+    </header>
+
+    <!-- 0. credential + organisation -->
+    <section class="ida-card ida-stack" aria-labelledby="sec-auth" data-panel="auth">
+      <h2 id="sec-auth" class="ida-h3">Accès</h2>
+      <div class="ida-atelier-grid">
+        <div class="ida-field">
+          <label for="at-token">Jeton d'accès (Bearer)</label>
+          <input class="ida-input" id="at-token" type="password" autocomplete="off" required>
+          <p class="ida-hint">Conservé dans cette page seulement, jamais enregistré dans le navigateur.</p>
+        </div>
+        <div class="ida-field">
+          <label for="at-org">Organisation (identifiant, jeton administrateur seulement)</label>
+          <input class="ida-input" id="at-org" inputmode="numeric" autocomplete="off" placeholder="ex. 3">
+          <p class="ida-hint">Un jeton d'atelier porte déjà son organisation : laissez vide.</p>
+        </div>
+      </div>
+      <p class="ida-small" data-catalog-status aria-live="polite"></p>
+    </section>
+
+    <!-- 1–5. identification, one card, one state at a time -->
+    <section class="ida-card ida-stack" aria-labelledby="sec-ident" data-panel="identify" data-state="idle">
+      <div class="ida-atelier-head">
+        <h2 id="sec-ident" class="ida-h3">1. Identifier le véhicule</h2>
+        <span class="ida-status ida-status--neutral" data-ident-badge>En attente</span>
+      </div>
+
+      <div class="ida-atelier-grid" data-ident-entry>
+        <div class="ida-field">
+          <label for="at-serie">Série</label>
+          <input class="ida-input ida-id" id="at-serie" inputmode="numeric" maxlength="3" autocomplete="off" placeholder="230">
+        </div>
+        <div class="ida-field">
+          <label for="at-type">Type</label>
+          <select class="ida-input" id="at-type">
+            <option value="TU" selected>TU — série normale (تونس)</option>
+            <option value="RS">RS — régime suspensif</option>
+          </select>
+        </div>
+        <div class="ida-field">
+          <label for="at-numero">Numéro</label>
+          <input class="ida-input ida-id" id="at-numero" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="8646">
+        </div>
+      </div>
+      <div class="ida-search-actions">
+        <button type="button" class="ida-btn ida-btn--primary" data-action="scan">Scanner la plaque</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-action="resolve-plate">Rechercher la plaque</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-action="show-manual">Saisie manuelle</button>
+      </div>
+
+      <p class="ida-small ida-muted" data-ident-status aria-live="polite"></p>
+
+      <!-- Confirm / correct: shown when OCR is uncertain -->
+      <div class="ida-alert ida-alert--warning" data-ident-confirm hidden>
+        <div class="ida-stack">
+          <p class="ida-alert-title">Lecture incertaine — confirmez la plaque</p>
+          <p class="ida-small" data-ident-confirm-note></p>
+          <div class="ida-search-actions">
+            <button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-action="confirm-plate">La plaque est correcte</button>
+            <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="scan">Reprendre une photo</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Candidate proposed by a provider or a manual selection -->
+      <div class="ida-alert ida-alert--info" data-ident-candidate hidden>
+        <div class="ida-stack">
+          <p class="ida-alert-title">Véhicule proposé — à confirmer</p>
+          <p class="ida-small" data-ident-candidate-body></p>
+          <p class="ida-caption" data-ident-candidate-source></p>
+          <div class="ida-search-actions">
+            <button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-action="confirm-candidate">Confirmer ce véhicule</button>
+            <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="show-manual">Corriger à la main</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Not found → VIN → manual selection -->
+      <div class="ida-stack" data-ident-manual hidden>
+        <p class="ida-alert ida-alert--info ida-small" data-ident-manual-note>Véhicule introuvable par la plaque. Saisissez le VIN, ou choisissez marque, modèle et motorisation.</p>
+        <div class="ida-atelier-grid">
+          <div class="ida-field ida-atelier-span2">
+            <label for="at-vin">VIN (17 caractères)</label>
+            <input class="ida-input ida-id" id="at-vin" maxlength="17" autocomplete="off" placeholder="VF1RFB00XXXXXXXXX">
+          </div>
+          <div class="ida-field ida-atelier-actions-inline">
+            <button type="button" class="ida-btn ida-btn--secondary" data-action="resolve-vin">Rechercher par VIN</button>
+          </div>
+        </div>
+        <div class="ida-atelier-grid">
+          <div class="ida-field"><label for="at-make">Marque</label><input class="ida-input" id="at-make" autocomplete="off"></div>
+          <div class="ida-field"><label for="at-model">Modèle</label><input class="ida-input" id="at-model" autocomplete="off"></div>
+          <div class="ida-field"><label for="at-motor">Motorisation</label><input class="ida-input" id="at-motor" autocomplete="off" placeholder="1.5 dCi 90"></div>
+          <div class="ida-field"><label for="at-year">Année</label><input class="ida-input" id="at-year" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          <div class="ida-field"><label for="at-engine">Code moteur</label><input class="ida-input" id="at-engine" autocomplete="off"></div>
+          <div class="ida-field"><label for="at-tecdoc">Identifiant catalogue (si connu)</label><input class="ida-input" id="at-tecdoc" inputmode="numeric" autocomplete="off"></div>
+        </div>
+        <div class="ida-search-actions">
+          <button type="button" class="ida-btn ida-btn--secondary" data-action="resolve-manual">Identifier par marque / modèle</button>
+        </div>
+      </div>
+
+      <div class="ida-alert ida-alert--danger" data-ident-error hidden>
+        <div><p class="ida-alert-title" data-ident-error-title></p><p class="ida-small" data-ident-error-body></p></div>
+      </div>
+    </section>
+
+    <!-- 6. fiche -->
+    <section class="ida-card ida-stack" aria-labelledby="sec-fiche" data-panel="fiche" hidden>
+      <div class="ida-atelier-head">
+        <h2 id="sec-fiche" class="ida-h3">2. Fiche véhicule</h2>
+        <span class="ida-status ida-status--neutral" data-fiche-verified></span>
+      </div>
+      <dl class="ida-atelier-fiche" data-fiche-fields></dl>
+      <div class="ida-search-actions">
+        <button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-action="fiche-confirm">Confirmer</button>
+        <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-action="fiche-edit">Modifier</button>
+        <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-action="fiche-refresh">Actualiser</button>
+        <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="fiche-history">Historique</button>
+      </div>
+      <p class="ida-small ida-muted" data-fiche-status aria-live="polite"></p>
+      <div class="ida-stack" data-fiche-edit hidden>
+        <div class="ida-atelier-grid">
+          <div class="ida-field"><label for="fe-make">Marque</label><input class="ida-input" id="fe-make"></div>
+          <div class="ida-field"><label for="fe-model">Modèle</label><input class="ida-input" id="fe-model"></div>
+          <div class="ida-field"><label for="fe-version">Version</label><input class="ida-input" id="fe-version"></div>
+          <div class="ida-field"><label for="fe-motor">Motorisation</label><input class="ida-input" id="fe-motor"></div>
+          <div class="ida-field"><label for="fe-engine">Code moteur</label><input class="ida-input" id="fe-engine"></div>
+          <div class="ida-field"><label for="fe-year">Année</label><input class="ida-input" id="fe-year" inputmode="numeric" maxlength="4"></div>
+          <div class="ida-field"><label for="fe-tecdoc">Identifiant catalogue</label><input class="ida-input" id="fe-tecdoc" inputmode="numeric"></div>
+          <div class="ida-field"><label for="fe-vin">VIN</label><input class="ida-input ida-id" id="fe-vin" maxlength="17"></div>
+        </div>
+        <div class="ida-search-actions">
+          <button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-action="fiche-save">Enregistrer la correction</button>
+          <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="fiche-edit-cancel">Annuler</button>
+        </div>
+      </div>
+      <ol class="ida-atelier-history ida-small" data-fiche-history hidden></ol>
+    </section>
+
+    <!-- 7–8. parts -->
+    <section class="ida-card ida-stack" aria-labelledby="sec-parts" data-panel="parts" hidden>
+      <h2 id="sec-parts" class="ida-h3">3. Pièces compatibles</h2>
+      <p class="ida-small" data-parts-supplier aria-live="polite"></p>
+      <div class="ida-atelier-grid">
+        <div class="ida-field ida-atelier-span2">
+          <label for="at-parts-q">Rechercher une référence, une marque, une pièce</label>
+          <input class="ida-input" id="at-parts-q" autocomplete="off" placeholder="ex. filtre à huile, 0986AF0055">
+        </div>
+        <div class="ida-field ida-atelier-actions-inline">
+          <button type="button" class="ida-btn ida-btn--secondary" data-action="parts-search">Rechercher</button>
+          <button type="button" class="ida-btn ida-btn--ghost" data-action="parts-compatible">Pièces du véhicule</button>
+        </div>
+      </div>
+      <div class="ida-atelier-parts" data-parts-list aria-live="polite"></div>
+      <details class="ida-small">
+        <summary>Ajouter une référence au catalogue local</summary>
+        <div class="ida-atelier-grid ida-u-mbs-2">
+          <div class="ida-field"><label for="np-ref">Référence</label><input class="ida-input" id="np-ref"></div>
+          <div class="ida-field"><label for="np-brand">Marque</label><input class="ida-input" id="np-brand"></div>
+          <div class="ida-field"><label for="np-oe">Référence OE</label><input class="ida-input" id="np-oe"></div>
+          <div class="ida-field"><label for="np-cat">Catégorie</label><input class="ida-input" id="np-cat" placeholder="filtration"></div>
+          <div class="ida-field ida-atelier-span2"><label for="np-name">Désignation</label><input class="ida-input" id="np-name"></div>
+          <div class="ida-field"><label for="np-qty">Stock (quantité)</label><input class="ida-input" id="np-qty" inputmode="numeric" value="0"></div>
+          <div class="ida-field"><label for="np-price">Prix (millimes)</label><input class="ida-input" id="np-price" inputmode="numeric"></div>
+        </div>
+        <div class="ida-search-actions ida-u-mbs-2">
+          <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-action="parts-add">Ajouter, compatible avec ce véhicule</button>
+        </div>
+      </details>
+    </section>
+
+    <!-- 9. workshop -->
+    <section class="ida-card ida-stack" aria-labelledby="sec-work" data-panel="workshop" hidden>
+      <div class="ida-atelier-head">
+        <h2 id="sec-work" class="ida-h3">4. Intervention</h2>
+        <span class="ida-status ida-status--neutral" data-visit-badge></span>
+      </div>
+      <div class="ida-atelier-grid">
+        <div class="ida-field"><label for="at-customer">Référence client (identifiant de votre système, jamais un nom)</label><input class="ida-input" id="at-customer" autocomplete="off" placeholder="CLI-00123"></div>
+        <div class="ida-field"><label for="at-reason">Motif</label><input class="ida-input" id="at-reason" autocomplete="off" placeholder="Vidange + plaquettes"></div>
+      </div>
+      <div class="ida-search-actions">
+        <button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-action="visit-open">Ouvrir la visite</button>
+      </div>
+      <div class="ida-stack" data-visit-body hidden>
+        <div class="ida-atelier-grid">
+          <div class="ida-field"><label for="op-type">Opération</label>
+            <select class="ida-input" id="op-type">
+              <option value="diagnosis">Diagnostic</option><option value="service">Entretien</option><option value="replacement" selected>Remplacement</option>
+              <option value="repair">Réparation</option><option value="inspection">Contrôle</option><option value="other">Autre</option>
+            </select></div>
+          <div class="ida-field ida-atelier-span2"><label for="op-desc">Description</label><input class="ida-input" id="op-desc" autocomplete="off"></div>
+          <div class="ida-field"><label for="op-part">Pièce sélectionnée</label><input class="ida-input" id="op-part" readonly placeholder="— choisir dans la liste —"></div>
+          <div class="ida-field"><label for="op-qty">Quantité</label><input class="ida-input" id="op-qty" inputmode="numeric" value="1"></div>
+        </div>
+        <div class="ida-search-actions">
+          <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-action="op-add">Ajouter l'opération</button>
+          <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-action="order-create">Commander les pièces manquantes</button>
+          <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="visit-close">Clôturer la visite</button>
+        </div>
+        <ul class="ida-atelier-ops ida-small" data-visit-ops></ul>
+      </div>
+      <p class="ida-small ida-muted" data-visit-status aria-live="polite"></p>
+    </section>
+
+  </div>
+</main>
+
+<!-- The scanner dialog: same markup contract as the citizen page, driven by
+     the same plate-scanner.js. -->
+<div class="ida-scan" data-scan-root hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+  <div class="ida-scan-panel ida-card ida-stack">
+    <div class="ida-scan-head">
+      <h2 id="scan-title" class="ida-h3">Scanner la plaque</h2>
+      <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-scan-action="close" aria-label="Fermer le scanner">✕</button>
+    </div>
+    <div data-scan-intro>
+      <p class="ida-small ida-muted">La caméra ne s'ouvre qu'après votre accord. L'image reste sur l'appareil : seul le numéro lu est utilisé.</p>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="start" data-scan-start>Autoriser et ouvrir la caméra</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Saisir à la main</button>
+      </div>
+    </div>
+    <div data-scan-live hidden>
+      <div class="ida-scan-stage"><video data-scan-video playsinline muted autoplay></video><div class="ida-scan-guide" aria-hidden="true"></div></div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="capture">Lire la plaque</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Annuler</button>
+      </div>
+    </div>
+    <div data-scan-busy hidden>
+      <div class="ida-skeleton ida-scan-skeleton" aria-hidden="true"></div>
+      <p class="ida-small ida-muted ida-u-mbs-2">Lecture en cours — la caméra est déjà refermée.</p>
+    </div>
+    <div data-scan-confirm hidden>
+      <p class="ida-alert ida-alert--warning ida-small" data-scan-confirm-note></p>
+      <div class="ida-scan-fields ida-u-mbs-3">
+        <div class="ida-field"><label for="scan-serie">Série</label><input class="ida-input ida-id" id="scan-serie" data-scan-confirm-serie inputmode="numeric" maxlength="3" autocomplete="off"></div>
+        <div class="ida-field"><label for="scan-numero">Numéro</label><input class="ida-input ida-id" id="scan-numero" data-scan-confirm-numero inputmode="numeric" maxlength="4" autocomplete="off"></div>
+      </div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="confirm">Confirmer et rechercher</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-scan-action="retry">Reprendre une photo</button>
+      </div>
+    </div>
+    <div data-scan-error hidden>
+      <div class="ida-alert ida-alert--danger"><div><p class="ida-alert-title" data-scan-error-title></p><p class="ida-small" data-scan-error-body></p></div></div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--secondary" data-scan-action="retry">Réessayer</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Saisir à la main</button>
+      </div>
+    </div>
+    <p class="ida-caption" data-scan-status aria-live="polite"></p>
+  </div>
+</div>
+
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/assets/plate-scanner.js"></script>
+<script src="/atelier/atelier-ui.js"></script>
+</body>
+</html>

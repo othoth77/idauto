@@ -752,6 +752,17 @@ async function resolveVehicleRef(ref) {
   }
 }
 
+// IDA-V12 — the fiche discloses the VIN to a `vin:search` holder. Same rule
+// as the search: recorded before disclosure, VIN never stored, IVID is.
+async function recordVinDisclosureAudit(principal, identity, ivid) {
+  var isOrg = !!(principal && principal.kind === 'organisation' && principal.org_id);
+  await db.query(
+    'INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, org_id, target_type, target_ref, change_summary) ' +
+    'VALUES ($1, $2, $3, $4, $5, $6, $7)',
+    ['vehicle.vin.read', isOrg ? 'professional_user' : 'admin', identity, isOrg ? principal.org_id : null, 'idauto_vehicles', ivid, 'VIN disclosed on the vehicle fiche']
+  );
+}
+
 module.exports = {
   createVehicle: createVehicle,
   mergeVehicle: mergeVehicle,
@@ -759,6 +770,7 @@ module.exports = {
   resolveVehicleRef: resolveVehicleRef,
   recordAnonymousAuditEvent: recordAnonymousAuditEvent,
   recordVinSearchAudit: recordVinSearchAudit,
+  recordVinDisclosureAudit: recordVinDisclosureAudit,
   createPlate: createPlate,
   createObservation: createObservation,
   reviewObservation: reviewObservation,
