@@ -105,6 +105,10 @@ same environment as §3. Expected: **124 passed, 0 failed** and **19 passed, 0 f
 
 `npm run test:v13` runs `tests/ida-v13-auth-session-test.js` (login / password / session cookie / roles / logout / brute force / logs). Same environment as §3 plus `IDAUTO_AUTH_SECRET` (any 32+ character value for a test run; the suite generates one if unset). The V12 suites now also sign in through Better Auth, so they need the V13 migration applied to the scratch database. Expected: **61 passed, 0 failed**.
 
+### 3.4 Browser suites and the sign-in limiter
+
+The three headless-Chrome suites (`ida-v12-atelier-browser`, `ida-v14-registration-browser`, `ida-v14-home-registration-browser`) each set their own `X-Real-IP` through the DevTools protocol. Without it every browser sign-in of a full run shares Better Auth's `no-trusted-ip` bucket (5 sign-ins per minute) and the run fails intermittently at a login (429 « Trop de tentatives »). If a new browser suite is added, copy that `Network.setExtraHTTPHeaders` line. The counters live in `idauto_auth_rate_limit` of the scratch database and can be inspected when a login step fails.
+
 ## 4. What each suite touches
 
 | Suite | Database | Media filesystem | Must run as `deploy` |

@@ -51,6 +51,12 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
   var netLog = [];
   ws.addEventListener('message', function (m) { var d = JSON.parse(m.data); if (d.method === 'Network.responseReceived' && /\/api\/auth\//.test(d.params.response.url)) netLog.push(d.params.response.status + ' ' + d.params.response.url.replace(/^https?:\/\/[^/]+/, '')); });
   async function loginDebug(label) { console.log('     DEBUG ' + label + ': href=' + await ev('location.href') + ' error=' + JSON.stringify(await ev('(document.querySelector("#login-error-body")||{}).textContent||""')) + ' help=' + JSON.stringify(await ev('(document.querySelector("#login-help")||{}).textContent||""')) + ' auth=' + netLog.join(' | ')); }
+  // Better Auth keys its sign-in limit (5/min) on the client IP it trusts from X-Real-IP
+  // (nginx sets it in production). A headless browser sends none, so every browser suite
+  // used to share ONE 'no-trusted-ip' bucket and the 6th sign-in of a full run got 429 —
+  // the intermittent 'login did not redirect' failure. Each suite now presents its own
+  // client address, exactly as distinct visitors behind nginx would.
+  await send('Network.enable'); await send('Network.setExtraHTTPHeaders', { headers: { 'X-Real-IP': '10.77.11.' + (1 + crypto.randomBytes(1)[0] % 250) } });
   await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
 
   // Sign in through the form.

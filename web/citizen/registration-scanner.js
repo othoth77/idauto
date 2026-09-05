@@ -12,6 +12,13 @@
  * in the browser; previews are blob: URLs revoked when the dialog closes.
  * Face 2 is always optional.
  *
+ * TWO MODES, ONE PIPELINE. mode "store" (the atelier): faces are uploaded to
+ * the vehicle, then OCR'd and proposed. mode "identify" (the homepage
+ * « Rechercher par carte grise »): nothing is uploaded — the faces are
+ * OCR'd in the browser and the raw reads are handed to onIdentify(reads);
+ * the host page asks the server to identify the vehicle. Capture, Scanic,
+ * optimisation and OCR are the same functions in both modes.
+ *
  * Libraries (vendored, same-origin, see docs/ARCHITECTURE.md §12):
  *   Scanic 1.6.0 (MIT) — classical detector only, wasm inlined, no network.
  *   Tesseract.js (Apache-2.0) + fra/ara tessdata (Apache-2.0).
@@ -24,7 +31,7 @@
   var root = typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : this);
 
   var cfg = { engineBase: "/atelier/assets/tesseract/", scanicUrl: "/atelier/assets/scanic.umd.js", maxEdge: 1600, quality: 0.85, thumbEdge: 480, thumbQuality: 0.7, processEdge: 1400, minDetectionConfidence: 0.55, languages: "fra+ara" };
-  var state = { els: null, ivid: null, onDone: null, pasteTarget: null, faces: { 1: null, 2: null }, worker: null, workerLoading: null, scanicLoading: null, editor: null, ocrResult: null, urls: [] };
+  var state = { els: null, ivid: null, onDone: null, onIdentify: null, mode: "store", pasteTarget: null, faces: { 1: null, 2: null }, worker: null, workerLoading: null, scanicLoading: null, editor: null, ocrResult: null, urls: [] };
   var STEPS = ["capture", "detect", "correct", "ocr", "analyse", "save"];
   var STEP_FR = { capture: "Capture", detect: "Détection", correct: "Correction", ocr: "OCR", analyse: "Analyse", save: "Enregistrement" };
 
@@ -214,6 +221,7 @@
     return { face: f.face, text: text, confidence: conf };
   }
   async function validate() {
+    if (state.mode === "identify") return identify();
     var base = "/api/vehicles/" + encodeURIComponent(state.ivid) + "/registration-document";
     show("progress"); resetSteps();
     try {
@@ -239,6 +247,24 @@
       el("error-close").textContent = "Fermer";
     }
   }
+  // identify mode: OCR the in-memory faces, hand the reads to the host, close. No upload.
+  async function identify() {
+    show("progress"); resetSteps();
+    try {
+      var faces = [1, 2].filter(function (n) { return state.faces[n]; });
+      setStep("ocr"); status("Lecture du texte (OCR)… première utilisation : chargement du moteur.");
+      var reads = [];
+      for (var j = 0; j < faces.length; j++) reads.push(await ocrFace(state.faces[faces[j]], function (m) { if (m.status === "recognizing text") status("OCR face " + faces[j] + " : " + Math.round(m.progress * 100) + " %"); else status(m.status || "OCR…"); }));
+      setStep("analyse"); status("Identification du véhicule…");
+      var summary = faces.map(function (n) { var f = state.faces[n]; return { face: n, detection: f.detection, original_bytes: f.originalBytes, bytes: f.archive.blob.size, width: f.archive.width, height: f.archive.height }; });
+      close();
+      if (state.onIdentify) await state.onIdentify(reads, summary);
+    } catch (e) {
+      fail("Lecture impossible", (e && e.message) || "L'OCR n'a pas abouti. Réessayez avec une photo plus nette, ou utilisez la recherche par plaque.");
+      el("error-close").textContent = "Fermer";
+    }
+  }
+
   var KEY_FR = { plate: "Plaque", manufacturer: "Marque", model: "Modèle / type", year: "Année", fuel_type: "Énergie", engine_cc: "Cylindrée", seats: "Places", gross_weight_kg: "Poids total (kg)", category_code: "Catégorie", engine_code: "Moteur", vin: "VIN" };
   function renderResult(result) {
     var tbl = el("result-rows"); tbl.textContent = "";
@@ -273,9 +299,13 @@
 
   /* ---------------- lifecycle ---------------- */
   function open(opts) {
-    state.els = { root: opts.root }; state.ivid = opts.ivid; state.onDone = opts.onDone; state.faces = { 1: null, 2: null }; state.ocrResult = null;
+    state.els = { root: opts.root }; state.ivid = opts.ivid || null; state.onDone = opts.onDone || null; state.onIdentify = opts.onIdentify || null;
+    state.mode = opts.mode === "identify" ? "identify" : "store"; state.faces = { 1: null, 2: null }; state.ocrResult = null;
     state.els.root.hidden = false; state.els.root.setAttribute("aria-hidden", "false");
-    renderFaces(); show("faces"); status("Photographiez le recto (face 1). Le verso est optionnel."); el("detect-flag").textContent = "";
+    var v = el("validate"), f1 = el("finish-1");
+    if (v) v.textContent = state.mode === "identify" ? "Rechercher le véhicule" : "Valider la carte grise";
+    if (f1) f1.textContent = state.mode === "identify" ? "Rechercher avec la face 1" : "Terminer avec la face 1";
+    renderFaces(); show("faces"); status(state.mode === "identify" ? "Photographiez le recto (face 1) de la carte grise. Le verso est optionnel. Rien n'est enregistré : la carte sert seulement à retrouver le véhicule." : "Photographiez le recto (face 1). Le verso est optionnel."); el("detect-flag").textContent = "";
     var first = el("pick-1"); if (first) first.focus();
   }
   function close() { state.pasteTarget = null; revokeAll(); if (state.editor) { try { state.editor.destroy(); } catch (e) {} state.editor = null; } if (state.els && state.els.root) { state.els.root.hidden = true; state.els.root.setAttribute("aria-hidden", "true"); } }
@@ -299,5 +329,49 @@
     document.addEventListener("paste", onPasteEvent);
   }
 
-  return { configure: configure, open: open, close: close, bind: bind, optimise: optimise, processFile: processFile, cfg: cfg };
+  /* The dialog markup, so a second host page (the homepage) does not carry
+   * a copy: mount(root) injects it when the root is empty. atelier.html keeps
+   * its inline markup; both are the same contract (data-cg-*). */
+  function template() {
+    return '<div class="ida-scan-panel ida-card ida-stack ida-cg-panel">' +
+      '<div class="ida-scan-head"><h2 id="cg-title" class="ida-h3">Carte grise</h2><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="close" aria-label="Fermer">✕</button></div>' +
+      '<p class="ida-caption" data-cg-status aria-live="polite"></p>' +
+      '<p class="ida-small ida-muted">Caméra, galerie / fichier, ou collage d\'une image (Ctrl+V). Seules les images sont acceptées.</p>' +
+      '<p class="ida-small" data-cg-detect-flag aria-live="polite"></p>' +
+      '<div class="ida-stack" data-cg-faces><div class="ida-cg-faces">' +
+      '<div class="ida-cg-face"><p class="ida-label">Face 1 — Recto</p><img data-cg-preview-1 alt="Aperçu de la face 1" hidden><p class="ida-caption" data-cg-meta-1></p>' +
+      '<div class="ida-search-actions" data-cg-pick-1><label class="ida-btn ida-btn--primary ida-btn--sm">Scanner la face 1<input type="file" accept="image/*" capture="environment" data-cg-file="1" hidden></label>' +
+      '<label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="1" hidden></label>' +
+      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="paste-1" title="Coller une image du presse-papiers (Ctrl+V)">Coller (Ctrl+V)</button></div>' +
+      '<div class="ida-search-actions" data-cg-redo-1 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-1">Refaire la face 1</button></div></div>' +
+      '<div class="ida-cg-face"><p class="ida-label">Face 2 — Verso <span class="ida-muted">(optionnel)</span></p><img data-cg-preview-2 alt="Aperçu de la face 2" hidden><p class="ida-caption" data-cg-meta-2>Optionnel</p>' +
+      '<div class="ida-search-actions" data-cg-pick-2><label class="ida-btn ida-btn--secondary ida-btn--sm">Scanner la face 2 — optionnel<input type="file" accept="image/*" capture="environment" data-cg-file="2" hidden></label>' +
+      '<label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="2" hidden></label>' +
+      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="paste-2" title="Coller une image du presse-papiers (Ctrl+V)">Coller (Ctrl+V)</button></div>' +
+      '<div class="ida-search-actions" data-cg-redo-2 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-2">Refaire la face 2</button></div></div></div>' +
+      '<div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--ghost" data-cg-action="cancel">Annuler</button>' +
+      '<button type="button" class="ida-btn ida-btn--secondary" data-cg-action="finish-1" data-cg-finish-1 hidden>Terminer avec la face 1</button>' +
+      '<button type="button" class="ida-btn ida-btn--primary" data-cg-action="validate" data-cg-validate disabled>Valider la carte grise</button></div></div>' +
+      '<div class="ida-stack" data-cg-editor hidden><p class="ida-alert ida-alert--warning ida-small" data-cg-editor-note>Ajustez les coins de la carte grise.</p><div class="ida-cg-editor" data-cg-editor-host></div>' +
+      '<div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="back">Retour</button></div></div>' +
+      '<div class="ida-stack" data-cg-progress hidden aria-live="polite"><ol class="ida-cg-steps"><li class="ida-cg-step" data-cg-step-capture>Capture</li><li class="ida-cg-step" data-cg-step-detect>Détection</li><li class="ida-cg-step" data-cg-step-correct>Correction</li><li class="ida-cg-step" data-cg-step-ocr>OCR</li><li class="ida-cg-step" data-cg-step-analyse>Analyse</li><li class="ida-cg-step" data-cg-step-save>Enregistrement</li></ol><div class="ida-skeleton ida-scan-skeleton" aria-hidden="true"></div></div>' +
+      '<div class="ida-stack" data-cg-result hidden><p class="ida-alert ida-alert--info ida-small">Informations extraites — une proposition à vérifier. Décochez ce qui ne doit pas être écrit.</p><p class="ida-caption" data-cg-result-conf></p>' +
+      '<p class="ida-small ida-muted" data-cg-result-none hidden>Aucune information technique n\'a pu être lue.</p>' +
+      '<div class="ida-cg-table-wrap"><table class="ida-cg-table"><thead><tr><th scope="col">Champ</th><th scope="col">Lu</th><th scope="col">Statut</th><th scope="col">Écrire</th></tr></thead><tbody data-cg-result-rows></tbody></table></div>' +
+      '<div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--primary" data-cg-action="confirm">Confirmer</button><button type="button" class="ida-btn ida-btn--ghost" data-cg-action="skip">Garder les images seulement</button></div></div>' +
+      '<div class="ida-stack" data-cg-error hidden><div class="ida-alert ida-alert--danger"><div><p class="ida-alert-title" data-cg-error-title></p><p class="ida-small" data-cg-error-body></p></div></div>' +
+      '<div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--secondary" data-cg-action="back" data-cg-error-close>Retour</button></div></div>' +
+      '</div>';
+  }
+  function mount(rootEl) {
+    if (!rootEl.querySelector("[data-cg-faces]")) rootEl.innerHTML = template();
+    if (!rootEl.classList.contains("ida-scan")) rootEl.classList.add("ida-scan");
+    rootEl.setAttribute("role", "dialog"); rootEl.setAttribute("aria-modal", "true"); rootEl.setAttribute("aria-labelledby", "cg-title");
+    if (!rootEl.hasAttribute("hidden")) rootEl.hidden = true;
+    rootEl.setAttribute("aria-hidden", "true");
+    bind(rootEl);
+    return rootEl;
+  }
+
+  return { configure: configure, open: open, close: close, bind: bind, mount: mount, template: template, optimise: optimise, processFile: processFile, cfg: cfg };
 });

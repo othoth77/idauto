@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/assets/tokens.css">
   <link rel="stylesheet" href="/assets/base.css">
   <link rel="stylesheet" href="/assets/components.css">
+  <link rel="stylesheet" href="/assets/document.css">
 </head>
 <body>
 <a class="ida-skip-link" href="#main">Aller au contenu</a>
@@ -106,6 +107,54 @@
           </dl>
           <div class="ida-search-actions">
             <a class="ida-btn ida-btn--primary" data-result-passport href="#">Ouvrir le passeport</a>
+          </div>
+        </div>
+
+        <!-- IDA-V14 (home search) — « Rechercher par carte grise »: the same
+             scanner as the atelier, in identify mode. Nothing is stored and
+             no vehicle is created by a search; châssis-number / make-model lookups need
+             an account, the plate read from the card works for everyone. -->
+        <div class="ida-stack ida-u-maxch-52 ida-u-mx-auto" data-cg-home>
+          <p class="ida-label">Rechercher par carte grise</p>
+          <p class="ida-small ida-muted">Photographiez la carte grise du véhicule (recto ; verso optionnel). La carte est lue sur votre appareil pour retrouver le véhicule : elle n'est ni envoyée ni enregistrée. Les informations du titulaire ne sont jamais utilisées.</p>
+          <div class="ida-search-actions">
+            <button type="button" class="ida-btn ida-btn--secondary" data-cg-home-open hidden>Scanner la carte grise</button>
+          </div>
+          <div class="ida-card ida-stack" data-cg-home-result hidden aria-live="polite">
+            <div data-cg-home-found hidden>
+              <p class="ida-label">Véhicule trouvé</p>
+              <p class="ida-caption" data-cg-home-by></p>
+              <dl class="ida-atelier-fiche">
+                <div><dt>Plaque</dt><dd class="ida-id" data-cg-home-plate></dd></div>
+                <div><dt>Marque</dt><dd data-cg-home-make></dd></div>
+                <div><dt>Modèle</dt><dd data-cg-home-model></dd></div>
+                <div><dt>Motorisation</dt><dd data-cg-home-motor></dd></div>
+                <div data-cg-home-chassis-row hidden><dt>Numéro de châssis</dt><dd class="ida-id" data-cg-home-chassis></dd></div>
+                <div><dt>Identifiant IDauto (IVID)</dt><dd class="ida-id" data-cg-home-ivid></dd></div>
+              </dl>
+              <div class="ida-search-actions"><a class="ida-btn ida-btn--primary" data-cg-home-passport href="#">Ouvrir le passeport</a></div>
+            </div>
+            <div data-cg-home-notfound hidden>
+              <p class="ida-label">Véhicule introuvable</p>
+              <p class="ida-small ida-muted">Aucun véhicule IDauto ne correspond aux informations lues. Rien n'a été créé.</p>
+              <dl class="ida-atelier-fiche">
+                <div><dt>Plaque lue</dt><dd class="ida-id" data-cg-home-nf-plate></dd></div>
+                <div><dt>Marque / modèle lus</dt><dd data-cg-home-nf-make></dd></div>
+                <div data-cg-home-nf-chassis-row hidden><dt>Numéro de châssis lu</dt><dd class="ida-id" data-cg-home-nf-chassis></dd></div>
+                <div><dt>Année lue</dt><dd data-cg-home-nf-year></dd></div>
+              </dl>
+              <div class="ida-search-actions">
+                <a class="ida-btn ida-btn--secondary ida-btn--sm" data-cg-home-nf-plate-link href="#verif-title" hidden>Saisir / valider la plaque</a>
+                <a class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-home-nf-chassis-link href="/atelier">Rechercher par numéro de châssis</a>
+                <a class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-home-nf-mm-link href="/atelier">Rechercher par marque / modèle</a>
+              </div>
+            </div>
+            <div data-cg-home-signin hidden>
+              <p class="ida-label">Connexion requise</p>
+              <p class="ida-small ida-muted">La recherche par numéro de châssis ou par marque / modèle demande un compte IDauto. La recherche par plaque reste ouverte à tous.</p>
+              <div class="ida-search-actions"><a class="ida-btn ida-btn--secondary ida-btn--sm" href="/login?next=%2F">Se connecter</a></div>
+            </div>
+            <div data-cg-home-error hidden><p class="ida-small" data-cg-home-error></p></div>
           </div>
         </div>
 
@@ -247,5 +296,9 @@
 <script src="/assets/ui.js"></script>
 <script src="/assets/plate-scanner.js"></script>
 <script src="/assets/home.js"></script>
+<!-- IDA-V14 (home search) — the carte grise dialog root; the shared scanner injects its markup here (mount()). -->
+<div class="ida-scan" data-cg-root hidden aria-hidden="true"></div>
+<script src="/assets/registration-scanner.js"></script>
+<script src="/assets/home-registration.js"></script>
 </body>
 </html>

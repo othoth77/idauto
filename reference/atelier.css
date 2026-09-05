@@ -30,21 +30,4 @@
 [data-panel="identify"][data-state="resolving"] [data-ident-entry],
 [data-panel="identify"][data-state="resolving"] .ida-search-actions { opacity: .6; pointer-events: none; }
 
-/* IDA-V14 — carte grise dialog */
-.ida-cg-panel { max-width: 44rem; }
-.ida-cg-faces { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-3); }
-@media (min-width: 720px) { .ida-cg-faces { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.ida-cg-face { display: flex; flex-direction: column; gap: var(--ida-space-2); padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); min-width: 0; }
-.ida-cg-face img { max-width: 100%; height: auto; border-radius: var(--ida-radius-control); border: 1px solid var(--ida-border); }
-.ida-cg-face label.ida-btn { cursor: pointer; }
-.ida-cg-editor { position: relative; min-height: 12rem; max-width: 100%; overflow: hidden; }
-.ida-cg-editor img { max-width: 100%; height: auto; }
-.ida-cg-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--ida-space-2); }
-.ida-cg-step { font-size: var(--ida-size-14); color: var(--ida-text-muted); }
-.ida-cg-step.is-active { color: var(--ida-text); font-weight: var(--ida-weight-semibold); }
-.ida-cg-step.is-done { color: var(--ida-verify-strong); }
-.ida-cg-table-wrap { overflow-x: auto; max-width: 100%; }
-.ida-cg-table { border-collapse: collapse; width: 100%; font-size: var(--ida-size-14); }
-.ida-cg-table th, .ida-cg-table td { text-align: left; padding: var(--ida-space-1) var(--ida-space-2); border-bottom: 1px solid var(--ida-border); overflow-wrap: anywhere; }
-.ida-cg-row.is-conflict td:nth-child(3) { color: var(--ida-danger); }
-.ida-cg-row.is-new td:nth-child(3) { color: var(--ida-verify-strong); }
+/* IDA-V14 — the carte grise dialog and the fiche list styles live in web/citizen/document.css (shared with the homepage and the passport). */

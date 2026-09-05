@@ -6,6 +6,22 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-09-05 — ida-v14 (home search): « Rechercher par carte grise » on the homepage
+
+The V14 scanner gains an identify mode and a shared dialog template; the
+homepage mounts it beside the plate search. Capture (camera / gallery /
+Ctrl+V) → Scanic → optimisation → OCR fra+ara in the browser, then the
+shared layer registration-document → vehicle identification
+(`document-service.identify()`, route `POST /api/identify/registration-document`,
+scope `vehicle:resolve`): VIN first (vin:search holders, audited), then
+plate, then exact make/model. Nothing is stored and no vehicle is created
+by a search; anonymous visitors use the plate through the public route.
+Result card with « Ouvrir le passeport »; « Véhicule introuvable » with
+the useful OCR data and the existing options. The public homepage never
+uses the word VIN (« numéro de châssis »). Tests:
+`ida-v14-home-registration` (API/structure) and
+`ida-v14-home-registration-browser` (real pipeline, anonymous + signed in).
+
 ## 2026-09-05 — ida-v14: carte grise scanner V1
 
 Owner order « Carte grise scanner V1 ». `/atelier` gains « Ouvrir le

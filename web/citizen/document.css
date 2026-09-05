@@ -4,3 +4,25 @@
 .ida-cg-thumb img { max-width: 100%; height: auto; border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); cursor: zoom-in; }
 .ida-cg-full { position: fixed; inset: 0; background: var(--ida-scrim); display: flex; align-items: center; justify-content: center; padding: var(--ida-space-3); z-index: 50; }
 .ida-cg-full img { max-width: 100%; max-height: 100%; }
+
+/* carte grise dialog + fiche list, shared by the atelier and the homepage (IDA-V14) */
+.ida-cg-panel { max-width: 44rem; }
+.ida-cg-faces { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-3); }
+@media (min-width: 720px) { .ida-cg-faces { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ida-cg-face { display: flex; flex-direction: column; gap: var(--ida-space-2); padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); min-width: 0; }
+.ida-cg-face img { max-width: 100%; height: auto; border-radius: var(--ida-radius-control); border: 1px solid var(--ida-border); }
+.ida-cg-face label.ida-btn { cursor: pointer; }
+.ida-cg-editor { position: relative; min-height: 12rem; max-width: 100%; overflow: hidden; }
+.ida-cg-editor img { max-width: 100%; height: auto; }
+.ida-cg-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--ida-space-2); }
+.ida-cg-step { font-size: var(--ida-size-14); color: var(--ida-text-muted); }
+.ida-cg-step.is-active { color: var(--ida-text); font-weight: var(--ida-weight-semibold); }
+.ida-cg-step.is-done { color: var(--ida-verify-strong); }
+.ida-cg-table-wrap { overflow-x: auto; max-width: 100%; }
+.ida-cg-table { border-collapse: collapse; width: 100%; font-size: var(--ida-size-14); }
+.ida-cg-table th, .ida-cg-table td { text-align: left; padding: var(--ida-space-1) var(--ida-space-2); border-bottom: 1px solid var(--ida-border); overflow-wrap: anywhere; }
+.ida-atelier-fiche { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-2) var(--ida-space-4); margin: 0; text-align: left; }
+@media (min-width: 640px) { .ida-atelier-fiche { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ida-atelier-fiche > div { display: flex; flex-direction: column; gap: var(--ida-space-1); min-width: 0; }
+.ida-atelier-fiche dt { font-size: var(--ida-size-14); color: var(--ida-text-muted); }
+.ida-atelier-fiche dd { margin: 0; overflow-wrap: anywhere; }
