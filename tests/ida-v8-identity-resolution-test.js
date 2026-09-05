@@ -84,7 +84,14 @@ async function main() {
   var A = a.body, B = b.body;
   ok(A.ivid && B.ivid && A.ivid !== B.ivid, 'each record got its own IVID');
 
-  var plate = '188 TUN ' + (1000 + Math.floor(Math.random() * 8999));
+  // Deterministically unique in this (persistent) scratch database: the
+  // smallest free numéro of the 188 série, never a random draw that can
+  // collide with an earlier run's plate.
+  var usedNumeros = (await db.query("SELECT plate_number FROM idauto_plates WHERE plate_number LIKE '188 TUN %'")).rows
+    .map(function (r) { return parseInt(r.plate_number.split(' ')[2], 10); });
+  var numero = 1000; while (usedNumeros.indexOf(numero) !== -1) numero++;
+  if (numero > 9999) throw new Error('no free plate left in série 188 — reset the scratch database');
+  var plate = '188 TUN ' + numero;
   await request('POST', '/api/plates', TOKEN, { plate_number: plate, format_code: 'TUN_STD', vehicle_internal_ref: A.internal_ref });
   await request('POST', '/api/vehicles/' + encodeURIComponent(A.internal_ref) + '/facts', TOKEN,
     { fact_key: 'colour', fact_value: 'blanc', access_scope: 'public', evidence_type: 'document_scan_official' });

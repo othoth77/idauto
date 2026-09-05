@@ -77,6 +77,13 @@ function request(method, p, token, body) {
   });
 }
 
+async function unusedPlate(serie) {
+  var used = (await db.query("SELECT plate_number FROM idauto_plates WHERE plate_number LIKE $1", [serie + ' TUN %'])).rows
+    .map(function (r) { return parseInt(r.plate_number.split(' ')[2], 10); });
+  for (var n = 1000; n <= 9999; n++) if (used.indexOf(n) === -1) return serie + ' TUN ' + n;
+  throw new Error('no free plate left in série ' + serie + ' — reset the scratch database');
+}
+
 async function vinAuditCount() {
   return (await db.query("SELECT count(*)::int n FROM idauto_audit_log WHERE event_type = 'vehicle.search.vin'")).rows[0].n;
 }
@@ -151,7 +158,11 @@ async function main() {
    * 3. CASE 1 — an authorised plate: search → Vehicle ID → get.
    * ===================================================================== */
   say('\n3. CASE 1 — plate → search → Vehicle ID → Get');
-  var PLATE = '188 TUN ' + (1000 + Math.floor(Math.random() * 8999));
+  // Deterministically unique in THIS database: the scratch database persists
+  // between runs, so a random number alone eventually collides with a plate
+  // created by an earlier run (seen once as a 1/9000 flake). Take the
+  // smallest 4-digit numéro of the 188 série that no plate row uses yet.
+  var PLATE = await unusedPlate('188');
   await request('POST', '/api/plates', ADMIN, { plate_number: PLATE, format_code: 'TUN_STD', vehicle_internal_ref: REF });
 
   var byPlate = await request('GET', '/api/search/vehicles?plate=' + encodeURIComponent(PLATE), ORG_A);
@@ -170,7 +181,7 @@ async function main() {
    * 4. CASE 2 — an unknown vehicle: search → not found → create → get.
    * ===================================================================== */
   say('\n4. CASE 2 — unknown vehicle → Not Found → Create → Vehicle ID → Get');
-  var GHOST = '199 TUN ' + (1000 + Math.floor(Math.random() * 8999));
+  var GHOST = await unusedPlate('199');   // must NOT exist: same guarantee, other série
   var miss = await request('GET', '/api/search/vehicles?plate=' + encodeURIComponent(GHOST), ORG_A);
   ok(miss.status === 200 && miss.body.count === 0, 'an unknown plate returns an empty result set, not an error');
 
