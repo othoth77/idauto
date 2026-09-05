@@ -22,3 +22,22 @@
 | 16 | Server: `journalctl --user -u idauto-api` during the test | Events `registration_document_stored` / `registration_ocr_done` with sizes and counts only; no OCR text, no name, no path | ☐ |
 
 Record: phone model, Chrome version, photo size before/after, OCR fields read correctly / missed, and any step where the corner editor was needed. A missed field is acceptable (the person types it); a **wrong field pre-checked** is not — report it.
+
+---
+
+## Reaching the branch from the phone (test instance, not production)
+
+1. Start the branch on the host against a scratch database (creates the tester account, manager of a test organisation):
+   ```bash
+   IDAUTO_DEPLOY_ENV=/home/deploy/deployments/idauto-postgres/.env IDAUTO_DB_NAME=idauto_scratch_final \
+   IDAUTO_MEDIA_STORAGE_PATH=/home/deploy/deployments/idauto-api/media-test-final \
+   IDAUTO_TEST_EMAIL=testeur@idauto.test IDAUTO_NEW_PASSWORD='<12+ characters, typed here only>' \
+   ops/staging-v14.sh
+   ```
+   The scratch database must carry every migration up to `ida-v14` (`docs/DATABASE.md` §1). The instance listens on `127.0.0.1:3999` only.
+2. Give the phone an HTTPS origin — the camera API requires a secure context. Either:
+   - **staging vhost (recommended):** an nginx server block `staging.idauto.tn` → `127.0.0.1:3999` with a Let's Encrypt certificate (owner step: DNS + certbot), or
+   - **tunnel for one test session:** from a laptop, `ssh -L 3999:127.0.0.1:3999 deploy@<host>`; on the Android phone (same Wi-Fi), open `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add `http://<laptop-ip>:3999`, relaunch Chrome. This flag is Chrome's supported way to test camera features on a non-TLS origin; remove it after the test.
+3. Sign in at `/login` with the tester account and run the 16 steps above. Delete the faces at the end; the scratch database and media directory hold nothing else of value and can be dropped.
+
+**This checklist has not been executed yet.** It needs a person, an Android phone and a real Tunisian carte grise; the automated suites cover the same journey on a synthetic card only.
