@@ -14,6 +14,7 @@ from this origin through the explicit map in `reference/api.js`.
 | `tesseract-core-{,simd-,relaxedsimd-}lstm.wasm.js` | emscripten glue — the engine feature-detects and imports ONE |
 | `tesseract-core-{,simd-,relaxedsimd-}lstm.wasm` | the matching WebAssembly binary |
 | `eng.traineddata.gz` | English model, `tessdata_fast` (Apache-2.0) |
+| `fra.traineddata.gz`, `ara.traineddata.gz` | French and Arabic models, `tessdata_best_int` (Apache-2.0), IDA-V14 — the carte grise scanner (`web/citizen/registration-scanner.js`) runs `fra+ara` with page-segmentation 6. Downloaded once, after the first « Valider la carte grise ». |
 
 All three core variants are present because a missing one is a hard failure,
 not a fallback: Chrome requests `relaxedsimd`, older engines `simd`, and the

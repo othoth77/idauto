@@ -118,6 +118,7 @@ Nothing in this repository pretends to be further along than it is.
 | Parts: local catalogue + organisation stock, `TecDocAdapter` (IDA-V12) | **IMPLEMENTED** — TecDoc access **NOT CONFIGURED** (« Catalogue fournisseur non configuré ») |
 | Workshop: visits, operations, orders, `/atelier` page (IDA-V12) | **IMPLEMENTED** — customer identity stays in the workshop's own system (opaque reference only) |
 | Mock providers | tests only — refuse to construct in production |
+| Carte grise scanner: capture → Scanic → optimisation → face 1 / face 2 → OCR fra+ara → parser → conflicts → confirmation → passport (IDA-V14) | **IMPLEMENTED** — images in the private media store, technical fields only, retention and legal basis « à définir » (`docs/PRIVACY.md`) |
 | Web authentication: `/login` (e-mail + password, Better Auth), server-side sessions, HttpOnly + Secure cookie, roles admin / manager / technician (IDA-V13) | **IMPLEMENTED** — the manual admin access token is gone from every web page; Bearer remains for server-to-server integrations |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /

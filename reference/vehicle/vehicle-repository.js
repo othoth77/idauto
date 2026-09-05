@@ -30,9 +30,9 @@ var VEHICLE_COLUMNS =
   'v.category_code, v.fiche_status, v.merged_into_id, v.created_at, v.updated_at, ' +
   'v.motorisation, v.engine_code, v.year_from, v.year_to, v.tecdoc_car_id, ' +
   'v.identification_source, v.identification_source_at, v.identification_confidence, v.identification_verified, ' +
-  'v.identification_verified_by, v.identification_verified_at, v.identification_method';
+  'v.identification_verified_by, v.identification_verified_at, v.identification_method, v.seats, v.gross_weight_kg, v.body_type';
 
-var IDENT_FIELDS = ['make', 'model', 'variant', 'year', 'fuel_type', 'engine_cc', 'motorisation', 'engine_code', 'year_from', 'year_to', 'tecdoc_car_id'];
+var IDENT_FIELDS = ['make', 'model', 'variant', 'year', 'fuel_type', 'engine_cc', 'motorisation', 'engine_code', 'year_from', 'year_to', 'tecdoc_car_id', 'seats', 'gross_weight_kg', 'category_code', 'body_type'];
 
 function identSnapshot(row) {
   var out = {};
@@ -131,7 +131,7 @@ async function record(row, opts) {
     manufacturer: row.make, model: row.model, version: row.variant,
     motorisation: row.motorisation, engine_code: row.engine_code,
     year: row.year, year_from: row.year_from, year_to: row.year_to,
-    fuel_type: row.fuel_type, engine_cc: row.engine_cc,
+    fuel_type: row.fuel_type, engine_cc: row.engine_cc, seats: row.seats, gross_weight_kg: row.gross_weight_kg, category_code: row.category_code, body_type: row.body_type,
     tecdoc_car_id: row.tecdoc_car_id,
     source: row.identification_source, source_timestamp: row.identification_source_at,
     confidence: row.identification_confidence,
@@ -159,8 +159,8 @@ function cleanIdentFields(input) {
     if (!isFinite(v) || v < min || v > max) throw errors.IdautoError('VALIDATION', { field: k });
     out[k] = v;
   };
-  s('make', 80); s('model', 80); s('variant', 80); s('motorisation', 80); s('engine_code', 30); s('fuel_type', 20);
-  n('year', 1900, 2100); n('year_from', 1900, 2100); n('year_to', 1900, 2100); n('engine_cc', 1, 20000); n('tecdoc_car_id', 1, 2147483647);
+  s('make', 80); s('model', 80); s('variant', 80); s('motorisation', 80); s('engine_code', 30); s('fuel_type', 20); s('body_type', 40); s('category_code', 10);
+  n('year', 1900, 2100); n('year_from', 1900, 2100); n('year_to', 1900, 2100); n('engine_cc', 1, 20000); n('tecdoc_car_id', 1, 2147483647); n('seats', 1, 99); n('gross_weight_kg', 1, 100000);
   if (input.manufacturer !== undefined && out.make === undefined && input.manufacturer) out.make = String(input.manufacturer).trim().slice(0, 80);
   if (input.version !== undefined && out.variant === undefined && input.version) out.variant = String(input.version).trim().slice(0, 80);
   return out;

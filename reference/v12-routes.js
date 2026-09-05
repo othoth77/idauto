@@ -52,14 +52,19 @@ var ATELIER_ASSETS = {
   '/atelier/assets/ui.js': { root: WEB_ROOT, file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/plate.js': { root: WEB_ROOT, file: 'design-system/js/plate.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/plate-scanner.js': { root: WEB_ROOT, file: 'citizen/plate-scanner.js', contentType: 'application/javascript; charset=utf-8' },
-  '/atelier/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' }
+  '/atelier/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
+  // IDA-V14 — carte grise scanner: Scanic (MIT, vendored UMD, wasm inlined), the shared parser, the scanner module.
+  '/atelier/assets/scanic.umd.js': { root: WEB_ROOT, file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/assets/registration-parser.js': { file: 'documents/registration-parser.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/assets/registration-scanner.js': { root: WEB_ROOT, file: 'citizen/registration-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/assets/document.css': { root: WEB_ROOT, file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' }
 };
 // The OCR engine files are the same vendored files the citizen page uses;
 // plate-scanner.js loads them from /assets/tesseract/, which api.js serves
 // only in the PUBLIC phase. The atelier page passes its own engine base so
 // it works in either phase. Each path is listed explicitly.
 ['tesseract.min.js', 'worker.min.js', 'tesseract-core-lstm.wasm.js', 'tesseract-core-lstm.wasm', 'tesseract-core-simd-lstm.wasm.js', 'tesseract-core-simd-lstm.wasm',
-  'tesseract-core-relaxedsimd-lstm.wasm.js', 'tesseract-core-relaxedsimd-lstm.wasm', 'eng.traineddata.gz'].forEach(function (f) {
+  'tesseract-core-relaxedsimd-lstm.wasm.js', 'tesseract-core-relaxedsimd-lstm.wasm', 'eng.traineddata.gz', 'ara.traineddata.gz', 'fra.traineddata.gz'].forEach(function (f) {
   var ct = /\.wasm$/.test(f) ? 'application/wasm' : /\.gz$/.test(f) ? 'application/octet-stream' : 'application/javascript; charset=utf-8';
   ATELIER_ASSETS['/atelier/assets/tesseract/' + f] = { root: WEB_ROOT, file: 'vendor/tesseract/' + f, contentType: ct };
 });

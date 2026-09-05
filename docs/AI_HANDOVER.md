@@ -1,6 +1,22 @@
 # IDauto — Implementation Record (AI Handover)
 
-## Current record — 2026-09-05 IDA-V13 LOGIN / PASSWORD + SESSION COOKIE (branch `ida-v13-auth-session`)
+## Current record — 2026-09-05 IDA-V14 CARTE GRISE SCANNER V1 (branch `ida-v14-carte-grise`)
+
+**Date:** 2026-09-05 · **Phase:** owner order « Carte grise scanner V1 » on `main` @ `0f2ad92` (production, untouched). Worktree `/home/deploy/projects/idauto-final`.
+
+**Phase 0 findings:** no « Ouvrir le passeport » button existed on `/atelier` (it is the passport page's own submit); both buttons were added to the fiche card. Vehicles are read by IVID through `vehicleRepository.findByRef()`; identification writes go only through `resolver.confirm()`; the passport page renders `GET /public/passport/:ivid` (anonymous) so the document section had to come from an authenticated route. An upload path already existed (`readBinaryBody` + `reference/storage.js`, content-addressed private media root) and is reused through a new abstraction. Auth: V13 session + `X-IDauto-Session`, scopes gate.
+
+**Changes:** migration `ida-v14-registration-document.sql` (`idauto_vehicle_documents`, face 1/2 unique per vehicle, `carte_grise_ocr` method); `reference/documents/` (`document-storage.js` abstraction + local adapter, `image-meta.js` sniffing, `document-repository.js`, `document-service.js`, `registration-parser.js` shared UMD); `reference/v14-routes.js` (7 routes, scopes `document:*`); `reference/auth/principal.js` scopes; `vehicle-repository.js` accepts seats / gross_weight_kg / category_code / body_type; `web/citizen/registration-scanner.js` (capture → Scanic → optimisation → faces → Tesseract fra+ara → server parser → proposal → confirm); atelier dialog + buttons; `web/citizen/passport-document.js` (signed-in section, blob: thumbnails, zoom); vendored Scanic 1.6.0 (MIT) and fra/ara tessdata (Apache-2.0); `.env.example`; docs PRIVACY (new), SECURITY, API, ARCHITECTURE §12, DEPLOYMENT §5, README, CHANGELOG, tesseract README.
+
+**Tests:** `tests/ida-v14-registration-document-test.js` 68/0 (API: sniffing, limits, faces, replacement, deletion, org isolation, roles, OCR proposal on a synthetic card text, conflicts, single write path, provenance, logs). `tests/ida-v14-registration-browser-test.js`: the real pipeline on a synthetic card drawn and "photographed" (rotated, skewed) in headless Chrome — result in the delivery report. Full regression: see the delivery report.
+
+**Not done / à définir:** retention period and legal basis of storing the document image (`docs/PRIVACY.md`; `carte_grise_scan.legal_status` stays LEGAL-REVIEW-REQUIRED in the config); the label vocabulary of the parser is unvalidated against real Tunisian cards (a person always confirms); HEIC input relies on the browser's decoder; no S3 adapter (interface only).
+
+**Remaining (owner):** review, merge, backup, migration, restart, phone test on a real card (`DEPLOYMENT.md` §5).
+
+---
+
+## Previous record — 2026-09-05 IDA-V13 LOGIN / PASSWORD + SESSION COOKIE (branch `ida-v13-auth-session`)
 
 **Date:** 2026-09-05 · **Phase:** owner order « supprimer l'authentification par access token ».
 Worktree `/home/deploy/projects/idauto-final` on `main` @ `b0d2eb2` (production, untouched).

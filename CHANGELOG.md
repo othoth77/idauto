@@ -6,6 +6,26 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-09-05 — ida-v14: carte grise scanner V1
+
+Owner order « Carte grise scanner V1 ». `/atelier` gains « Ouvrir le
+passeport » and « Scanner la carte grise » beside the fiche. Browser
+pipeline: camera / gallery / clipboard paste (Ctrl+V, images only) → Scanic 1.6.0 (MIT, vendored, wasm inlined)
+corner detection + perspective correction, manual 4-corner editor as
+fallback → EXIF rotation, resize 1600 px, JPEG 0.85 + 480 px thumbnail →
+face 1 (required) / face 2 (optional, never alone) → Tesseract.js fra+ara
+in a worker → server parser `TunisianRegistrationDocumentParser`
+(technical fields only; holder lines dropped; raw text never stored) →
+comparison same / new / conflict → proposal table → `resolver.confirm()`
+with provenance `carte_grise_ocr`. Server: `RegistrationDocumentStorage`
+abstraction (local adapter on the private media root), byte sniffing,
+limits, org-scoped `idauto_vehicle_documents` (migration ida-v14), audited
+store / replace / delete / OCR, authenticated image route, passport section
+for signed-in users. Tests: `ida-v14-registration-document` (API, 68) and
+`ida-v14-registration-browser` (real pipeline on a synthetic card in
+headless Chrome). Docs: PRIVACY (new), SECURITY, API, ARCHITECTURE §12,
+DEPLOYMENT §5, AI_HANDOVER. Retention and legal basis: « à définir ».
+
 ## 2026-09-05 — ida-v13: login / password + server-side session cookie (Better Auth)
 
 Owner order: remove the manual admin access-token model from the web UI.

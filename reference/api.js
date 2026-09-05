@@ -64,6 +64,7 @@ var session = require('./session.js');
 var v12Routes = require('./v12-routes.js');
 var plateNormalizer = require('./vehicle/plate-normalizer.js');
 var sessionAuth = require('./auth/principal.js');
+var v14Routes = require('./v14-routes.js');
 
 //
 // IDA-V1B, 2026-08-27 — OWNER SESSION.
@@ -463,6 +464,9 @@ var CITIZEN_ASSETS = {
   '/assets/passport-render.js': { file: 'citizen/passport-render.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/home.js': { file: 'citizen/home.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/passport.js': { file: 'citizen/passport.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-V14 — the carte grise section of the passport (signed-in users only; the script asks the authenticated route).
+  '/assets/passport-document.js': { file: 'citizen/passport-document.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/document.css': { file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' },
   '/assets/favicon.svg': { file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
 
   /* IDA-V11 — the plate scanner's OCR engine, vendored under web/vendor like
@@ -2036,7 +2040,9 @@ var ROUTE_SCOPES = [
 // and the SAME scope gate. Their scopes join this table; their handlers
 // join ROUTES below. Nothing under /public/ is added.
 var v12 = v12Routes.createV12({ sendJson: sendJson, readJsonBody: readJsonBody, requireScope: requireScope, decodePathSegment: decodePathSegment });
-var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes);
+// IDA-V14 — carte grise routes, same gate, same discipline.
+var v14 = v14Routes.createV14({ sendJson: sendJson, readJsonBody: readJsonBody, readBinaryBody: readBinaryBody, requireScope: requireScope, decodePathSegment: decodePathSegment, resolver: v12.resolver });
+var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes, v14.scopes);
 
 function scopeForRoute(method, pathname) {
   for (var i = 0; i < ALL_ROUTE_SCOPES.length; i++) {
@@ -2072,7 +2078,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/facts\/([^/]+)\/evidence$/, handler: function (req, res, m) { return getEvidenceForFact(res, decodePathSegment(m[1])); } }
 ];
 
-var ALL_ROUTES = ROUTES.concat(v12.routes);
+var ALL_ROUTES = ROUTES.concat(v14.routes, v12.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
 
 function createServer() {
   return http.createServer(function (req, res) {
@@ -2203,6 +2209,7 @@ module.exports = {
   // IDA-V12: exported for the v12 suites (provider/catalogue injection is
   // done through v12-routes.createV12 in tests; these expose the live ones).
   _v12: v12,
+  _v14: v14,
   // IDA-V13: exported for tests/ida-v13-auth-session-test.js.
   _authenticate: authenticate,
   _loginAssets: ['/login', '/login/', '/login/login-ui.js', '/login/login.css']

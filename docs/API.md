@@ -41,6 +41,20 @@ Roles: **admin** (everything, may act for an organisation by naming `org_id`), *
 
 `:ref` = IVID or `internal_ref`. Vehicle record fields: `id, internal_ref, plate, plate_display, registration_type, plates[], vin?, vin_present, manufacturer, model, version, motorisation, engine_code, year, year_from, year_to, fuel_type, engine_cc, tecdoc_car_id, source, source_timestamp, confidence, verified, verified_by, verified_at, verification_method, fiche_status, created_at, updated_at`.
 
+## Registration document — carte grise (IDA-V14)
+
+| Route | Scope | Notes |
+|---|---|---|
+| `GET /api/vehicles/:ref/registration-document` | `document:read` | `{ vehicle, has_document, faces:{ 1: meta|null, 2: meta|null }, ocr:{ status, confidence, fields[] }|null }` — only the caller's organisation's document (admin: any) |
+| `PUT /api/vehicles/:ref/registration-document/:face` | `document:write` | body = the optimised image bytes (JPEG/PNG/WebP, sniffed; ≤ 6 MB; 400–5000 px). Headers `X-IDauto-Original-Bytes`, `X-IDauto-Capture: auto|manual|none`, `X-IDauto-Quality`, `X-IDauto-Max-Edge`. 201 created / 200 replaced · 409 face 2 without face 1 · 413 too large · 415 not an image |
+| `PUT …/registration-document/:face/thumbnail` | `document:write` | ≤ 512 KB |
+| `GET …/registration-document/:face/image?variant=thumb` | `document:read` | the bytes, `Cache-Control: private, no-store` · 404 when absent or another organisation's |
+| `DELETE …/registration-document/:face` | `document:delete` | manager / admin |
+| `POST …/registration-document/ocr` | `document:write` | `{ faces:[{ face, text, confidence }] }` → `{ fields[], candidate, comparison:{ items[{ key, proposed, current, status: same|new|conflict }], conflicts }, requires_confirmation:true }` — text parsed in memory, never stored |
+| `POST …/registration-document/confirm` | `vehicle:write` | `{ candidate, plate?, vin?, confidence }` → `resolver.confirm()` with method/source `carte_grise_ocr` |
+
+Uploads and OCR runs: 60 per user per 10 minutes.
+
 ## Catalogue and parts
 
 | Route | Scope | Notes |
