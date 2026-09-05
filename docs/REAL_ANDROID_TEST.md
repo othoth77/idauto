@@ -25,19 +25,25 @@ Record: phone model, Chrome version, photo size before/after, OCR fields read co
 
 ---
 
-## Reaching the branch from the phone (test instance, not production)
+## Reaching the branch from the phone (staging instance, never production)
 
-1. Start the branch on the host against a scratch database (creates the tester account, manager of a test organisation):
-   ```bash
-   IDAUTO_DEPLOY_ENV=/home/deploy/deployments/idauto-postgres/.env IDAUTO_DB_NAME=idauto_scratch_final \
-   IDAUTO_MEDIA_STORAGE_PATH=/home/deploy/deployments/idauto-api/media-test-final \
-   IDAUTO_TEST_EMAIL=testeur@idauto.test IDAUTO_NEW_PASSWORD='<12+ characters, typed here only>' \
-   ops/staging-v14.sh
-   ```
-   The scratch database must carry every migration up to `ida-v14` (`docs/DATABASE.md` §1). The instance listens on `127.0.0.1:3999` only.
-2. Give the phone an HTTPS origin — the camera API requires a secure context. Either:
-   - **staging vhost (recommended):** an nginx server block `staging.idauto.tn` → `127.0.0.1:3999` with a Let's Encrypt certificate (owner step: DNS + certbot), or
-   - **tunnel for one test session:** from a laptop, `ssh -L 3999:127.0.0.1:3999 deploy@<host>`; on the Android phone (same Wi-Fi), open `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add `http://<laptop-ip>:3999`, relaunch Chrome. This flag is Chrome's supported way to test camera features on a non-TLS origin; remove it after the test.
-3. Sign in at `/login` with the tester account and run the 16 steps above. Delete the faces at the end; the scratch database and media directory hold nothing else of value and can be dropped.
+The staging instance is prepared on the VPS: branch `ida-v14-carte-grise`, **scratch database `idauto_scratch_android`** owned by the dedicated PostgreSQL role `idauto_staging` (no access to `idauto_production`, verified), media in `/home/deploy/deployments/idauto-staging/media`, port **3999** on loopback, throwaway Better Auth secret generated at each start, no organisation service credentials. Environment: `/home/deploy/deployments/idauto-staging/.env` (0600, `deploy`).
+
+| Action | Command (as `deploy`, in the branch checkout) |
+|---|---|
+| start | `ops/staging-v14.sh start` |
+| stop | `ops/staging-v14.sh stop` |
+| status | `ops/staging-v14.sh status` |
+| prove the database is scratch (and that production is unreachable with this role) | `ops/staging-v14.sh check-db` |
+| create the tester account | `IDAUTO_TEST_EMAIL=… IDAUTO_NEW_PASSWORD='…' ops/staging-v14.sh user` |
+
+**HTTPS for the phone (required for the camera).** The nginx server block `/etc/nginx/sites-available/staging.idauto.tn` (→ 127.0.0.1:3999, `noindex`) is written but **not enabled**. Owner steps, in order:
+1. DNS: create the A record `staging.idauto.tn → 51.68.226.211` (same host as idauto.tn). No record exists today.
+2. On the host: `ln -s /etc/nginx/sites-available/staging.idauto.tn /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx`, then `certbot --nginx -d staging.idauto.tn` (adds the 443 block and the redirect).
+3. `https://staging.idauto.tn/login` from the phone.
+
+**Fallback without DNS (one session):** on a laptop `ssh -L 3999:127.0.0.1:3999 deploy@51.68.226.211`; start the instance with `IDAUTO_STAGING_INSECURE=1 ops/staging-v14.sh start` (cookies without `Secure`, staging only); on the Android phone (same Wi-Fi as the laptop) set `chrome://flags/#unsafely-treat-insecure-origin-as-secure` to `http://<laptop-ip>:3999`, relaunch Chrome, open `http://<laptop-ip>:3999/login`. Remove the flag afterwards.
+
+Delete the faces at the end of the test; the scratch database and media directory can be dropped.
 
 **This checklist has not been executed yet.** It needs a person, an Android phone and a real Tunisian carte grise; the automated suites cover the same journey on a synthetic card only.
