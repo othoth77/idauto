@@ -1,6 +1,27 @@
 # IDauto — Implementation Record (AI Handover)
 
-## Current record — 2026-09-05 IDA-V12 FINAL COMPLETION (branch `ida-v12-final-completion`)
+## Current record — 2026-09-05 IDA-V13 LOGIN / PASSWORD + SESSION COOKIE (branch `ida-v13-auth-session`)
+
+**Date:** 2026-09-05 · **Phase:** owner order « supprimer l'authentification par access token ».
+Worktree `/home/deploy/projects/idauto-final` on `main` @ `b0d2eb2` (production, untouched).
+
+**Audit of the old model (classification):**
+- **A — removed from the web UI:** the "Bearer token" field of `/admin` and `/admin/review`, the "Jeton d'accès" field of `/atelier`, `tokenProblem()` / paste diagnostics in `admin-ui.js`, the `Authorization: Bearer` header built by the pages, enrolment of the owner cookie by token.
+- **B — kept, server-to-server:** `IDAUTO_ADMIN_IDENTITIES` organisation service credentials (atelier.fixpert.tn contract §2), parsed by `reference/identity.js`; the admin entries in that map still work for scripts and are the follow-up removal after production validation.
+- **C — kept, configuration secrets:** `IDAUTO_SESSION_SECRET` (owner cookie), `IDAUTO_DB_PASSWORD`, provider/TecDoc keys; new `IDAUTO_AUTH_SECRET`.
+- **D — new session credential:** cookie `idauto.session_token` (HttpOnly, SameSite=Lax, Path=/, Secure in production), row in `idauto_auth_session`, validated server-side on every request.
+
+**Changes:** `reference/auth/auth.js` (Better Auth 1.7.2 on the existing pg pool; scrypt; 12 h sliding sessions; rate limit 5 sign-ins/min per client IP stored in DB; secure cookies in production), `reference/auth/principal.js` (session → principal: admin `*`; manager / technician → organisation scopes; allow-list of the auth routes — sign-up unreachable), `api.js` `authenticate()` (Bearer | owner cookie | user session + `X-IDauto-Session`), `/login` page (French), `/atelier` → 302 `/login` without session, consoles without token field + session line + Déconnexion, `GET /session` reports the user, `ops/auth-users.js` (create / set-password / set-role / list / revoke-sessions / delete; password typed without echo), migration `ida-v13-auth-session.sql` (5 additive tables, applied twice on scratch), `.env.example`, docs (SECURITY, API, ARCHITECTURE §11, DEPLOYMENT §4, PRIVACY addendum, ID_AUTO_INTEGRATION, README, CHANGELOG, TEST_RUNBOOK §3.3).
+
+**Tests:** `tests/ida-v13-auth-session-test.js` 61/0 (the 17 checks of the order + roles, CSRF header, Origin, sign-up 404, audit actor, logs without password/token). Adapted to the new model: ida-2g, ida-admin-ds, ida-v1c (token-field diagnostics → session invariants), ida-3d / 3e / v1b / ds-ui (gate literal is now `authenticate()`), ida4-option-c (staff-account tables documented as exceptions), ida-v12 HTTP + browser (sign in through the real form; `document.cookie` empty; logout). Full run: see the numbers in the delivery report.
+
+**Rollback:** previous `main` + restart; V13 tables are inert for the old code (DOWN block in the migration).
+
+**Remaining (owner):** merge, production backup, migration, env (`IDAUTO_AUTH_SECRET`, `IDAUTO_AUTH_BASE_URL`, `IDAUTO_COOKIE_SECURE=1`), restart, first admin via `ops/auth-users.js`, smoke + browser tests (`DEPLOYMENT.md` §4); then, as a separate step, drop the admin entries from `IDAUTO_ADMIN_IDENTITIES`. `origin/ida-admin-french-copy` now conflicts on `admin.html` / `admin-ui.js` (copy-only branch; re-apply on top).
+
+---
+
+## Previous record — 2026-09-05 IDA-V12 FINAL COMPLETION (branch `ida-v12-final-completion`)
 
 **Date:** 2026-09-05 · **Phase:** 0–25 of the owner's "IDauto FINAL COMPLETION" order, executed in the
 worktree `/home/deploy/projects/idauto-final` (the production checkout `/home/deploy/projects/idauto` was not touched).

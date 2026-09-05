@@ -293,7 +293,7 @@ ok(/function serveCitizenAsset[\s\S]*?loadPublicResolutionConfig\(\)\.enabled\) 
   "serveCitizenAsset checks the A5-PLATE phase gate before serving anything");
 const dispatchOrder = apiSrc.indexOf("serveAdminAsset(req, res, pathname)") <
   apiSrc.indexOf("serveCitizenAsset(req, res, pathname)") &&
-  apiSrc.indexOf("serveCitizenAsset(req, res, pathname)") < apiSrc.indexOf("if (!requireAuth(req, res)) return;");
+  apiSrc.indexOf("serveCitizenAsset(req, res, pathname)") < apiSrc.indexOf("if (!(await authenticate(req, res))) return;");  // IDA-V13 gate
 ok(dispatchOrder, "dispatch order: admin assets → citizen assets → public route → auth");
 ok(/vehicle_ivid/.test(apiSrc) && /LEFT JOIN idauto_vehicles v ON v\.id = p\.vehicle_id/.test(apiSrc),
   "getPlate exposes vehicle_ivid via a JOIN on the authenticated route only");

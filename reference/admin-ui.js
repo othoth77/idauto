@@ -11,35 +11,23 @@
     });
     return object;
   }
-  // IDA-V1C — the token is base64: it contains '/' and ends with '='. Both
-  // break double-click selection, so the commonest way to get here with a
-  // "refused" token is a truncated paste of a perfectly valid one. This
-  // message says that, and says it without ever echoing the value.
-  var TOKEN_PASTE_HELP = 'Token refused. The token is one line of base64 — it contains "/" and ends with "=", ' +
-    'so a double-click selects only part of it. Select the whole line (triple-click) and paste again.';
-
-  // Local shape check, before any request. It reports what the operator
-  // typed — never what the server expects — so it leaks nothing about the
-  // real token while still catching the mistakes that actually happen.
-  function tokenProblem(raw) {
-    if (!raw) return 'Enter the Bearer token above first.';
-    if (/\s/.test(raw)) return 'The token contains a space or line break — it must be a single unbroken string. Re-copy the whole line.';
-    return null;
-  }
-
+  // IDA-V13 — the console is authenticated by the session cookie the
+  // server set at /login (HttpOnly, never readable here) plus the header
+  // X-IDauto-Session: 1 on every API call. No token is read from the page.
+  // The `token` parameter of the helpers below is kept for the callers'
+  // shape and is always ignored.
+  var SESSION_HEADERS = { 'X-IDauto-Session': '1', Accept: 'application/json' };
+  function toLogin() { if (typeof window !== 'undefined' && window.location) window.location.replace('/login?next=' + encodeURIComponent('/admin')); }
   async function apiRequest(path, token, options) {
     var settings = options || {};
-    settings.headers = Object.assign({}, settings.headers, { Authorization: 'Bearer ' + token });
+    settings.credentials = 'same-origin';
+    settings.headers = Object.assign({}, settings.headers, SESSION_HEADERS);
+    // Library use (a script holding a service credential): still allowed.
+    if (token) settings.headers.Authorization = 'Bearer ' + token;
     var response = await fetch(path, settings);
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) {
-      // A 401 is about the credential, not about this route — say so plainly
-      // instead of surfacing "/api/vehicles: unauthorized …".
-      if (response.status === 401) {
-        throw new Error(body.reason === 'no_credentials' ? 'No token was sent. Enter the Bearer token above.' : TOKEN_PASTE_HELP);
-      }
-      throw new Error(path + ': ' + (body.error || ('Request failed (' + response.status + ')')));
-    }
+    if (response.status === 401) { toLogin(); throw new Error('Session expirée — reconnectez-vous.'); }
+    if (!response.ok) throw new Error(body.message_fr || body.error || ('Request failed (' + response.status + ')'));
     return body;
   }
   function jsonPost(path, token, body) {
@@ -146,9 +134,9 @@
     }
   }());
 
-  // IDA-V1B — owner session. The Bearer token is read from the same
-  // in-page field as every other admin action and is never stored; the
-  // server answers with a Set-Cookie the browser keeps from then on.
+  // IDA-V1B — owner session. Since IDA-V13 the enrolment is authenticated by
+  // the signed-in web session (no token anywhere in the page); the server
+  // answers with a Set-Cookie the browser keeps from then on.
   var enrollButton = document.getElementById('enroll-button');
   var forgetButton = document.getElementById('forget-button');
   var enrollResult = document.getElementById('enroll-result');
@@ -157,29 +145,22 @@
     return fetch(path, {
       method: 'POST',
       credentials: 'same-origin',
-      headers: Object.assign({ 'X-IDauto-Owner': '1' }, headers || {})
+      headers: Object.assign({ 'X-IDauto-Owner': '1', 'X-IDauto-Session': '1' }, headers || {})
     });
   }
 
   if (enrollButton) {
     enrollButton.addEventListener('click', async function () {
-      var token = document.getElementById('admin-token').value.trim();
       enrollResult.className = '';
-      var tokenIssue = tokenProblem(token);
-      if (tokenIssue) {
-        enrollResult.className = 'error';
-        enrollResult.textContent = tokenIssue;
-        return;
-      }
       enrollButton.disabled = true;
       try {
-        var response = await sessionRequest('/session/enroll', { Authorization: 'Bearer ' + token });
+        // IDA-V13 — authenticated by the signed-in session, not by a token.
+        var response = await sessionRequest('/session/enroll');
         if (response.status === 204) {
           enrollResult.className = 'success';
           enrollResult.textContent = 'This browser is recognised. Plate lookup now works on idauto.tn.';
         } else if (response.status === 401) {
-          enrollResult.className = 'error';
-          enrollResult.textContent = TOKEN_PASTE_HELP;
+          toLogin();
         } else if (response.status === 503) {
           enrollResult.className = 'error';
           enrollResult.textContent = 'Owner sessions are not configured on this host (IDAUTO_SESSION_SECRET is unset).';
@@ -212,6 +193,32 @@
       }
     });
   }
+  // IDA-V13 — who is signed in. Shown from the server's answer, never from
+  // anything stored in the page; no session → the visitor is sent to /login.
+  (async function () {
+    if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+    var line = document.getElementById('session-line');
+    var loginLink = document.getElementById('login-link');
+    var logoutButton = document.getElementById('logout-button');
+    var ROLE_FR = { admin: 'administrateur', manager: 'gestionnaire', technician: 'technicien' };
+    var me = null;
+    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); me = r.ok ? await r.json() : null; } catch (e) { me = null; }
+    if (!me || !me.user) {
+      if (line) line.textContent = 'Vous n\'êtes pas connecté.';
+      if (loginLink) loginLink.hidden = false;
+      toLogin();
+      return;
+    }
+    if (line) line.textContent = 'Connecté : ' + me.user.name + ' · ' + (ROLE_FR[me.user.role] || me.user.role);
+    if (logoutButton) {
+      logoutButton.hidden = false;
+      logoutButton.addEventListener('click', async function () {
+        try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}' }); } catch (e) { /* server-side session; /login confirms */ }
+        window.location.replace('/login');
+      });
+    }
+  }());
+
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     result.className = '';
@@ -221,10 +228,7 @@
       // IDA-V1C — trim, then shape-check before spending a request. The
       // field was previously read raw while every other field went through
       // value(), which trims.
-      var adminToken = document.getElementById('admin-token').value.trim();
-      var problem = tokenProblem(adminToken);
-      if (problem) throw new Error(problem);
-      var created = await createEntry(form, adminToken);
+      var created = await createEntry(form, null);
       result.className = 'success';
       result.textContent = 'Created vehicle ' + created.vehicle.internal_ref + ' and observation ' + created.observation.id + '.';
       form.reset();

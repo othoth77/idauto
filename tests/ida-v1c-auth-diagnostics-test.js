@@ -197,12 +197,15 @@ function adminUiCases() {
   say('\nADMIN UI — the error path, without echoing anything');
   var source = fs.readFileSync(path.join(BASE, 'reference', 'admin-ui.js'), 'utf8');
 
-  ok(/getElementById\('admin-token'\)\.value\.trim\(\)/.test(source), 'the token field is trimmed before use');
-  ok(!/getElementById\('admin-token'\)\.value(?!\.trim)/.test(source), 'the token field is never read untrimmed');
-  ok(/triple-click/i.test(source), 'the 401 message tells the operator to select the whole line');
-  ok(/response\.status === 401/.test(source), 'a 401 is handled distinctly from other failures');
-  ok(/no_credentials/.test(source), 'the UI distinguishes "nothing sent" from "not a token"');
-  ok(/function tokenProblem/.test(source), 'a local shape check runs before any request is spent');
+  // IDA-V13 — the console no longer reads any token: it is authenticated by
+  // the session cookie (HttpOnly) plus the X-IDauto-Session header, and a
+  // 401 sends the operator to /login. The four assertions that used to pin
+  // the token-field diagnostics are replaced by the invariants of the new
+  // model; the two below them (never render, never log a credential) stand.
+  ok(!/admin-token|tokenProblem|Bearer ' \+ token\b/.test(source.replace(/if \(token\) settings\.headers\.Authorization = 'Bearer ' \+ token;/, '')), 'the console reads no token field and builds no manual-token header for the page');
+  ok(/'X-IDauto-Session': '1'/.test(source), 'every console API call carries the session header');
+  ok(/response\.status === 401/.test(source) && /\/login\?next=/.test(source), 'a 401 is handled distinctly: the operator is sent to /login');
+  ok(!/localStorage|sessionStorage|document\.cookie/.test(source), 'nothing is persisted or read from browser storage');
 
   // The UI must never render the credential back to the page.
   ok(!/textContent\s*=\s*[^;]*\btoken\b/.test(source), 'no message interpolates the token into the DOM');

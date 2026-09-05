@@ -184,8 +184,8 @@ async function main() {
   var html = page.raw.toString('utf8');
   ok(html.indexOf('Admin manual entry') !== -1 && html.indexOf('Review queue') === -1,
     'it is still the manual-entry page only (IDA-2G invariant)');
-  ok(html.indexOf('admin-token') !== -1 && html.indexOf('localStorage') === -1,
-    'still takes a token with no browser-storage persistence (IDA-2G invariant)');
+  ok(html.indexOf('admin-token') === -1 && html.indexOf('localStorage') === -1,
+    'asks for no token (IDA-V13 session cookie) and has no browser-storage persistence');
   ok((page.headers['content-security-policy'] || '').indexOf("default-src 'self'") !== -1,
     'the restrictive CSP is still applied');
   ok((await get('/admin/review')).status === 200, 'GET /admin/review still serves the review page');
@@ -199,11 +199,11 @@ async function main() {
   var missingNames = required.filter(function (n) { return adminHtml.indexOf('name="' + n + '"') === -1; });
   ok(missingNames.length === 0, 'all ' + required.length + ' form controls kept their name (missing: ' + (missingNames.join(', ') || 'none') + ')');
 
-  var ids = ['entry-form', 'admin-token', 'enroll-button', 'forget-button', 'enroll-result', 'submit-button', 'result'];
+  var ids = ['entry-form', 'session-line', 'logout-button', 'enroll-button', 'forget-button', 'enroll-result', 'submit-button', 'result'];
   var missingIds = ids.filter(function (n) { return adminHtml.indexOf('id="' + n + '"') === -1; });
   ok(missingIds.length === 0, 'every id admin-ui.js reads still exists (missing: ' + (missingIds.join(', ') || 'none') + ')');
 
-  var reviewIds = ['review-token', 'load-queue', 'queue-status', 'queue-list', 'review-detail'];
+  var reviewIds = ['session-line', 'load-queue', 'queue-status', 'queue-list', 'review-detail'];
   var missingReviewIds = reviewIds.filter(function (n) { return reviewHtml.indexOf('id="' + n + '"') === -1; });
   ok(missingReviewIds.length === 0, 'every id review-ui.js reads still exists (missing: ' + (missingReviewIds.join(', ') || 'none') + ')');
 

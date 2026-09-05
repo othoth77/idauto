@@ -101,6 +101,10 @@ not named `idauto_scratch_*`) and `tests/ida-v12-atelier-browser-test.js` (the `
 Chrome over the DevTools protocol; reports SKIPPED and exits 0 when no Chrome is on PATH). Both need the
 same environment as §3. Expected: **124 passed, 0 failed** and **19 passed, 0 failed**.
 
+### 3.3 IDA-V13 suite (2026-09-05)
+
+`npm run test:v13` runs `tests/ida-v13-auth-session-test.js` (login / password / session cookie / roles / logout / brute force / logs). Same environment as §3 plus `IDAUTO_AUTH_SECRET` (any 32+ character value for a test run; the suite generates one if unset). The V12 suites now also sign in through Better Auth, so they need the V13 migration applied to the scratch database. Expected: **61 passed, 0 failed**.
+
 ## 4. What each suite touches
 
 | Suite | Database | Media filesystem | Must run as `deploy` |

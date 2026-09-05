@@ -6,6 +6,26 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-09-05 — ida-v13: login / password + server-side session cookie (Better Auth)
+
+Owner order: remove the manual admin access-token model from the web UI.
+`/login` (French) → `POST /api/auth/sign-in/email` → session row in
+`idauto_auth_session` → cookie `idauto.session_token` HttpOnly, SameSite=Lax,
+Path=/, Secure in production; validated in the database on every request,
+12 h sliding expiry, sign-out, revocation, password change, sign-in rate
+limit 5/min per client (database-stored). Roles admin / manager /
+technician read server-side (`reference/auth/principal.js`) and mapped
+onto the existing scope gate; `api.js` `authenticate()` = Bearer service
+credential | owner cookie | user session, with `X-IDauto-Session: 1`
+required on `/api/*`. `/atelier` redirects to `/login` without a session;
+`/admin` and `/admin/review` lose their token field and show the session.
+Sign-up is not reachable over HTTP; users are provisioned with
+`ops/auth-users.js` (password typed without echo). Migration
+`ida-v13-auth-session.sql` (5 additive tables). Dependency `better-auth`
+1.7.x (0 vulnerabilities). `tests/ida-v13`: 61 assertions; V12 suites now
+sign in through the real form. `IDAUTO_ADMIN_IDENTITIES` stays for
+server-to-server credentials; dropping its admin entries is a later step.
+
 ## 2026-09-05 — ida-v12: vehicle identification, catalogue and workshop — end to end
 
 Owner order "IDauto FINAL COMPLETION". Plate normaliser (TU / RS / Arabic

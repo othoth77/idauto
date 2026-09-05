@@ -613,7 +613,15 @@ async function noAuthorizationHeaderAnywhere() {
 // matches; every other table name was checked by hand against this
 // pattern before writing this guard. Excluding it by exact name (not by
 // loosening the pattern) keeps the guard strict against anything NEW.
-var KNOWN_LEGITIMATE_NON_CITIZEN_TABLES = ['idauto_user_roles'];
+// IDA-V13 (2026-09-05): idauto_auth_user and idauto_auth_account are the
+// Better Auth tables for STAFF web accounts (administrators, workshop
+// managers and technicians who sign in at /login) — name, e-mail, role,
+// password hash. They hold no citizen, no vehicle holder, no owner: a
+// vehicle never points at them and they never point at a vehicle. Excluded
+// by exact name, like idauto_user_roles, so the guard stays strict against
+// anything NEW.
+var KNOWN_LEGITIMATE_NON_CITIZEN_TABLES = ['idauto_user_roles', 'idauto_auth_user', 'idauto_auth_account'];
+var KNOWN_STAFF_ACCOUNT_MIGRATIONS = ['ida-v13-auth-session.sql'];
 
 async function a5ProhibitionGuards() {
   console.log('\n10. A5 prohibition guards: no person store, no citizen PII surface');
@@ -644,6 +652,7 @@ async function a5ProhibitionGuards() {
   var offendingMigrations = [];
   migrationFiles.forEach(function (name) {
     var contents = fs.readFileSync(path.join(migrationsDir, name), 'utf8');
+    if (KNOWN_STAFF_ACCOUNT_MIGRATIONS.indexOf(name) !== -1) return;   // staff sign-in accounts, documented above
     if (/CREATE\s+TABLE[^;]*(person|citizen|account)/i.test(contents)) offendingMigrations.push(name);
   });
   ok(offendingMigrations.length === 0, 'no migration file CREATEs a person/citizen/account table — got ' + JSON.stringify(offendingMigrations));

@@ -42,12 +42,9 @@
     <section class="ida-card ida-stack" aria-labelledby="sec-auth">
       <h2 id="sec-auth" class="ida-h3">Admin identity</h2>
       <div class="review-auth">
-        <div class="ida-field">
-          <label for="review-token">Bearer token</label>
-          <input class="ida-input" id="review-token" type="password" autocomplete="off">
-        </div>
+        <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
         <button id="load-queue" type="button" class="ida-btn ida-btn--primary">Load queue</button>
-        <p class="ida-hint">Held in this page only; never saved in browser storage.</p>
+        <p class="ida-hint">Authenticated by your signed-in session (IDA-V13); no token is asked for here.</p>
       </div>
     </section>
 

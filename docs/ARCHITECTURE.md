@@ -377,3 +377,26 @@ CAMERA ─► ANPR (plate-scanner.js) ─► PLATE NORMALISATION (vehicle/plate-
 | routes | `reference/v12-routes.js` | mounted by `api.js` behind the same auth and scope gate |
 
 Rules: the frontend talks to `/api/*` only and never to a provider; truth is written only by `confirm()`; mocks never enter the default production path; catalogue and stock are separate tables; vehicle identity and customer identity never share a table (opaque `customer_ref`). Details: `VEHICLE_RESOLUTION.md`, `TECDOC.md`, `ANPR.md`, `DATABASE.md`, `API.md`.
+
+
+---
+
+## 11. Web authentication (IDA-V13, 2026-09-05)
+
+```
+Browser ─► GET /login ─► email + password ─► POST /api/auth/sign-in/email (Better Auth)
+        ─► server-side session row (idauto_auth_session) ─► Set-Cookie idauto.session_token (HttpOnly, Secure, SameSite=Lax, Path=/)
+        ─► /atelier, /admin, /admin/review ─► every /api/* call: cookie + X-IDauto-Session: 1
+        ─► api.js authenticate(): Bearer service credential | owner cookie | user session ─► principal (role from the DB) ─► scope gate ─► route
+```
+
+| Piece | Module |
+|---|---|
+| Better Auth instance (users, scrypt, sessions, rate limit, cookies) | `reference/auth/auth.js` |
+| session → principal (admin `*`; manager / technician → organisation scopes) | `reference/auth/principal.js` |
+| the one authentication gate | `reference/api.js` `authenticate()` |
+| sign-in page | `reference/login.html`, `login-ui.js`, `login.css` |
+| provisioning (create, set-password, set-role, list, revoke, delete) | `ops/auth-users.js` |
+| tables | `database/migrations/ida-v13-auth-session.sql` |
+
+**Old model → new model.** Before: a manual admin access token pasted into the console and sent as `Authorization: Bearer`. After: login/password and a server-side session; the Bearer path remains for **server-to-server** organisation credentials only and is never shown to a person. Neither the role nor any token ever lives in the browser's storage or in the page.

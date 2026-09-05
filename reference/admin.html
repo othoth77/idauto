@@ -62,11 +62,13 @@
     <form id="entry-form" class="ida-stack-lg">
 
       <section class="ida-card ida-stack" aria-labelledby="sec-identity">
-        <h2 id="sec-identity" class="ida-h3">Admin identity</h2>
-        <div class="ida-field">
-          <label for="admin-token">Bearer token</label>
-          <input class="ida-input" id="admin-token" type="password" autocomplete="off" required>
-          <p class="ida-hint">Held in this page only; never saved in browser storage.</p>
+        <h2 id="sec-identity" class="ida-h3">Session</h2>
+        <!-- IDA-V13 — no token here any more. The browser carries the session
+             cookie set at /login; the page only shows who is signed in. -->
+        <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+        <div class="ida-admin-actions">
+          <a id="login-link" class="ida-btn ida-btn--primary ida-btn--sm" href="/login?next=%2Fadmin" hidden>Se connecter</a>
+          <button id="logout-button" type="button" class="ida-btn ida-btn--ghost ida-btn--sm" hidden>Déconnexion</button>
         </div>
       </section>
 
@@ -77,7 +79,7 @@
       <section class="ida-card ida-stack" aria-labelledby="sec-browser">
         <h2 id="sec-browser" class="ida-h3">This browser</h2>
         <p class="ida-small ida-muted ida-u-maxch-52">Recognise this browser so plate lookup works on idauto.tn without
-        entering a token. Valid 180 days, renewed automatically while in use. Grants
+        signing in. Valid 180 days, renewed automatically while in use. Grants
         read-only plate and passport lookup — nothing else.</p>
         <div class="ida-admin-actions">
           <button id="enroll-button" type="button" class="ida-btn ida-btn--secondary">Recognise this browser</button>
