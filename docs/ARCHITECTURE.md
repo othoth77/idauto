@@ -400,3 +400,31 @@ Browser ─► GET /login ─► email + password ─► POST /api/auth/sign-in/
 | tables | `database/migrations/ida-v13-auth-session.sql` |
 
 **Old model → new model.** Before: a manual admin access token pasted into the console and sent as `Authorization: Bearer`. After: login/password and a server-side session; the Bearer path remains for **server-to-server** organisation credentials only and is never shown to a person. Neither the role nor any token ever lives in the browser's storage or in the page.
+
+
+---
+
+## 12. Carte grise scanner (IDA-V14, 2026-09-05)
+
+```
+CAPTURE (camera capture=environment / gallery)
+  ─► DOCUMENT SCANNER  web/citizen/registration-scanner.js + Scanic: corners, perspective; manual 4-corner editor as fallback
+  ─► IMAGE OPTIMISATION  EXIF rotation → crop → resize 1600 px → JPEG 0.85 (+ 480 px thumbnail) — in the browser
+  ─► FACE 1 / FACE 2     PUT /api/vehicles/:ref/registration-document/:face  (face 2 optional, never alone)
+  ─► OCR                 Tesseract.js fra+ara in a Web Worker, in the browser
+  ─► FIELD PARSER        reference/documents/registration-parser.js (shared, pure) via POST …/ocr — text parsed in memory, never stored
+  ─► CONFIDENCE / CONFLICT  document-service.compare(): same | new | conflict against the vehicle record
+  ─► USER CONFIRMATION   the proposal table; conflicts are unchecked
+  ─► VEHICLE             POST …/confirm → resolver.confirm() (the single write path), provenance carte_grise_ocr
+  ─► PASSEPORT           web/citizen/passport-document.js, signed-in users only
+```
+
+| Piece | Module |
+|---|---|
+| storage abstraction (`put` / `get` / `remove`), local adapter on the private media root | `reference/documents/document-storage.js` |
+| byte sniffing (JPEG / PNG / WebP magic + dimensions) | `reference/documents/image-meta.js` |
+| metadata rows, org-scoped | `reference/documents/document-repository.js` → `idauto_vehicle_documents` |
+| service (limits, replacement, deletion, OCR proposal, comparison) | `reference/documents/document-service.js` |
+| routes | `reference/v14-routes.js` (scopes `document:read` / `document:write` / `document:delete`) |
+
+**Libraries.** Scanic **1.6.0**, MIT (github.com/marquaye/scanic), vendored as `web/vendor/scanic/scanic.umd.js` (112 KB, Rust/WASM core inlined, no network; the optional ML detector, which would fetch a model from a CDN, is never enabled — the CSP `connect-src 'self'` would refuse it anyway). Chosen over OpenCV.js (30 MB) and Nitidoc (AGPL, not integrated). Tesseract.js (Apache-2.0, already vendored since IDA-V11) with `fra.traineddata.gz` (0.7 MB) and `ara.traineddata.gz` (1.7 MB) from tessdata (Apache-2.0). No server-side image library: the server validates bytes and stores them.

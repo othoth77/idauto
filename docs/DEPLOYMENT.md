@@ -44,10 +44,22 @@ Do **not** deploy without the validation in `docs/AI_HANDOVER.md` (V13 record) �
 
 **Rollback**: `git checkout <previous main>` + restart. The V13 tables are unused by the previous code and can stay (DOWN block in the migration if removal is wanted). Removing the admin entries from `IDAUTO_ADMIN_IDENTITIES` is a separate step **after** validation — not part of this rollout.
 
-## 5. Logging and monitoring
+## 5. Rolling out IDA-V14 (carte grise)
+
+1. Backup `idauto_production` (as for V13).
+2. Merge `ida-v14-carte-grise`; pull; `npm ci --omit=dev` (no new npm dependency — Scanic and the OCR models are vendored under `web/vendor/`).
+3. Apply `database/migrations/ida-v14-registration-document.sql` (additive, idempotent, applied twice on scratch; DOWN block inside). Existing vehicles and documents are untouched.
+4. Environment: nothing required. Optional `IDAUTO_DOCUMENT_STORAGE=local`, `IDAUTO_DOCUMENT_MAX_BYTES`, `IDAUTO_DOCUMENT_UPLOADS_PER_10MIN` (`.env.example`). The media root is the one already in `ReadWritePaths` of the unit.
+5. Restart `idauto-api`.
+6. Smoke: `GET /atelier/assets/scanic.umd.js` 200 · `GET /atelier/assets/tesseract/fra.traineddata.gz` 200 · signed in: the fiche shows « Ouvrir le passeport » and « Scanner la carte grise » · `GET /api/vehicles/<ivid>/registration-document` 200 `has_document:false`.
+7. Browser test on a phone (Android Chrome): scan face 1, optional face 2, proposal, confirm, passport section, reload.
+
+Rollback: previous `main` + restart; the table is inert for the old code.
+
+## 6. Logging and monitoring
 
 Structured JSON events on stdout → journald (`SyslogIdentifier=idauto-api`). `GET /api/metrics` (admin token) exposes the resolution metrics; scrape it or read it by hand. No log line carries a token, a captcha value, an IP or a full VIN (asserted by `tests/ida-v12` §12).
 
-## 6. Tests before shipping
+## 7. Tests before shipping
 
-`npm run test:offline` (no database) — then the live suites against a scratch database (`ops/runbooks/TEST_RUNBOOK.md`), including `npm run test:v12` and `npm run test:v13` (needs `IDAUTO_AUTH_SECRET` in the environment). Reference result on 2026-09-05: 29 suites, 2175 assertions, 0 failures.
+`npm run test:offline` (no database) — then the live suites against a scratch database (`ops/runbooks/TEST_RUNBOOK.md`), including `npm run test:v12`, `npm run test:v13` and `npm run test:v14` (needs `IDAUTO_AUTH_SECRET` in the environment). Reference result on 2026-09-05: 29 suites, 2175 assertions, 0 failures.
