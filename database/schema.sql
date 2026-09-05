@@ -959,7 +959,10 @@ VALUES
      'UNVERIFIED DRAFT. Short-term and transit registration.'),
     ('TUN_ECO', 'Zone économique / spéciale', 'منطقة اقتصادية',
      '^ZE\s?\d{1,4}\s?\d{1,3}$', 'ZE 1234 567', NULL, TRUE, FALSE,
-     'UNVERIFIED DRAFT. Free-trade and industrial zone vehicles.');
+     'UNVERIFIED DRAFT. Free-trade and industrial zone vehicles.'),
+    ('TUN_RS', 'Régime suspensif (RS)', 'نظام توقيفي',
+     '^\d{1,3}\s?RS\s?\d{1,4}$', '123 RS 4567', NULL, TRUE, FALSE,
+     'UNVERIFIED DRAFT (IDA-V12). Temporary-admission vehicles. Shape mirrored on the série normale.');
 
 INSERT INTO idauto_governorates (code, name_fr, name_ar, region_fr) VALUES
     ('01','Tunis','تونس','Grand Tunis'),
