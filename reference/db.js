@@ -70,6 +70,8 @@ async function closePool() {
 }
 
 module.exports = {
+  // IDA-V13: Better Auth is handed the same pool (reference/auth/auth.js).
+  getPool: getPool,
   query: query,
   getClientForTransaction: getClientForTransaction,
   closePool: closePool

@@ -4,9 +4,11 @@
  *   idle → scanning → recognized → confirm → resolving → resolved
  *                                              ↘ not_found → manual (VIN → marque/modèle)
  *                                              ↘ error
- * Every call goes to /api/* with the Bearer held in page memory only. No
- * inline script, no eval, no external origin. Errors shown to the mechanic
- * are the server's message_fr — never a technical string.
+ * Every call goes to /api/* with the session cookie the server set at /login
+ * (HttpOnly — this script never sees it) plus the header X-IDauto-Session: 1.
+ * No token is asked for, stored or displayed. A 401 sends the visitor back
+ * to /login. No inline script, no eval, no external origin. Errors shown to
+ * the mechanic are the server's message_fr — never a technical string.
  */
 (function () {
   "use strict";
@@ -20,23 +22,24 @@
   var LABELS = { idle: 'En attente', scanning: 'Lecture caméra', recognized: 'Plaque lue', confirm: 'À confirmer', resolving: 'Recherche…', resolved: 'Véhicule identifié', not_found: 'Introuvable', error: 'Erreur', manual: 'Saisie manuelle' };
   var GENERIC_FR = "La demande n'a pas abouti. Réessayez dans un instant.";
 
-  function token() { return ($('#at-token').value || '').trim(); }
+  var me = null;   // { name, email, role, org_id } from the server, never from the page
   function orgQuery() { var o = ($('#at-org').value || '').trim(); return o ? '?org_id=' + encodeURIComponent(o) : ''; }
   function orgBody(body) { var o = ($('#at-org').value || '').trim(); if (o) body.org_id = parseInt(o, 10); return body; }
+  function toLogin() { location.replace('/login?next=' + encodeURIComponent('/atelier')); }
 
   async function api(method, path, body) {
-    var headers = { 'Accept': 'application/json' };
-    if (token()) headers['Authorization'] = 'Bearer ' + token();
+    var headers = { 'Accept': 'application/json', 'X-IDauto-Session': '1' };
     if (body) headers['Content-Type'] = 'application/json';
     var res, json = null;
     try {
-      res = await fetch(path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined });
+      res = await fetch(path, { method: method, credentials: 'same-origin', headers: headers, body: body ? JSON.stringify(body) : undefined });
       try { json = await res.json(); } catch (e) { json = null; }
     } catch (e) {
       throw { status: 0, error: 'NETWORK_FAILURE', message_fr: 'Problème de connexion. Réessayez dans un instant.' };
     }
+    if (res.status === 401) { toLogin(); throw { status: 401, error: 'unauthenticated', message_fr: 'Session expirée. Reconnectez-vous.' }; }
     if (!res.ok) {
-      var msg = (json && json.message_fr) || (res.status === 401 ? "Jeton d'accès manquant ou refusé." : res.status === 403 ? "Ce jeton n'a pas le droit nécessaire." : res.status === 429 ? 'Trop de demandes. Patientez une minute.' : GENERIC_FR);
+      var msg = (json && json.message_fr) || (res.status === 403 ? "Votre compte n'a pas le droit nécessaire." : res.status === 429 ? 'Trop de demandes. Patientez une minute.' : GENERIC_FR);
       throw { status: res.status, error: (json && json.error) || 'request_error', message_fr: msg, details: json && json.details };
     }
     return json;
@@ -304,6 +307,7 @@
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-action]'); if (!t) return;
     var a = t.getAttribute('data-action');
+    if (a === 'logout') return logout();
     if (a === 'scan') return openScanner();
     if (a === 'resolve-plate') return resolvePlate({ method: 'manual' });
     if (a === 'confirm-plate') return resolvePlate({ method: 'camera_ocr', confidence: state.plate ? state.plate.confidence : undefined, confirmed: true });
@@ -325,9 +329,21 @@
     if (a === 'order-create') return orderCreate();
     if (a === 'visit-close') return visitClose();
   });
-  $('#at-token').addEventListener('change', async function () {
-    try { var s = await api('GET', '/api/catalog/status'); $('[data-catalog-status]').textContent = s.supplier.configured ? 'Catalogue fournisseur : ' + s.supplier.provider : s.supplier.message_fr + ' Le catalogue local reste disponible.'; }
+  var ROLE_FR = { admin: 'administrateur', manager: 'gestionnaire', technician: 'technicien' };
+  async function loadSession() {
+    var s = null;
+    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); s = r.ok ? await r.json() : null; } catch (e) { s = null; }
+    if (!s || !s.user) return toLogin();
+    me = { name: s.user.name, email: s.user.email, role: s.user.role, org_id: s.user.org_id };
+    $('[data-user-line]').textContent = 'Connecté : ' + me.name + ' · ' + (ROLE_FR[me.role] || me.role) + (me.org_id ? ' · organisation ' + me.org_id : '');
+    $('[data-admin-org]').hidden = me.role !== 'admin';
+    try { var c = await api('GET', '/api/catalog/status'); $('[data-catalog-status]').textContent = c.supplier.configured ? 'Catalogue fournisseur : ' + c.supplier.provider : c.supplier.message_fr + ' Le catalogue local reste disponible.'; }
     catch (err) { $('[data-catalog-status]').textContent = err.message_fr || GENERIC_FR; }
-  });
+  }
+  async function logout() {
+    try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}' }); } catch (e) { /* the cookie is server-side; /login will confirm */ }
+    location.replace('/login');
+  }
+  loadSession();
   setState('idle');
 })();

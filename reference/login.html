@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Connexion</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-V13 — the sign-in page. Same Design System files as every other
+       surface, never phase-gated. No inline script or style (admin CSP). -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/login/login.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-login">
+    <section class="ida-card ida-stack" aria-labelledby="login-title">
+      <header class="ida-stack">
+        <p class="ida-label">IDauto · Atelier</p>
+        <h1 id="login-title" class="ida-h2">Connexion à IDauto</h1>
+      </header>
+
+      <form id="login-form" class="ida-stack" novalidate>
+        <div class="ida-field">
+          <label for="login-email">Identifiant (adresse e-mail)</label>
+          <input class="ida-input" id="login-email" name="email" type="email" autocomplete="username" inputmode="email" required>
+        </div>
+        <div class="ida-field">
+          <label for="login-password">Mot de passe</label>
+          <input class="ida-input" id="login-password" name="password" type="password" autocomplete="current-password" required minlength="12">
+        </div>
+        <div class="ida-alert ida-alert--danger" id="login-error" role="alert" hidden>
+          <div><p class="ida-alert-title">Connexion impossible</p><p class="ida-small" id="login-error-body"></p></div>
+        </div>
+        <div class="ida-search-actions">
+          <button id="login-submit" type="submit" class="ida-btn ida-btn--primary">Se connecter</button>
+          <button id="login-forgot" type="button" class="ida-btn ida-btn--ghost">Mot de passe oublié</button>
+        </div>
+        <p class="ida-small ida-muted" id="login-help" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+</main>
+
+<script src="/login/login-ui.js"></script>
+</body>
+</html>

@@ -41,20 +41,18 @@
       <p class="ida-muted ida-u-maxch-52">Lisez la plaque, confirmez le véhicule, trouvez les pièces, enregistrez l'intervention.</p>
     </header>
 
-    <!-- 0. credential + organisation -->
+    <!-- 0. who is signed in (IDA-V13). No token is ever asked for here:
+         the server put a session cookie in this browser at /login. -->
     <section class="ida-card ida-stack" aria-labelledby="sec-auth" data-panel="auth">
-      <h2 id="sec-auth" class="ida-h3">Accès</h2>
-      <div class="ida-atelier-grid">
-        <div class="ida-field">
-          <label for="at-token">Jeton d'accès (Bearer)</label>
-          <input class="ida-input" id="at-token" type="password" autocomplete="off" required>
-          <p class="ida-hint">Conservé dans cette page seulement, jamais enregistré dans le navigateur.</p>
-        </div>
-        <div class="ida-field">
-          <label for="at-org">Organisation (identifiant, jeton administrateur seulement)</label>
-          <input class="ida-input" id="at-org" inputmode="numeric" autocomplete="off" placeholder="ex. 3">
-          <p class="ida-hint">Un jeton d'atelier porte déjà son organisation : laissez vide.</p>
-        </div>
+      <div class="ida-atelier-head">
+        <h2 id="sec-auth" class="ida-h3">Session</h2>
+        <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="logout">Déconnexion</button>
+      </div>
+      <p class="ida-small" data-user-line aria-live="polite">Vérification de la session…</p>
+      <div class="ida-field" data-admin-org hidden>
+        <label for="at-org">Organisation (identifiant — administrateur agissant pour un atelier)</label>
+        <input class="ida-input" id="at-org" inputmode="numeric" autocomplete="off" placeholder="ex. 3">
+        <p class="ida-hint">Un compte gestionnaire ou technicien est déjà rattaché à son organisation.</p>
       </div>
       <p class="ida-small" data-catalog-status aria-live="polite"></p>
     </section>

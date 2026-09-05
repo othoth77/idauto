@@ -63,6 +63,7 @@ var plateValidator = require('./plate-validator.js');
 var session = require('./session.js');
 var v12Routes = require('./v12-routes.js');
 var plateNormalizer = require('./vehicle/plate-normalizer.js');
+var sessionAuth = require('./auth/principal.js');
 
 //
 // IDA-V1B, 2026-08-27 — OWNER SESSION.
@@ -178,50 +179,79 @@ function logAuthDecision(req, fields) {
   console.log(JSON.stringify(entry));
 }
 
-function requireAuth(req, res) {
+// IDA-V13 — three credentials, one order, one gate.
+//
+//   1. Authorization: Bearer <service credential>   (IDAUTO_ADMIN_IDENTITIES —
+//      organisation service credentials for server-to-server callers such
+//      as atelier.fixpert.tn; an admin entry there still works for scripts)
+//   2. the owner cookie of IDA-V1B                    (two READ routes only)
+//   3. the Better Auth session cookie                 (web users: /login)
+//      + the header X-IDauto-Session: 1 on /api/* calls (CSRF belt)
+//
+// The web UI uses (3) exclusively: no page asks for, stores or displays a
+// token any more. The role that becomes the principal is read from the
+// database row by reference/auth/principal.js — never from the browser.
+function resolveCredentials(req) {
   var header = req.headers['authorization'];
   var token = extractBearer(header);
   var resolved = identity.resolveIdentity(token);
-  var via = resolved ? 'bearer' : null;
-  // IDA-V9 — the SAME lookup, read as a principal. req.mythosIdentity keeps
-  // being the actor_ref string every audit row already carries; req.principal
-  // adds the organisation and scopes that authorisation reads. An admin token
-  // resolves to a principal with '*' and no organisation, so nothing that
-  // worked before changes.
   var principal = identity.resolvePrincipal(token);
-  // IDA-V1B: the owner cookie is a fallback, never an override — a request
-  // carrying a valid Bearer token is resolved by the token exactly as
-  // before. The cookie yields the same actor_ref the token would have, so
-  // req.mythosIdentity and every audit record downstream are unchanged.
+  var via = resolved ? 'bearer' : null;
   if (!resolved) {
     resolved = resolveOwnerSession(req);
     if (resolved) via = 'owner_session';
   }
-  if (!resolved) {
-    // Three distinguishable denials. None is an oracle about the correct
-    // token: the caller already knows what it sent, and no field here is
-    // derived from the stored value. `no_credentials` vs `invalid_credentials`
-    // is the difference the admin UI needs to tell "you pasted nothing" from
-    // "what you pasted is not a token".
-    var reason = !header ? 'no_credentials' : (token === null ? 'malformed_authorization' : 'unknown_credential');
-    logAuthDecision(req, {
-      result: 'denied',
-      reason: reason,
-      credentialLength: token === null ? undefined : token.length
-    });
-    res.writeHead(401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      error: 'unauthorized — a recognized admin identity token is required',
-      reason: reason === 'no_credentials' ? 'no_credentials' : 'invalid_credentials'
-    }));
-    return false;
+  return { header: header, token: token, resolved: resolved, principal: principal, via: via };
+}
+
+function denyUnauthenticated(req, res, creds) {
+  // Three distinguishable denials. None is an oracle about the correct
+  // credential. `no_credentials` vs `invalid_credentials` is what a client
+  // needs to tell "nothing sent" from "what was sent is not valid".
+  var reason = !creds.header ? 'no_credentials' : (creds.token === null ? 'malformed_authorization' : 'unknown_credential');
+  logAuthDecision(req, {
+    result: 'denied',
+    reason: reason,
+    credentialLength: creds.token === null ? undefined : creds.token.length
+  });
+  res.writeHead(401, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    error: 'unauthorized — sign in at /login, or present a recognised service credential',
+    reason: reason === 'no_credentials' ? 'no_credentials' : 'invalid_credentials',
+    login: '/login'
+  }));
+  return false;
+}
+
+async function authenticate(req, res) {
+  var creds = resolveCredentials(req);
+  if (!creds.resolved) {
+    var userSession = await sessionAuth.resolveUserSession(req, { requireHeader: true });
+    if (userSession && userSession.principal) {
+      creds.resolved = userSession.principal.actor_ref;
+      creds.principal = userSession.principal;
+      creds.via = 'user_session';
+    } else if (userSession && !userSession.principal) {
+      logAuthDecision(req, { result: 'denied', reason: userSession.reason, actor: 'user:' + userSession.user.id });
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'forbidden — this account has no organisation; ask the IDauto administrator', reason: userSession.reason }));
+      return false;
+    }
   }
-  req.mythosIdentity = resolved;
-  // A cookie-authenticated owner is an admin principal: the session grant is
-  // already narrower than any scope check would be (two READ routes, pinned
-  // in OWNER_SESSION_ROUTES), so it is not widened here.
-  req.principal = principal || { actor_ref: resolved, org_id: null, scopes: [identity.ADMIN_SCOPE], kind: 'admin' };
-  logAuthDecision(req, { result: 'granted', reason: via, actor: resolved, org: req.principal.org_id });
+  if (!creds.resolved) return denyUnauthenticated(req, res, creds);
+  req.mythosIdentity = creds.resolved;
+  req.principal = creds.principal || { actor_ref: creds.resolved, org_id: null, scopes: [identity.ADMIN_SCOPE], kind: 'admin' };
+  logAuthDecision(req, { result: 'granted', reason: creds.via, actor: creds.resolved, org: req.principal.org_id });
+  return true;
+}
+
+// Kept for the synchronous callers that only accept a Bearer / owner cookie.
+function requireAuth(req, res) {
+  var creds = resolveCredentials(req);
+  if (!creds.resolved) return denyUnauthenticated(req, res, creds);
+  req.mythosIdentity = creds.resolved;
+  req.principal = creds.principal || { actor_ref: creds.resolved, org_id: null, scopes: [identity.ADMIN_SCOPE], kind: 'admin' };
+  logAuthDecision(req, { result: 'granted', reason: creds.via, actor: creds.resolved, org: req.principal.org_id });
   return true;
 }
 
@@ -257,7 +287,7 @@ function sendMethodNotAllowed(res, allowed) {
 //
 // /session/enroll is NOT in OWNER_SESSION_ROUTES, so the cookie cannot
 // authenticate it: only a real Bearer admin token can mint a new cookie.
-function handleSessionRoute(req, res, pathname) {
+async function handleSessionRoute(req, res, pathname) {
   if (pathname !== '/session' && pathname !== '/session/enroll' && pathname !== '/session/logout') return false;
 
   if (req.headers[OWNER_HEADER] !== '1') {
@@ -272,18 +302,23 @@ function handleSessionRoute(req, res, pathname) {
     // public page needs in order to render itself.
     var raw = session.isEnabled() ? session.readCookie(req) : null;
     var verified = raw ? session.verify(raw, nowSeconds()) : null;
-    if (!verified) { sendJson(res, 200, { owner: false }); return true; }
+    // IDA-V13 — the same call also tells a page whether a web user is
+    // signed in (name, role; never a token). Cookie alone suffices: this is
+    // a read of the caller's own state.
+    var userSession = await sessionAuth.resolveUserSession(req);
+    var userInfo = userSession && userSession.user ? { name: userSession.user.name, email: userSession.user.email, role: userSession.user.role, org_id: userSession.user.org_id } : null;
+    if (!verified) { sendJson(res, 200, { owner: false, user: userInfo }); return true; }
     // Rolling renewal past half-life. The citizen page calls this on every
     // visit, so a browser in regular use never reaches the 180-day expiry.
     if (session.needsRenewal(verified, nowSeconds())) {
       var renewed = session.issue(verified.ref, nowSeconds());
       if (renewed) {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': session.setCookieHeader(renewed) });
-        res.end(JSON.stringify({ owner: true }));
+        res.end(JSON.stringify({ owner: true, user: userInfo }));
         return true;
       }
     }
-    sendJson(res, 200, { owner: true });
+    sendJson(res, 200, { owner: true, user: userInfo });
     return true;
   }
 
@@ -293,7 +328,7 @@ function handleSessionRoute(req, res, pathname) {
       sendJson(res, 503, { error: 'owner sessions are not configured on this host' });
       return true;
     }
-    if (!requireAuth(req, res)) return true;
+    if (!(await authenticate(req, res))) return true;
     var issued = session.issue(req.mythosIdentity, nowSeconds());
     if (!issued) { sendJson(res, 503, { error: 'owner sessions are not configured on this host' }); return true; }
     res.writeHead(204, { 'Set-Cookie': session.setCookieHeader(issued) });
@@ -348,6 +383,13 @@ function decodePathSegment(segment) {
 var WEB_ROOT = path.join(__dirname, '..', 'web');
 
 var ADMIN_ASSETS = {
+  // IDA-V13 — the sign-in page, served like the admin console (same CSP,
+  // no-store, never phase-gated). Static shell only: the credentials go to
+  // Better Auth at /api/auth/sign-in/email.
+  '/login': { file: 'login.html', contentType: 'text/html; charset=utf-8' },
+  '/login/': { file: 'login.html', contentType: 'text/html; charset=utf-8' },
+  '/login/login-ui.js': { file: 'login-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/login/login.css': { file: 'login.css', contentType: 'text/css; charset=utf-8' },
   '/admin': { file: 'admin.html', contentType: 'text/html; charset=utf-8' },
   '/admin/': { file: 'admin.html', contentType: 'text/html; charset=utf-8' },
   '/admin/admin-ui.js': { file: 'admin-ui.js', contentType: 'application/javascript; charset=utf-8' },
@@ -2038,78 +2080,97 @@ function createServer() {
     var pathname = parsed.pathname;
 
     if (serveAdminAsset(req, res, pathname)) return;
-    // IDA-V12 — the atelier page (static shell + assets, its own CSP).
-    if (v12.serveAtelierAsset(req, res, pathname)) return;
 
-    // IDA-DS-1 — citizen UI shells/assets; active ONLY in the A5-PLATE
-    // PUBLIC phase (see serveCitizenAsset()'s header). Static files only;
-    // never a data path.
-    if (serveCitizenAsset(req, res, pathname)) return;
+    Promise.resolve().then(async function () {
+      // IDA-V13 — /atelier is a signed-in surface: no session → /login. The
+      // page's assets stay static (they carry no data), and every data call
+      // the page makes is authenticated below.
+      if (pathname === '/atelier' || pathname === '/atelier/') {
+        var pageSession = await sessionAuth.resolveUserSession(req);
+        if (!pageSession || !pageSession.user) {
+          res.writeHead(302, { 'Location': '/login?next=' + encodeURIComponent('/atelier'), 'Cache-Control': 'no-store' });
+          return res.end();
+        }
+      }
+      // IDA-V12 — the atelier page (static shell + assets, its own CSP).
+      if (v12.serveAtelierAsset(req, res, pathname)) return;
 
-    // A5 OPTION C, 2026-08-19 — the one unauthenticated route, reached
-    // BEFORE requireAuth() deliberately. Every path under /public/ is
-    // handled here and NEVER falls through to the authenticated ROUTES
-    // table below.
-    if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
-      Promise.resolve().then(function () { return handlePublicPassportRoute(req, res, pathname); }).catch(function (err) {
-        // F7 (Opus review, 2026-08-19): a response may already be
-        // underway (e.g. writeHead already called) by the time an error
-        // surfaces here — writing again would throw a second, uglier
-        // error. Destroy the socket instead of attempting a second write.
+      // IDA-DS-1 — citizen UI shells/assets; active ONLY in the A5-PLATE
+      // PUBLIC phase (see serveCitizenAsset()'s header). Static files only;
+      // never a data path.
+      if (serveCitizenAsset(req, res, pathname)) return;
+
+      // A5 OPTION C, 2026-08-19 — the one unauthenticated route, reached
+      // BEFORE authentication deliberately. Every path under /public/ is
+      // handled here and NEVER falls through to the authenticated ROUTES
+      // table below.
+      if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
+        try {
+          await handlePublicPassportRoute(req, res, pathname);
+        } catch (err) {
+          // F7 (Opus review, 2026-08-19): a response may already be
+          // underway by the time an error surfaces here — destroy the
+          // socket instead of attempting a second write. Never echo
+          // err.message to this ANONYMOUS caller.
+          if (res.headersSent) { req.socket.destroy(); return; }
+          if (err && err.httpStatus) return sendJson(res, err.httpStatus, { error: 'request could not be processed' });
+          var mappedPublic = writes.mapDbError(err);
+          sendJson(res, mappedPublic.status, { error: mappedPublic.error });
+        }
+        return;
+      }
+
+      // IDA-V13 — Better Auth: sign-in / sign-out / get-session / change-
+      // password / sessions. Allow-listed inside; sign-up is not reachable.
+      if (sessionAuth.handleAuthRoute(req, res, pathname)) return;
+
+      // IDA-V1B — owner-session routes. Before authenticate() because two of
+      // the three deliberately answer without a credential.
+      if (await handleSessionRoute(req, res, pathname)) return;
+
+      if (!(await authenticate(req, res))) return;
+
+      // IDA-V9 — authorisation, after authentication and before dispatch. An
+      // admin principal holds '*' and passes everything. An organisation
+      // principal (service credential, manager or technician) is refused
+      // with 403 unless the route is scoped AND its scope was granted — a
+      // route absent from the scope table is admin-only.
+      if (req.principal && req.principal.kind === 'organisation') {
+        var needed = scopeForRoute(req.method, pathname);
+        if (!needed) {
+          logAuthDecision(req, { result: 'denied', reason: 'route_not_available_to_organisations', actor: req.mythosIdentity, org: req.principal.org_id });
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'forbidden — this route is not available to an organisation credential' }));
+        }
+        if (!requireScope(req, res, needed)) return;
+      }
+
+      var matchedPath = ALL_ROUTES.filter(function (r) { return r.pattern.test(pathname); });
+      if (matchedPath.length === 0) return notFound(res);
+
+      var matchedMethod = matchedPath.filter(function (r) { return r.method === req.method; });
+      if (matchedMethod.length === 0) {
+        var allowed = matchedPath.map(function (r) { return r.method; }).join(', ');
+        res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': allowed });
+        return res.end(JSON.stringify({ error: 'method not allowed' }));
+      }
+
+      var route = matchedMethod[0];
+      var m = pathname.match(route.pattern);
+      try {
+        await route.handler(req, res, m);
+      } catch (err) {
         if (res.headersSent) { req.socket.destroy(); return; }
-        // Never echo err.message to this ANONYMOUS, unauthenticated
-        // caller — unlike the authenticated ROUTES catch below (whose own
-        // comment already warns against echoing driver-shaped detail),
-        // this caller has proven nothing about themselves at all, so even
-        // an httpStatus-carrying application error (a message string an
-        // internal caller wrote for an admin's eyes) gets a generic body.
-        if (err && err.httpStatus) return sendJson(res, err.httpStatus, { error: 'request could not be processed' });
+        if (err.httpStatus) return sendJson(res, err.httpStatus, { error: err.message });
+        // Never include the raw driver error message in the response — it
+        // can echo back query fragments or connection detail. mapDbError()
+        // translates known Postgres error codes to a safe, specific message;
+        // anything unrecognized falls through to a generic 500.
         var mapped = writes.mapDbError(err);
         sendJson(res, mapped.status, { error: mapped.error });
-      });
-      return;
-    }
-
-    // IDA-V1B — owner-session routes. Before requireAuth() because two of
-    // the three deliberately answer without a Bearer token; see the
-    // function's header.
-    if (handleSessionRoute(req, res, pathname)) return;
-
-    if (!requireAuth(req, res)) return;
-
-    // IDA-V9 — authorisation, after authentication and before dispatch. An
-    // admin principal holds '*' and passes everything, so this changes
-    // nothing for the credentials that exist today. An organisation
-    // principal is refused with 403 unless the route is scoped AND its scope
-    // was granted — a route absent from ROUTE_SCOPES is admin-only.
-    if (req.principal && req.principal.kind === 'organisation') {
-      var needed = scopeForRoute(req.method, pathname);
-      if (!needed) {
-        logAuthDecision(req, { result: 'denied', reason: 'route_not_available_to_organisations', actor: req.mythosIdentity, org: req.principal.org_id });
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'forbidden — this route is not available to an organisation credential' }));
       }
-      if (!requireScope(req, res, needed)) return;
-    }
-
-    var matchedPath = ALL_ROUTES.filter(function (r) { return r.pattern.test(pathname); });
-    if (matchedPath.length === 0) return notFound(res);
-
-    var matchedMethod = matchedPath.filter(function (r) { return r.method === req.method; });
-    if (matchedMethod.length === 0) {
-      var allowed = matchedPath.map(function (r) { return r.method; }).join(', ');
-      res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': allowed });
-      return res.end(JSON.stringify({ error: 'method not allowed' }));
-    }
-
-    var route = matchedMethod[0];
-    var m = pathname.match(route.pattern);
-    Promise.resolve().then(function () { return route.handler(req, res, m); }).catch(function (err) {
-      if (err.httpStatus) return sendJson(res, err.httpStatus, { error: err.message });
-      // Never include the raw driver error message in the response — it
-      // can echo back query fragments or connection detail. mapDbError()
-      // translates known Postgres error codes to a safe, specific message;
-      // anything unrecognized falls through to a generic 500.
+    }).catch(function (err) {
+      if (res.headersSent) { req.socket.destroy(); return; }
       var mapped = writes.mapDbError(err);
       sendJson(res, mapped.status, { error: mapped.error });
     });
@@ -2141,5 +2202,8 @@ module.exports = {
   _extractBearer: extractBearer,
   // IDA-V12: exported for the v12 suites (provider/catalogue injection is
   // done through v12-routes.createV12 in tests; these expose the live ones).
-  _v12: v12
+  _v12: v12,
+  // IDA-V13: exported for tests/ida-v13-auth-session-test.js.
+  _authenticate: authenticate,
+  _loginAssets: ['/login', '/login/', '/login/login-ui.js', '/login/login.css']
 };

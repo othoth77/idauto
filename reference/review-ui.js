@@ -1,11 +1,17 @@
 'use strict';
 (function () {
+  // IDA-V13 — authenticated by the session cookie (HttpOnly, set at /login)
+  // plus X-IDauto-Session: 1. The `token` parameter is kept for the callers'
+  // shape and ignored.
   async function apiRequest(path, token, options) {
     var settings = options || {};
-    settings.headers = Object.assign({}, settings.headers, { Authorization: 'Bearer ' + token });
+    settings.credentials = 'same-origin';
+    settings.headers = Object.assign({}, settings.headers, { 'X-IDauto-Session': '1', Accept: 'application/json' });
+    if (token) settings.headers.Authorization = 'Bearer ' + token;   // library use from a script
     var response = await fetch(path, settings);
     var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) throw new Error(body.error || ('Request failed (' + response.status + ')'));
+    if (response.status === 401 && typeof window !== 'undefined') { window.location.replace('/login?next=' + encodeURIComponent('/admin/review')); }
+    if (!response.ok) throw new Error(body.message_fr || body.error || ('Request failed (' + response.status + ')'));
     return body;
   }
   function loadQueue(token) { return apiRequest('/api/review/observations', token); }
@@ -20,13 +26,17 @@
   if (typeof window !== 'undefined') window.IdAutoReviewUI = exported;
   if (typeof document === 'undefined') return;
 
-  var tokenInput = document.getElementById('review-token');
   var loadButton = document.getElementById('load-queue');
   var status = document.getElementById('queue-status');
   var list = document.getElementById('queue-list');
   var detail = document.getElementById('review-detail');
   var activeId = null;
-  function token() { return tokenInput.value; }
+  function token() { return null; }
+  (async function () {
+    if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+    var line = document.getElementById('session-line');
+    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); var me = r.ok ? await r.json() : null; if (line) line.textContent = me && me.user ? 'Connecté : ' + me.user.name + ' · ' + me.user.role : 'Vous n\'êtes pas connecté.'; if (!me || !me.user) window.location.replace('/login?next=' + encodeURIComponent('/admin/review')); } catch (e) { if (line) line.textContent = 'Session : vérification impossible.'; }
+  }());
   function text(tag, value, className) {
     var node = document.createElement(tag);
     node.textContent = value == null ? '—' : String(value);
