@@ -350,3 +350,30 @@ IDA-2B deployed the private PostgreSQL service and IDA-2F created the local medi
 | ANPR model | Deferred | Deferred to IDA-3 |
 | OCR engine | Deferred | Deferred to IDA-3 |
 | Object storage provider | Deferred | Deferred to IDA-2 |
+
+
+---
+
+## 10. Identification, catalogue and workshop layer (IDA-V12, 2026-09-05)
+
+```
+CAMERA ─► ANPR (plate-scanner.js) ─► PLATE NORMALISATION (vehicle/plate-normalizer.js)
+      ─► VEHICLE IDENTIFICATION (vehicle/vehicle-resolver.js: cache → local → providers → manual)
+      ─► VEHICLE RECORD (vehicle/vehicle-repository.js, provenance + history)
+      ─► PART CATALOGUE (parts/parts-catalog.js = local catalogue + parts/tecdoc-adapter.js)
+      ─► PARTS (idauto_parts / idauto_part_compatibility; stock in idauto_org_stock)
+      ─► ATELIER WORKFLOW (workshop/workshop-vehicle-service.js → visits, operations, orders)
+```
+
+| Interface | Module | Implementations |
+|---|---|---|
+| `PlateRecognizer` | `web/citizen/plate-scanner.js` (browser) + `reference/vehicle/plate-normalizer.js` (server) | Tesseract.js vendored; normaliser pure |
+| `VehicleResolver` | `reference/vehicle/vehicle-resolver.js` | one; providers pluggable |
+| provider contract | `reference/vehicle/providers/` | `LocalVehicleResolver` (always), `HttpVehicleProvider` (licensed, disabled unless configured), `MockVehicleResolver` (tests) |
+| `VehicleRepository` | `reference/vehicle/vehicle-repository.js` | PostgreSQL |
+| `PartsCatalog` | `reference/parts/parts-catalog.js` | local + supplier merge |
+| `TecDocAdapter` | `reference/parts/tecdoc-adapter.js` | generic gateway (not configured), `MockTecDocProvider` (tests) |
+| `WorkshopVehicleService` | `reference/workshop/workshop-vehicle-service.js` | over `workshop-repository.js` |
+| routes | `reference/v12-routes.js` | mounted by `api.js` behind the same auth and scope gate |
+
+Rules: the frontend talks to `/api/*` only and never to a provider; truth is written only by `confirm()`; mocks never enter the default production path; catalogue and stock are separate tables; vehicle identity and customer identity never share a table (opaque `customer_ref`). Details: `VEHICLE_RESOLUTION.md`, `TECDOC.md`, `ANPR.md`, `DATABASE.md`, `API.md`.

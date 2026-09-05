@@ -61,7 +61,12 @@ whole organisation's access immediately.
 | `passport:read` | `GET /api/passport/:ivid` |
 | `identity:resolve` | `GET /api/vehicles/:ref/resolve` |
 | `vehicle:search` | `GET /api/search/vehicles` — every criterion except `vin` |
-| `vin:search` | the `vin=` criterion on that route. **Separate on purpose**, always audited — see §5 and §9. |
+| `vin:search` | the `vin=` criterion on that route, `POST /api/resolve/vin`, and VIN disclosure on the fiche. **Separate on purpose**, always audited — see §5 and §9. |
+| `vehicle:resolve` | `POST /api/resolve/plate`, `/api/resolve/manual`, `POST /api/vehicles/:ref/identification/refresh` (IDA-V12) |
+| `vehicle:write` | also `POST /api/resolve/confirm` and `POST /api/workshop/visits/:id/identification` — the only writes of an identification |
+| `vehicle:read` | also `GET /api/vehicles/:ref/fiche`, `.../identification/history` |
+| `parts:read` / `parts:write` / `stock:write` | catalogue and stock routes (`docs/API.md`) |
+| `workshop:read` / `workshop:write` | `GET` / `POST` under `/api/workshop/*` — always scoped to the credential's organisation |
 
 **Any route not listed is administrator-only.** That includes the review
 queue, `/health`, ingestion, media, and **merge / split** — an organisation

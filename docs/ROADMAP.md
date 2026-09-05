@@ -41,6 +41,10 @@ anywhere.
 | IDA-7 | Verifiable Credentials / DID interoperability | **SPECIFIED** |
 | IDA-8 | Blockchain anchoring / Merkle proofs | **SPECIFIED** |
 | IDA-9 | Open protocol, ecosystem, internationalisation | **PLANNED** |
+| IDA-V1…V11 | idauto.tn: owner session, public plate resolution, unknown-vehicle handoff, verification scopes, merge/split, organisation auth, search, plate scanner | ✅ **IMPLEMENTED / DEPLOYED** (2026-08-27 → 28) |
+| IDA-V12 | Vehicle identification (`VehicleResolver`), parts catalogue (`TecDocAdapter`), workshop (`/atelier`) | ✅ **IMPLEMENTED** (2026-09-05) — external plate→vehicle provider and TecDoc licence **NOT CONFIGURED** (see `VEHICLE_RESOLUTION.md` §3, `TECDOC.md`) |
+
+> **2026-09-05 note.** "Nothing in this repository is DEPLOYED" above is historical: idauto.tn has served `main` since 2026-08-27 (`PRODUCTION_RUNBOOK.md`, host record). The IDA-4 row's "blocked on IDA-2E" predates the owner's V-series decisions (public plate resolution, owner session).
 
 ---
 

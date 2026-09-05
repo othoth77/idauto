@@ -6,6 +6,27 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-09-05 — ida-v12: vehicle identification, catalogue and workshop — end to end
+
+Owner order "IDauto FINAL COMPLETION". Plate normaliser (TU / RS / Arabic
+digits and word / spaces / reversed search key / OCR confidence gate;
+`TUN_RS` joins the catalogue as an unverified draft). `VehicleResolver`
+with cache → local database → pluggable providers → manual fallback;
+provider answers are candidates, `confirm()` alone writes truth with
+provenance (`identification_*` columns) and a technical history table.
+`PartsCatalog` = local catalogue + organisation stock, merged with a
+`TecDocAdapter` that reports « Catalogue fournisseur non configuré » and
+never invents a reference. `WorkshopVehicleService`: visits, operations,
+orders, opaque customer references only. New `/atelier` page (French, all
+UI states, citizen CSP). Public plate route and search accept every
+spelling. Structured events + `GET /api/metrics`. Migration `ida-v12`
+(additive, idempotent). `tests/ida-v12`: 124 assertions with MOCK providers
+labelled as such; full run 29 suites / 2175 / 0. External plate → vehicle
+provider for Tunisia and TecDoc access: NOT CONFIGURED (research record in
+`docs/VEHICLE_RESOLUTION.md` §3). New docs: VEHICLE_RESOLUTION, TECDOC,
+ANPR, DATABASE, DEPLOYMENT, API, SECURITY (implementation),
+IDAUTO_FINAL_AUDIT, IDAUTO_PRODUCTION_READINESS.
+
 ## 2026-08-26 — ida-ship-1: PR #6 + PR #7 merged; release verification of main
 
 Final ship pass under the owner's IDauto ship order. PR #6 (IDA-4 Option C,

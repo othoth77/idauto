@@ -80,6 +80,8 @@ self-declaration. Full definition in [`docs/TRUST_MODEL.md`](docs/TRUST_MODEL.md
 docs/           specification, architecture, strategy, roadmap, migration record
 protocol/       the open protocol — schemas, events, credentials, verification rules
 reference/      the working reference implementation (Node.js, PostgreSQL)
+                vehicle/ (plate normaliser, VehicleResolver, providers), parts/ (PartsCatalog,
+                TecDocAdapter), workshop/ (WorkshopVehicleService), v12-routes.js, /atelier page
 database/       PostgreSQL schema, migrations, synthetic seed data
 config/         configurable rules and feature flags (no secrets)
 ops/            operator tooling and runbooks — media integrity, backup, restore
@@ -110,6 +112,12 @@ Nothing in this repository pretends to be further along than it is.
 | W3C Verifiable Credentials / DID interoperability | **SPECIFIED**, not implemented |
 | Blockchain anchoring and Merkle batching | **SPECIFIED**, not implemented — no chain integration exists in this repository |
 | Public capture surface | **BLOCKED** — legal review and real authentication outstanding |
+| Deployment | **DEPLOYED** — idauto.tn since 2026-08-27 (public plate → IVID → passport, owner session, scanner) |
+| Plate normalisation TU / RS / Arabic / OCR confidence (IDA-V12) | **IMPLEMENTED** — `reference/vehicle/plate-normalizer.js` |
+| `VehicleResolver`: cache → local database → providers → manual, with provenance and history (IDA-V12) | **IMPLEMENTED** — external plate → vehicle provider for Tunisia: **NOT CONFIGURED / EXTERNAL** (`docs/VEHICLE_RESOLUTION.md` §3) |
+| Parts: local catalogue + organisation stock, `TecDocAdapter` (IDA-V12) | **IMPLEMENTED** — TecDoc access **NOT CONFIGURED** (« Catalogue fournisseur non configuré ») |
+| Workshop: visits, operations, orders, `/atelier` page (IDA-V12) | **IMPLEMENTED** — customer identity stays in the workshop's own system (opaque reference only) |
+| Mock providers | tests only — refuse to construct in production |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /
 LEGAL-REVIEW-REQUIRED in [`docs/ROADMAP.md`](docs/ROADMAP.md), and those tags are meant
@@ -136,7 +144,8 @@ psql -d idauto -f database/seed-synthetic-test-data.sql   # synthetic data only
 node tests/ida-2a-schema-and-plate-validation-test.js
 ```
 
-Test execution, including which suites need a live database, is documented in
+`npm run test:offline` runs the database-free suites; `npm run test:v12` runs the identification /
+catalogue / workshop suite against a scratch database. Test execution, including which suites need a live database, is documented in
 [`ops/runbooks/TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md).
 
 ---
@@ -170,6 +179,15 @@ Test execution, including which suites need a live database, is documented in
 [`CONTRIBUTING.md`](CONTRIBUTING.md) ·
 [`SECURITY.md`](SECURITY.md)
 
+**Identification, catalogue, workshop (IDA-V12)**
+[`VEHICLE_RESOLUTION.md`](docs/VEHICLE_RESOLUTION.md) ·
+[`ANPR.md`](docs/ANPR.md) ·
+[`TECDOC.md`](docs/TECDOC.md) ·
+[`DATABASE.md`](docs/DATABASE.md) ·
+[`API.md`](docs/API.md) ·
+[`DEPLOYMENT.md`](docs/DEPLOYMENT.md) ·
+[`SECURITY.md` (implementation)](docs/SECURITY.md)
+
 **Operations**
 [`TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md) ·
 [`STORAGE_RUNBOOK.md`](ops/runbooks/STORAGE_RUNBOOK.md) ·
@@ -177,6 +195,8 @@ Test execution, including which suites need a live database, is documented in
 
 **History**
 [`AI_HANDOVER.md`](docs/AI_HANDOVER.md) ·
+[`IDAUTO_FINAL_AUDIT.md`](docs/IDAUTO_FINAL_AUDIT.md) ·
+[`IDAUTO_PRODUCTION_READINESS.md`](docs/IDAUTO_PRODUCTION_READINESS.md) ·
 [`MIGRATION_FROM_MYTHOS_PROD.md`](docs/MIGRATION_FROM_MYTHOS_PROD.md) ·
 [`STANDALONE_MIGRATION_AUDIT.md`](docs/STANDALONE_MIGRATION_AUDIT.md) ·
 [`CHANGELOG.md`](CHANGELOG.md)

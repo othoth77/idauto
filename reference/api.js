@@ -61,6 +61,8 @@ var rateLimit = require('./rate-limit.js');
 var publicSurfacePolicy = require('./public-surface-policy.js');
 var plateValidator = require('./plate-validator.js');
 var session = require('./session.js');
+var v12Routes = require('./v12-routes.js');
+var plateNormalizer = require('./vehicle/plate-normalizer.js');
 
 //
 // IDA-V1B, 2026-08-27 — OWNER SESSION.
@@ -863,7 +865,12 @@ async function handlePublicPlateRoute(req, res, m) {
   } catch (_) {
     return notFound(res);
   }
-  var normalized = plateValidator.normalizePlate(candidate);
+  // IDA-V12 — the spelling is canonicalised first ("230 TU 8646",
+  // "230TU8646", "230 تونس 8646", "8646TU230" all mean "230 TUN 8646"), then
+  // the catalogue decides validity exactly as before. Still a format gate
+  // before any database touch; still the same 404 for unparseable input.
+  var parsedPlate = plateNormalizer.parsePlate(candidate);
+  var normalized = parsedPlate.ok ? parsedPlate.canonical : plateValidator.normalizePlate(candidate);
   if (!normalized || !plateValidator.isValidPlate(normalized)) return notFound(res);
 
   // Same bucket as the passport route: one public resolution budget per
@@ -1346,7 +1353,10 @@ async function searchVehicles(req, res, parsed) {
     // Normalized through the shared validator, so search agrees with the
     // public plate route and with what was stored, rather than re-inventing
     // a second notion of what a plate string means.
-    var normalized = plateValidator.normalizePlate(plate) || plate;
+    // IDA-V12 — accept every spelling the normaliser knows (TU, تونس, RS,
+    // Arabic digits, the reversed search key) before the stored-form compare.
+    var parsedSearchPlate = plateNormalizer.parsePlate(plate);
+    var normalized = parsedSearchPlate.ok ? parsedSearchPlate.canonical : (plateValidator.normalizePlate(plate) || plate);
     // Exact first, then the space-stripped comparison. normalizePlate() keeps
     // spaces on purpose (the spaced form is canonical and several formats
     // match on an optional separator), and the PUBLIC RESOLVER matches it
@@ -1979,9 +1989,16 @@ var ROUTE_SCOPES = [
   { method: 'GET',  pattern: /^\/api\/passport\/[^/]+$/,           scope: 'passport:read' }
 ];
 
+// IDA-V12 — identification, catalogue and workshop routes live in
+// reference/v12-routes.js and are mounted here behind the SAME requireAuth()
+// and the SAME scope gate. Their scopes join this table; their handlers
+// join ROUTES below. Nothing under /public/ is added.
+var v12 = v12Routes.createV12({ sendJson: sendJson, readJsonBody: readJsonBody, requireScope: requireScope, decodePathSegment: decodePathSegment });
+var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes);
+
 function scopeForRoute(method, pathname) {
-  for (var i = 0; i < ROUTE_SCOPES.length; i++) {
-    if (ROUTE_SCOPES[i].method === method && ROUTE_SCOPES[i].pattern.test(pathname)) return ROUTE_SCOPES[i].scope;
+  for (var i = 0; i < ALL_ROUTE_SCOPES.length; i++) {
+    if (ALL_ROUTE_SCOPES[i].method === method && ALL_ROUTE_SCOPES[i].pattern.test(pathname)) return ALL_ROUTE_SCOPES[i].scope;
   }
   return null;
 }
@@ -2013,12 +2030,16 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/facts\/([^/]+)\/evidence$/, handler: function (req, res, m) { return getEvidenceForFact(res, decodePathSegment(m[1])); } }
 ];
 
+var ALL_ROUTES = ROUTES.concat(v12.routes);
+
 function createServer() {
   return http.createServer(function (req, res) {
     var parsed = url.parse(req.url);
     var pathname = parsed.pathname;
 
     if (serveAdminAsset(req, res, pathname)) return;
+    // IDA-V12 — the atelier page (static shell + assets, its own CSP).
+    if (v12.serveAtelierAsset(req, res, pathname)) return;
 
     // IDA-DS-1 — citizen UI shells/assets; active ONLY in the A5-PLATE
     // PUBLIC phase (see serveCitizenAsset()'s header). Static files only;
@@ -2071,7 +2092,7 @@ function createServer() {
       if (!requireScope(req, res, needed)) return;
     }
 
-    var matchedPath = ROUTES.filter(function (r) { return r.pattern.test(pathname); });
+    var matchedPath = ALL_ROUTES.filter(function (r) { return r.pattern.test(pathname); });
     if (matchedPath.length === 0) return notFound(res);
 
     var matchedMethod = matchedPath.filter(function (r) { return r.method === req.method; });
@@ -2117,5 +2138,8 @@ module.exports = {
   _ownerSessionAllows: ownerSessionAllows,
   // IDA-V1C: exported for tests/ida-v1c-auth-diagnostics-test.js, which pins
   // the RFC-conformant parse and proves no credential reaches the log.
-  _extractBearer: extractBearer
+  _extractBearer: extractBearer,
+  // IDA-V12: exported for the v12 suites (provider/catalogue injection is
+  // done through v12-routes.createV12 in tests; these expose the live ones).
+  _v12: v12
 };

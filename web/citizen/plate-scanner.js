@@ -31,6 +31,12 @@
   "use strict";
 
   var ENGINE_BASE = "/assets/tesseract/";
+  /* IDA-V12 — the atelier page serves the same vendored engine under its own
+   * prefix (so it works in the PRIVATE phase too); configure() moves the
+   * base before the first scan. Still same-origin, still no CDN. */
+  function configure(opts) {
+    if (opts && typeof opts.engineBase === "string" && /^\/[A-Za-z0-9\/_-]+\/$/.test(opts.engineBase)) ENGINE_BASE = opts.engineBase;
+  }
   /* Below this the reading is treated as UNCERTAIN and must be confirmed by a
    * human before anything is searched. Tesseract reports 0–100 per word. 75 is
    * deliberately cautious: a wrong plate sends someone to the wrong vehicle's
@@ -474,6 +480,7 @@
   return {
     open: open,
     bind: bind,
+    configure: configure,
     close: close,
     stopCamera: stopCamera,
     cameraSupported: cameraSupported,

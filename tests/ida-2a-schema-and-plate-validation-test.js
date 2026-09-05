@@ -80,7 +80,7 @@ console.log('\n2. CONFIG — plate_formats section loads and is structurally san
 (function () {
   var config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   var formats = config.plate_formats && config.plate_formats.formats;
-  ok(Array.isArray(formats) && formats.length === 7, 'Exactly 7 plate formats defined (found ' + (formats ? formats.length : 0) + ')');
+  ok(Array.isArray(formats) && formats.length === 8, 'Exactly 8 plate formats defined (7 IDA-0 drafts + TUN_RS, IDA-V12) (found ' + (formats ? formats.length : 0) + ')');
   ok(formats.every(function (f) { return f.verified === false; }), 'Every format is marked verified:false (UNVERIFIED DRAFT, per config _note)');
   ok(formats.every(function (f) { return typeof f.pattern === 'string' && f.pattern.length > 0; }), 'Every format has a non-empty pattern string');
 })();
@@ -104,7 +104,8 @@ console.log('\n4. plate-validator.matchPlateFormat — every active format\'s ow
     TUN_DIP: 'CD 12 345',
     TUN_MIL: 'ARN 123456',
     TUN_TMP: 'TT 12345 A',
-    TUN_ECO: 'ZE 1234 567'
+    TUN_ECO: 'ZE 1234 567',
+    TUN_RS: '123 RS 4567'
   };
   Object.keys(activeExamples).forEach(function (code) {
     var result = validator.matchPlateFormat(activeExamples[code], formats);
