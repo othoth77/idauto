@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/atelier/assets/base.css">
   <link rel="stylesheet" href="/atelier/assets/components.css">
   <link rel="stylesheet" href="/atelier/atelier.css">
+  <link rel="stylesheet" href="/atelier/assets/document.css">
 </head>
 <body>
 <a class="ida-skip-link" href="#main">Aller au contenu</a>
@@ -157,6 +158,12 @@
         <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-action="fiche-refresh">Actualiser</button>
         <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-action="fiche-history">Historique</button>
       </div>
+      <!-- IDA-V14 — the passport link and the carte grise scanner, side by side. -->
+      <div class="ida-search-actions">
+        <a class="ida-btn ida-btn--secondary ida-btn--sm" data-action="open-passport" data-passport-link href="/passport" target="_blank" rel="noopener">Ouvrir le passeport</a>
+        <button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-action="scan-registration">Scanner la carte grise</button>
+      </div>
+      <p class="ida-small ida-muted" data-document-status aria-live="polite"></p>
       <p class="ida-small ida-muted" data-fiche-status aria-live="polite"></p>
       <div class="ida-stack" data-fiche-edit hidden>
         <div class="ida-atelier-grid">
@@ -246,6 +253,81 @@
   </div>
 </main>
 
+<!-- IDA-V14 — the carte grise dialog. Face 1 (recto) required, face 2
+     (verso) optional. Camera on phones (capture="environment"), gallery /
+     file everywhere; the photo is processed in this browser and only the
+     optimised document image leaves it. No inline script. -->
+<div class="ida-scan" data-cg-root hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="cg-title">
+  <div class="ida-scan-panel ida-card ida-stack ida-cg-panel">
+    <div class="ida-scan-head">
+      <h2 id="cg-title" class="ida-h3">Carte grise</h2>
+      <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="close" aria-label="Fermer">✕</button>
+    </div>
+    <p class="ida-caption" data-cg-status aria-live="polite"></p>
+    <p class="ida-small" data-cg-detect-flag aria-live="polite"></p>
+
+    <div class="ida-stack" data-cg-faces>
+      <div class="ida-cg-faces">
+        <div class="ida-cg-face">
+          <p class="ida-label">Face 1 — Recto</p>
+          <img data-cg-preview-1 alt="Aperçu de la face 1" hidden>
+          <p class="ida-caption" data-cg-meta-1></p>
+          <div class="ida-search-actions" data-cg-pick-1>
+            <label class="ida-btn ida-btn--primary ida-btn--sm">Scanner la face 1<input type="file" accept="image/*" capture="environment" data-cg-file="1" hidden></label>
+            <label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="1" hidden></label>
+          </div>
+          <div class="ida-search-actions" data-cg-redo-1 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-1">Refaire la face 1</button></div>
+        </div>
+        <div class="ida-cg-face">
+          <p class="ida-label">Face 2 — Verso <span class="ida-muted">(optionnel)</span></p>
+          <img data-cg-preview-2 alt="Aperçu de la face 2" hidden>
+          <p class="ida-caption" data-cg-meta-2>Optionnel</p>
+          <div class="ida-search-actions" data-cg-pick-2>
+            <label class="ida-btn ida-btn--secondary ida-btn--sm">Scanner la face 2 — optionnel<input type="file" accept="image/*" capture="environment" data-cg-file="2" hidden></label>
+            <label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="2" hidden></label>
+          </div>
+          <div class="ida-search-actions" data-cg-redo-2 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-2">Refaire la face 2</button></div>
+        </div>
+      </div>
+      <div class="ida-search-actions">
+        <button type="button" class="ida-btn ida-btn--ghost" data-cg-action="cancel">Annuler</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-cg-action="finish-1" data-cg-finish-1 hidden>Terminer avec la face 1</button>
+        <button type="button" class="ida-btn ida-btn--primary" data-cg-action="validate" data-cg-validate disabled>Valider la carte grise</button>
+      </div>
+    </div>
+
+    <div class="ida-stack" data-cg-editor hidden>
+      <p class="ida-alert ida-alert--warning ida-small" data-cg-editor-note>Ajustez les coins de la carte grise.</p>
+      <div class="ida-cg-editor" data-cg-editor-host></div>
+      <div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="back">Retour</button></div>
+    </div>
+
+    <div class="ida-stack" data-cg-progress hidden aria-live="polite">
+      <ol class="ida-cg-steps">
+        <li class="ida-cg-step" data-cg-step-capture>Capture</li><li class="ida-cg-step" data-cg-step-detect>Détection</li><li class="ida-cg-step" data-cg-step-correct>Correction</li>
+        <li class="ida-cg-step" data-cg-step-ocr>OCR</li><li class="ida-cg-step" data-cg-step-analyse>Analyse</li><li class="ida-cg-step" data-cg-step-save>Enregistrement</li>
+      </ol>
+      <div class="ida-skeleton ida-scan-skeleton" aria-hidden="true"></div>
+    </div>
+
+    <div class="ida-stack" data-cg-result hidden>
+      <p class="ida-alert ida-alert--info ida-small">Informations extraites — une proposition à vérifier. Décochez ce qui ne doit pas être écrit.</p>
+      <p class="ida-caption" data-cg-result-conf></p>
+      <p class="ida-small ida-muted" data-cg-result-none hidden>Aucune information technique n'a pu être lue. Les faces sont enregistrées ; complétez la fiche à la main.</p>
+      <div class="ida-cg-table-wrap"><table class="ida-cg-table"><thead><tr><th scope="col">Champ</th><th scope="col">Lu</th><th scope="col">Statut</th><th scope="col">Écrire</th></tr></thead><tbody data-cg-result-rows></tbody></table></div>
+      <div class="ida-search-actions">
+        <button type="button" class="ida-btn ida-btn--primary" data-cg-action="confirm">Confirmer</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-cg-action="skip">Garder les images seulement</button>
+      </div>
+    </div>
+
+    <div class="ida-stack" data-cg-error hidden>
+      <div class="ida-alert ida-alert--danger"><div><p class="ida-alert-title" data-cg-error-title></p><p class="ida-small" data-cg-error-body></p></div></div>
+      <div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--secondary" data-cg-action="back" data-cg-error-close>Retour</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- The scanner dialog: same markup contract as the citizen page, driven by
      the same plate-scanner.js. -->
 <div class="ida-scan" data-scan-root hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="scan-title">
@@ -296,6 +378,7 @@
 
 <script src="/atelier/assets/ui.js"></script>
 <script src="/atelier/assets/plate-scanner.js"></script>
+<script src="/atelier/assets/registration-scanner.js"></script>
 <script src="/atelier/atelier-ui.js"></script>
 </body>
 </html>

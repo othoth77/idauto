@@ -1,0 +1,6 @@
+/* IDauto — carte grise on the passport and in the atelier dialog (IDA-V14). Tokens only. */
+.ida-cg-thumbs { display: grid; grid-template-columns: 1fr; gap: var(--ida-space-3); }
+@media (min-width: 560px) { .ida-cg-thumbs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ida-cg-thumb img { max-width: 100%; height: auto; border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); cursor: zoom-in; }
+.ida-cg-full { position: fixed; inset: 0; background: var(--ida-scrim); display: flex; align-items: center; justify-content: center; padding: var(--ida-space-3); z-index: 50; }
+.ida-cg-full img { max-width: 100%; max-height: 100%; }

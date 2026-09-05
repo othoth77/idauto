@@ -30,9 +30,11 @@ var authModule = require('./auth.js');
 var SESSION_HEADER = 'x-idauto-session';
 
 var MANAGER_SCOPES = ['vehicle:read', 'vehicle:write', 'vehicle:search', 'vehicle:resolve', 'vin:search', 'plate:read', 'fact:read', 'fact:write',
-  'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'parts:write', 'stock:write', 'workshop:read', 'workshop:write'];
+  'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'parts:write', 'stock:write', 'workshop:read', 'workshop:write',
+  'document:read', 'document:write', 'document:delete'];
 var TECHNICIAN_SCOPES = ['vehicle:read', 'vehicle:write', 'vehicle:search', 'vehicle:resolve', 'plate:read', 'fact:read',
-  'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'workshop:read', 'workshop:write'];
+  'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'workshop:read', 'workshop:write',
+  'document:read', 'document:write'];   // a technician may scan and replace, not delete
 
 // The exact Better Auth routes the web UI may reach. Everything else under
 // /api/auth (sign-up, social, password reset by e-mail, …) is 404.

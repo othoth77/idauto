@@ -178,7 +178,7 @@ function createVehicleResolver(deps) {
       if (!v.ok) throw errors.IdautoError('INVALID_VIN', { reason: v.reason });
       vin = v.vin;
     }
-    var method = ['plate_ocr', 'plate_manual', 'vin', 'manual_selection', 'provider', 'admin'].indexOf(input.method) !== -1 ? input.method : 'manual_selection';
+    var method = ['plate_ocr', 'plate_manual', 'vin', 'manual_selection', 'provider', 'admin', 'carte_grise_ocr'].indexOf(input.method) !== -1 ? input.method : 'manual_selection';
     var prov = { method: method, source: input.source || (method === 'provider' ? 'provider' : 'manual'), confidence: typeof input.confidence === 'number' ? input.confidence : 1.0 };
     var fields = Object.assign({}, input.candidate || {}, { plate: parsedPlate, vin: vin });
     var row;

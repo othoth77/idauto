@@ -154,6 +154,8 @@
   }
   function renderFiche(v) {
     panels.fiche.hidden = false;
+    var pl = $('[data-passport-link]'); if (pl) pl.href = '/passport?ivid=' + encodeURIComponent(v.id);
+    loadDocumentStatus(v.id);
     var dl = $('[data-fiche-fields]'); dl.textContent = '';
     FICHE_FIELDS.forEach(function (f) {
       if (f[1] === 'vin' && v.vin === undefined) { if (!v.vin_present) return; }
@@ -285,6 +287,26 @@
     catch (err) { visitStatus(err.message_fr || GENERIC_FR); }
   }
 
+  /* ---------------- carte grise (IDA-V14) ---------------- */
+  var cgScanner = window.IdaRegistrationScanner;
+  var cgRoot = $('[data-cg-root]');
+  if (cgScanner && cgRoot) { cgScanner.configure({ engineBase: '/atelier/assets/tesseract/', scanicUrl: '/atelier/assets/scanic.umd.js' }); cgScanner.bind(cgRoot); }
+  async function loadDocumentStatus(ivid) {
+    var line = $('[data-document-status]'); if (!line) return;
+    try {
+      var d = await api('GET', '/api/vehicles/' + encodeURIComponent(ivid) + '/registration-document');
+      line.textContent = d.has_document ? 'Carte grise enregistrée : face 1' + (d.faces[2] ? ' + face 2' : '') + (d.ocr ? ' · informations extraites (' + Math.round((d.ocr.confidence || 0) * 100) + ' %)' : '') + '.' : 'Aucune carte grise enregistrée.';
+    } catch (err) { line.textContent = err.status === 403 ? '' : (err.message_fr || ''); }
+  }
+  function openRegistrationScanner() {
+    if (!state.vehicle) return ficheStatus('Identifiez d\'abord le véhicule.');
+    if (!cgScanner || !cgRoot) return ficheStatus('Scanner indisponible.');
+    cgScanner.open({ root: cgRoot, ivid: state.vehicle.id, onDone: async function (r) {
+      if (r.vehicle) { state.vehicle = r.vehicle; renderFiche(r.vehicle); ficheStatus('Carte grise enregistrée.'); }
+      else { loadDocumentStatus(state.vehicle.id); ficheStatus('Carte grise enregistrée (images).'); }
+    } });
+  }
+
   /* ---------------- scanner ---------------- */
   var scanner = window.IdaPlateScanner;
   var scanEls = { root: $('[data-scan-root]') };
@@ -308,6 +330,7 @@
     var t = e.target.closest('[data-action]'); if (!t) return;
     var a = t.getAttribute('data-action');
     if (a === 'logout') return logout();
+    if (a === 'scan-registration') return openRegistrationScanner();
     if (a === 'scan') return openScanner();
     if (a === 'resolve-plate') return resolvePlate({ method: 'manual' });
     if (a === 'confirm-plate') return resolvePlate({ method: 'camera_ocr', confidence: state.plate ? state.plate.confidence : undefined, confirmed: true });
