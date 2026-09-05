@@ -51,6 +51,7 @@ Roles: **admin** (everything, may act for an organisation by naming `org_id`), *
 | `GET …/registration-document/:face/image?variant=thumb` | `document:read` | the bytes, `Cache-Control: private, no-store` · 404 when absent or another organisation's |
 | `DELETE …/registration-document/:face` | `document:delete` | manager / admin |
 | `POST …/registration-document/ocr` | `document:write` | `{ faces:[{ face, text, confidence }] }` → `{ fields[], candidate, comparison:{ items[{ key, proposed, current, status: same|new|conflict }], conflicts }, requires_confirmation:true }` — text parsed in memory, never stored |
+| `POST /api/identify/registration-document` | `vehicle:resolve` | homepage « Rechercher par carte grise »: `{ faces:[{ face, text, confidence }] }` (face 1 mandatory, face 2 optional) → `{ status: found|not_found, identified_by: vin|plate|make_model|null, vehicle, ocr (technical only), options }`. Order: valid 17-char VIN (only with `vin:search`, audited), then plate, then exact make/model match. **Writes nothing** — no document stored, no vehicle created. Anonymous visitors use the plate read through `GET /public/plates/:plate` instead. |
 | `POST …/registration-document/confirm` | `vehicle:write` | `{ candidate, plate?, vin?, confidence }` → `resolver.confirm()` with method/source `carte_grise_ocr` |
 
 Uploads and OCR runs: 60 per user per 10 minutes.

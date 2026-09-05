@@ -1,6 +1,18 @@
 # IDauto — Implementation Record (AI Handover)
 
-## Current record — 2026-09-05 IDA-V14 CARTE GRISE SCANNER V1 (branch `ida-v14-carte-grise`)
+## Current record — 2026-09-05 IDA-V14 HOME SEARCH « Rechercher par carte grise » (branch `ida-v14-home-registration-search`)
+
+**Date:** 2026-09-05 · **Base:** `main` @ `3bc0226` (V14 in production since 20:28 UTC). Worktree `/home/deploy/projects/idauto-final`.
+
+**Architecture:** no second OCR. `web/citizen/registration-scanner.js` gains `mode: "identify"` (OCR the in-memory faces, hand the reads to `onIdentify`, upload nothing), `template()` and `mount(root)` (the dialog markup injected on a host page). `web/citizen/home-registration.js` mounts it on the homepage beside the plate search. Server: `document-service.identify()` = the shared layer registration-document → vehicle identification (parser → VIN if valid and `vin:search` → plate → exact make/model through the existing `VehicleResolver`; writes nothing), route `POST /api/identify/registration-document` (`vehicle:resolve`, VIN lookups audited). Anonymous visitors: the plate read on the card goes through `GET /public/plates/:plate`; châssis-number / make-model lookups need an account (message + /login). Result card with « Ouvrir le passeport »; « Véhicule introuvable » with the useful OCR data, plate prefill, châssis / make-model links; nothing created, nothing stored. The public homepage never contains the token "vin" (IDA-V11 invariant) — attributes are `data-cg-home-chassis*`, wording « numéro de châssis ».
+
+**Flake root cause (login did not redirect, ~1 run in 3):** Better Auth keys the sign-in limit (5/min) on the trusted client IP (`X-Real-IP`, set by nginx in production). Headless Chrome sends none, so all browser suites shared one `no-trusted-ip|/sign-in/email` bucket (seen at count 5 in `idauto_auth_rate_limit`); the 6th chained sign-in got 429 → « Trop de tentatives » → no redirect. Fix: each browser suite sets its own `X-Real-IP` through CDP `Network.setExtraHTTPHeaders`, as distinct visitors behind nginx would. No production impact; no retry added.
+
+**Tests:** `ida-v14-home-registration` (API/structure, 38), `ida-v14-home-registration-browser` (real pipeline, anonymous + signed in, 32); `npm run test:v14` runs all four V14 suites. Full regression: see the delivery report.
+
+---
+
+## Previous record — 2026-09-05 IDA-V14 CARTE GRISE SCANNER V1 (branch `ida-v14-carte-grise`)
 
 **Date:** 2026-09-05 · **Phase:** owner order « Carte grise scanner V1 » on `main` @ `0f2ad92` (production, untouched). Worktree `/home/deploy/projects/idauto-final`.
 
