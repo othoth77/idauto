@@ -1,6 +1,39 @@
 # IDauto — Implementation Record (AI Handover)
 
-## Current record — 2026-08-26 FINAL SHIP (native entry, this repository)
+## Current record — 2026-09-05 IDA-V12 FINAL COMPLETION (branch `ida-v12-final-completion`)
+
+**Date:** 2026-09-05 · **Phase:** 0–25 of the owner's "IDauto FINAL COMPLETION" order, executed in the
+worktree `/home/deploy/projects/idauto-final` (the production checkout `/home/deploy/projects/idauto` was not touched).
+
+**Changes:** plate normaliser (TU / RS / Arabic / OCR confidence; `TUN_RS` draft format) ·
+`VehicleResolver` with cache → local → providers → manual, provenance + history, `confirm()` as the only
+truth-writer · `LocalVehicleResolver`, generic `HttpVehicleProvider` (disabled unless configured),
+`MockVehicleResolver` (tests) · `PartsCatalog` = local catalogue + org stock + `TecDocAdapter`
+(« Catalogue fournisseur non configuré ») · `WorkshopVehicleService` (visits, operations, orders, opaque
+customer refs) · `/atelier` page · public plate route + search accept every spelling · structured events +
+`/api/metrics` · migration `ida-v12` · 32 routes in `reference/v12-routes.js` · docs listed in
+`IDAUTO_PRODUCTION_READINESS.md`.
+
+**Tests:** baseline before any change 28 suites / 2049 / 0 → after: 29 suites / 2175 / 0 on
+`idauto_scratch_final`, plus `tests/ida-v12-atelier-browser-test.js` 19/0 in headless Chrome (skips
+cleanly without Chrome). `ida-v12` suite run twice consecutively (124/0 both). Mocks are labelled in
+every assertion that uses them.
+
+**Commits:** `928cf7d` (normaliser), `ba4899c` (identification / catalogue / workshop), then the
+documentation commit that carries this entry. **Remote HEAD:** `origin/main` = `65548ed` (unchanged;
+this branch is pushed as `origin/ida-v12-final-completion` for a PR).
+
+**Remaining:** owner steps only — merge, pull on the production checkout, apply `ida-v12` migration,
+restart; contract a licensed plate → vehicle provider (`VEHICLE_RESOLUTION.md` §3, class B) and/or a
+TecDoc licence, then set the env variables; INPDP notification before any stream-based Smart Gate.
+`origin/ida-admin-french-copy` (owner's, unmerged) does not conflict: this branch edits neither
+`admin.html` nor `admin-ui.js`.
+
+**Next step:** open the PR from `ida-v12-final-completion` to `main`; after merge, `docs/DEPLOYMENT.md` §3.
+
+---
+
+## Previous record — 2026-08-26 FINAL SHIP (native entry, this repository)
 
 **IDA-SHIP-1:** PR [#6](https://github.com/othoth77/idauto/pull/6) (IDA-4
 Option C, merge `33557f0`) and PR
