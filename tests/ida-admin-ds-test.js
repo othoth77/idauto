@@ -182,8 +182,14 @@ async function main() {
   var page = await get('/admin');
   ok(page.status === 200, 'GET /admin still serves the page');
   var html = page.raw.toString('utf8');
-  ok(html.indexOf('Admin manual entry') !== -1 && html.indexOf('Review queue') === -1,
-    'it is still the manual-entry page only (IDA-2G invariant)');
+  /* IDA-2G invariant: /admin is the manual-entry page and does NOT carry the
+   * review queue. This used to be checked by the English title "Admin manual
+   * entry", which made a copy change look like a broken invariant. The stable
+   * markers are the entry form's own id and the absence of the review queue's
+   * container, neither of which is a translatable string. */
+  ok(html.indexOf('id="entry-form"') !== -1, 'the manual-entry form is on the page (IDA-2G invariant)');
+  ok(html.indexOf('id="queue"') === -1 && html.indexOf('/api/review/observations') === -1,
+    'and the review queue is not (IDA-2G invariant)');
   ok(html.indexOf('admin-token') === -1 && html.indexOf('localStorage') === -1,
     'asks for no token (IDA-V13 session cookie) and has no browser-storage persistence');
   ok((page.headers['content-security-policy'] || '').indexOf("default-src 'self'") !== -1,

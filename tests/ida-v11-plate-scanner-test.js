@@ -228,16 +228,34 @@ async function main() {
     'the French sentence is present, verbatim');
   ok(adminHtml.indexOf('Vous pouvez compléter son enregistrement avec les informations dont vous disposez.') !== -1,
     'including the second French sentence');
-  ok(adminHtml.indexOf('هذه السيارة غير مسجلة بعد في IDauto.') !== -1,
-    'the Arabic sentence is present, verbatim');
-  ok(adminHtml.indexOf('يمكنكم إتمام تسجيلها بإدخال المعلومات المتوفرة لديكم.') !== -1,
-    'including the second Arabic sentence');
-  ok(adminHtml.indexOf('التراجي للتعمير') === -1,
-    'the forbidden phrase "التراجي للتعمير" appears nowhere');
-  ok(/lang="ar" dir="rtl"/.test(adminHtml), 'the Arabic is marked lang="ar" and dir="rtl"');
+  /* IDA-ADMIN-FR (2026-09-22) — /admin is a FRENCH-ONLY surface.
+   *
+   * These four assertions required the Arabic half of this notice to be present
+   * verbatim, and required it to be marked lang="ar" dir="rtl". That was right
+   * while /admin was meant to be bilingual. It is not: the page was a mixture of
+   * three languages — this Arabic paragraph, French session controls, and
+   * English everywhere else — and one language, chosen, is the fix.
+   *
+   * The citizen surface is untouched by this and keeps its Arabic; only the
+   * operator console changed.
+   *
+   * Checked by UNICODE BLOCK, not by sentence. Asserting the absence of the two
+   * specific sentences that were removed would catch exactly those two
+   * sentences and let a new Arabic string in tomorrow. */
+  ok(!/[\u0600-\u06FF\u0750-\u077F]/.test(adminHtml),
+    'no Arabic anywhere in the operator console markup — checked by Unicode block');
+  ok(!/[\u0600-\u06FF\u0750-\u077F]/.test(adminJs),
+    'nor in its script');
+  ok(!/lang="ar"|dir="rtl"/.test(adminHtml),
+    'and no Arabic language or direction marking is left behind');
   ok(/notice\.hidden = false/.test(adminJs), 'admin-ui.js reveals it when a plate was carried over');
-  ok(!/هذه السيارة/.test(adminJs),
-    'neither language is built in JavaScript — the text is static markup, so it cannot be mangled');
+  ok(!/Cette voiture/.test(adminJs),
+    'the text is static markup, not built in JavaScript, so it cannot be mangled');
+  /* The plate is read from ?plate= and appended to a fixed French label. A
+   * literal plate in either file would mean a real vehicle had been baked into
+   * the page. */
+  ok(!/\b\d{2,3}\s*TUN\s*\d{1,4}\b/.test(adminHtml) && !/\b\d{2,3}\s*TUN\s*\d{1,4}\b/.test(adminJs),
+    'no literal plate number appears in the page or in its script');
 
   /* ===================================================================== */
   say('\n9. NOTHING PRIVATE, NOTHING PUBLIC, NOTHING CHANGED');
