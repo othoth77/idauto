@@ -62,4 +62,6 @@ Structured JSON events on stdout → journald (`SyslogIdentifier=idauto-api`). `
 
 ## 7. Tests before shipping
 
-`npm run test:offline` (no database) — then the live suites against a scratch database (`ops/runbooks/TEST_RUNBOOK.md`), including `npm run test:v12`, `npm run test:v13` and `npm run test:v14` (needs `IDAUTO_AUTH_SECRET` in the environment). Reference result on 2026-09-05: 29 suites, 2175 assertions, 0 failures.
+`npm run test:offline` (no database) — then the live suites against a scratch database (`ops/runbooks/TEST_RUNBOOK.md`): `npm run test:db`, `npm run test:v12`, `npm run test:v13` and `npm run test:v14` (needs `IDAUTO_AUTH_SECRET` in the environment). Reference result on 2026-09-05: 29 suites, 2175 assertions, 0 failures.
+
+> **Corrected 2026-09-22.** "(no database)" was not true of `test:offline` between `4570604` and this correction: `ida-v8`, `ida-v9` and `ida-v10` had been added to it and each opens a PostgreSQL connection, so the script exited non-zero on any host without `IDAUTO_DB_*`. Those three moved to the new `test:db`. Re-measured on a clean checkout with no database: **`test:offline` = 16 suites, 1021 assertions, 0 failures**. `.github/workflows/ci.yml` runs it on every push with no database service, so the claim is now proved by the run rather than asserted here.
