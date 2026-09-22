@@ -463,7 +463,17 @@ function adminPrefillCases() {
     'the write path still refuses to create anything without an attributable actor');
   ok(/INSERT INTO idauto_audit_log/.test(writes), 'creation is audited by the existing write path');
   ok(/evidence_type/.test(adminHtml), 'provenance (evidence type) is captured on the fact');
-  ok(/capture method is fixed by the API/i.test(adminHtml), 'the capture method is server-set, not caller-set');
+  /* Assert the PROPERTY, not the sentence. This read
+   *   /capture method is fixed by the API/i
+   * and so it was really a test of one English string: translating the console
+   * to French broke it while the invariant it names was untouched. The
+   * invariant is that the operator cannot choose a capture method — there is no
+   * control for it in the form — and that the value the API fixes is named
+   * somewhere the operator can read. */
+  ok(!/name=["']capture_method["']/.test(adminHtml),
+    'no form control lets the caller choose a capture method');
+  ok(/manual_admin/.test(adminHtml),
+    'the value the API fixes is named on the page, so the operator knows what is recorded');
 }
 
 function noSecondStoreCases() {

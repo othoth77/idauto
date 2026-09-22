@@ -27,7 +27,7 @@
     var response = await fetch(path, settings);
     var body = await response.json().catch(function () { return {}; });
     if (response.status === 401) { toLogin(); throw new Error('Session expirée — reconnectez-vous.'); }
-    if (!response.ok) throw new Error(body.message_fr || body.error || ('Request failed (' + response.status + ')'));
+    if (!response.ok) throw new Error(body.message_fr || body.error || ('Échec de la requête (' + response.status + ').'));
     return body;
   }
   function jsonPost(path, token, body) {
@@ -47,7 +47,7 @@
     }));
     var plate = null;
     if (value(form, 'plate_number')) {
-      if (!value(form, 'format_code')) throw new Error('Format code is required when a plate is entered.');
+      if (!value(form, 'format_code')) throw new Error('Le code format est obligatoire dès qu\'une plaque est saisie.');
       plate = await jsonPost('/api/plates', token, compact({
         plate_number: value(form, 'plate_number'), format_code: value(form, 'format_code'),
         governorate_code: value(form, 'governorate_code'), vehicle_internal_ref: vehicle.internal_ref
@@ -60,7 +60,7 @@
     });
     var fact = null;
     if (value(form, 'fact_key') || value(form, 'fact_value')) {
-      if (!value(form, 'fact_key') || !value(form, 'fact_value')) throw new Error('Fact key and value must be entered together.');
+      if (!value(form, 'fact_key') || !value(form, 'fact_value')) throw new Error('La clé et la valeur de la donnée doivent être saisies ensemble.');
       fact = await jsonPost('/api/vehicles/' + encodeURIComponent(vehicle.internal_ref) + '/facts', token, compact({
         fact_key: value(form, 'fact_key'), fact_value: value(form, 'fact_value'),
         observation_id: observation.id,
@@ -125,12 +125,12 @@
     var notice = document.querySelector('[data-unregistered-notice]');
     if (notice) {
       var plateLine = notice.querySelector('[data-unregistered-plate]');
-      if (plateLine) plateLine.textContent = 'Plaque reprise de la recherche — الرقم المنقول من البحث : ' + plate;
+      if (plateLine) plateLine.textContent = 'Plaque reprise de la recherche — ' + plate;
       notice.hidden = false;
     }
     if (result) {
       result.className = '';
-      result.textContent = 'Plate ' + plate + ' carried over from the public search. Fill in only what you know.';
+      result.textContent = 'Plaque ' + plate + ' reprise de la recherche publique. Ne renseignez que ce que vous savez.';
     }
   }());
 
@@ -158,19 +158,19 @@
         var response = await sessionRequest('/session/enroll');
         if (response.status === 204) {
           enrollResult.className = 'success';
-          enrollResult.textContent = 'This browser is recognised. Plate lookup now works on idauto.tn.';
+          enrollResult.textContent = 'Ce navigateur est reconnu. La recherche de plaque fonctionne désormais sur idauto.tn.';
         } else if (response.status === 401) {
           toLogin();
         } else if (response.status === 503) {
           enrollResult.className = 'error';
-          enrollResult.textContent = 'Owner sessions are not configured on this host (IDAUTO_SESSION_SECRET is unset).';
+          enrollResult.textContent = 'Les sessions propriétaire ne sont pas configurées sur cet hôte (IDAUTO_SESSION_SECRET n\'est pas défini).';
         } else {
           enrollResult.className = 'error';
-          enrollResult.textContent = 'Enrolment failed (' + response.status + ').';
+          enrollResult.textContent = 'Échec de la reconnaissance (' + response.status + ').';
         }
       } catch (err) {
         enrollResult.className = 'error';
-        enrollResult.textContent = 'Network error — try again.';
+        enrollResult.textContent = 'Erreur réseau — réessayez.';
       } finally {
         enrollButton.disabled = false;
       }
@@ -184,10 +184,10 @@
       try {
         await sessionRequest('/session/logout');
         enrollResult.className = 'success';
-        enrollResult.textContent = 'This browser is no longer recognised.';
+        enrollResult.textContent = 'Ce navigateur n\'est plus reconnu.';
       } catch (err) {
         enrollResult.className = 'error';
-        enrollResult.textContent = 'Network error — try again.';
+        enrollResult.textContent = 'Erreur réseau — réessayez.';
       } finally {
         forgetButton.disabled = false;
       }
@@ -222,7 +222,7 @@
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     result.className = '';
-    result.textContent = 'Creating entry…';
+    result.textContent = 'Enregistrement en cours…';
     button.disabled = true;
     try {
       // IDA-V1C — trim, then shape-check before spending a request. The
@@ -230,7 +230,7 @@
       // value(), which trims.
       var created = await createEntry(form, null);
       result.className = 'success';
-      result.textContent = 'Created vehicle ' + created.vehicle.internal_ref + ' and observation ' + created.observation.id + '.';
+      result.textContent = 'Véhicule ' + created.vehicle.internal_ref + ' et observation ' + created.observation.id + ' enregistrés.';
       form.reset();
     } catch (err) {
       result.className = 'error';
