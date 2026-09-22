@@ -1,0 +1,64 @@
+# IDauto CI.
+#
+# This repository had no workflow at all until 2026-09-22, which is how
+# `npm test` came to be broken on a clean checkout: three suites that open a
+# PostgreSQL connection had been added to `test:offline`, so the script README.md
+# calls "the database-free suites" died with
+# "FATAL: db.js: missing required environment variable(s)".
+#
+# The job below is the proof of that claim, not an assertion of it. It starts NO
+# database service and sets NO IDAUTO_DB_* variable, so `npm run test:offline`
+# either runs clean or the build goes red. Do not add a `services:` block or a
+# database variable here — tests/test-script-coverage-test.js checks that this
+# file has neither, precisely so the guarantee cannot be quietly removed.
+#
+# The database suites (`npm run test:db`, `test:v12`, `test:v13`, `test:v14`) are
+# deliberately NOT here. They run against a scratch database per
+# ops/runbooks/TEST_RUNBOOK.md, and standing one up in CI is a separate decision
+# with its own fixtures, not something to smuggle in with a workflow file.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    name: database-free suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Assert the environment really has no database
+        run: |
+          set -eu
+          for v in IDAUTO_DB_HOST IDAUTO_DB_PORT IDAUTO_DB_USER IDAUTO_DB_PASSWORD IDAUTO_DB_NAME; do
+            if [ -n "${!v:-}" ]; then
+              echo "::error::$v is set; this job must prove the suite needs no database"
+              exit 1
+            fi
+          done
+          echo "no IDAUTO_DB_* in the environment"
+
+      - name: Every suite is named by exactly one script
+        run: node tests/test-script-coverage-test.js
+
+      - name: Database-free suites
+        run: npm run test:offline

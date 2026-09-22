@@ -147,9 +147,23 @@ psql -d idauto -f database/seed-synthetic-test-data.sql   # synthetic data only
 node tests/ida-2a-schema-and-plate-validation-test.js
 ```
 
-`npm run test:offline` runs the database-free suites; `npm run test:v12` runs the identification /
-catalogue / workshop suite against a scratch database. Test execution, including which suites need a live database, is documented in
+`npm test` → `npm run test:offline` runs the database-free suites: **16 suites, 1021 assertions,
+0 failures** on a clean checkout with no PostgreSQL and no `IDAUTO_DB_*` in the environment
+(measured 2026-09-22, and re-proved on every push by
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), which starts no database).
+
+`npm run test:db` runs the suites that need a live scratch database; `npm run test:v12`,
+`test:v13` and `test:v14` run the identification / auth / registration suites against one. Test
+execution, including which suites need a live database, is documented in
 [`ops/runbooks/TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md).
+
+> **Corrected 2026-09-22.** This paragraph said `test:offline` "runs the database-free suites",
+> and it did not: `ida-v8`, `ida-v9` and `ida-v10` had been added to it and each opens a
+> PostgreSQL connection, so `npm test` died on a clean checkout with `FATAL: db.js: missing
+> required environment variable(s)` after eight suites had passed. Four suites that do pass
+> offline — `ida4-foundation` (130 assertions), `identity-conformance` (81),
+> `idauto-storage-ops` (73) and `ida4-ds-ui` — were named by no script at all and never ran.
+> `tests/test-script-coverage-test.js` now fails if any suite is named by no script or by two.
 
 ---
 
