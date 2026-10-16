@@ -12,6 +12,13 @@
 # database variable here — tests/test-script-coverage-test.js checks that this
 # file has neither, precisely so the guarantee cannot be quietly removed.
 #
+# The second job is `secret-scan`. This repository is PUBLIC (`gh repo view
+# othoth77/idauto --json visibility` -> PUBLIC) and had no secret gate of any
+# kind, while both private sibling storefronts in MYTHOS AUTO ship one. That
+# asymmetry is backwards: the repository anyone can read is the one that needed
+# it first. It found docs/REAL_ANDROID_TEST.md publishing the host address next
+# to the operations account name; see that job's own comments.
+#
 # The database suites (`npm run test:db`, `test:v12`, `test:v13`, `test:v14`) are
 # deliberately NOT here. They run against a scratch database per
 # ops/runbooks/TEST_RUNBOOK.md, and standing one up in CI is a separate decision
@@ -62,3 +69,79 @@ jobs:
 
       - name: Database-free suites
         run: npm run test:offline
+
+  # ---------------------------------------------------------------------------
+  # Secret and estate hygiene. THIS REPOSITORY IS PUBLIC.
+  #
+  # It had no secret gate at all. casse.autos and ssangyong — both PRIVATE —
+  # each ship one, and ssangyong's includes a check for the MYTHOS VPS address
+  # on the grounds that "the VPS address is not a public fact of this
+  # repository". idauto, the public one, had neither the check nor the habit.
+  #
+  # Adding it found docs/REAL_ANDROID_TEST.md carrying
+  # `ssh -L 3999:127.0.0.1:3999 <account>@<host>` in full. The address alone is
+  # weak — idauto.tn resolves to it — but the pair is not: it names the
+  # operations account for the whole estate and confirms that this host runs
+  # the estate, neither of which DNS tells anyone.
+  #
+  # History is NOT rewritten. The pre-redaction text stays in every commit that
+  # carried it; a public repository's history cannot be unpublished by a force
+  # push, and pretending otherwise is worse than recording it. What this job
+  # buys is that no NEW occurrence lands.
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    name: secret and estate hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credential-shaped literals
+        # `$`-leading values are shell/JS interpolation, not secrets, and the
+        # generated-value forms below are the opposite of a hardcoded secret:
+        # ops/staging-v14.sh and three suites mint theirs from
+        # crypto.randomBytes / /dev/urandom on every run.
+        #
+        # tests/ida-3f-offhost-backup-test.js is excluded BY PATH, not by
+        # pattern. It needs a credential-shaped fixture in order to prove the
+        # backup code never echoes one — its §17 asserts "no credential is ever
+        # emitted", and the value it uses is AWS's own published documentation
+        # example key. Widening the pattern to let that through would let a real
+        # key through with it; naming the one file does not.
+        run: |
+          if git grep -nIE '(API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY)[A-Z_]*\s*[:=]\s*["'"'"'][^"'"'"'$]{8,}' \
+               -- ':!*.md' ':!.env.example' ':!tests/ida-3f-offhost-backup-test.js' \
+             | grep -viE 'randomBytes|urandom|REPLACE_WITH|<[0-9]+\+ chars>'; then
+            echo "::error::Credential-shaped literal committed. This repository is PUBLIC."; exit 1; fi
+          echo "OK — no credential-shaped literal."
+
+      - name: Tracked secret-shaped files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.env\.example$'; then
+            echo "::error::.env file tracked."; exit 1; fi
+          if git ls-files | grep -E '\.(pem|key|p12|pfx|jks)$'; then
+            echo "::error::pem/key/p12 file tracked."; exit 1; fi
+          echo "OK — no secret-shaped file tracked."
+
+      - name: Private key material
+        run: |
+          if git grep -nIE -- '-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----'; then
+            echo "::error::Private key material committed."; exit 1; fi
+          echo "OK — no private key material."
+
+      - name: Inline DSN carrying a password
+        run: |
+          if git grep -nIE 'postgres(ql)?://[^ "'"'"'`]+:[^ "'"'"'`@]+@' \
+             | grep -viE 'user:pass|USERNAME:PASSWORD|<[^>]+>|\$\{'; then
+            echo "::error::Inline DSN with a password committed."; exit 1; fi
+          echo "OK — no inline DSN with a password."
+
+      - name: The host address and the operations account are not public facts
+        # Bracketed so this step's own text cannot match the pattern it greps
+        # for. Same rule as ssangyong's `security` job.
+        run: |
+          if git grep -nE '51[.]68[.]226[.]211'; then
+            echo "::error::The MYTHOS VPS address is not a public fact of this repository."; exit 1; fi
+          if git grep -nIE '\b(ssh|scp|rsync)\b[^\n]*\b[a-z_][a-z0-9_-]*@([0-9]{1,3}\.){3}[0-9]{1,3}'; then
+            echo "::error::An account@host login line is committed. Name neither in a public repository."; exit 1; fi
+          echo "OK."

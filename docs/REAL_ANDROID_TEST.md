@@ -39,11 +39,11 @@ The staging instance is prepared on the VPS: branch `ida-v14-carte-grise`, **scr
 | create the tester account | `IDAUTO_TEST_EMAIL=… IDAUTO_NEW_PASSWORD='…' ops/staging-v14.sh user` |
 
 **HTTPS for the phone (required for the camera).** The nginx server block `/etc/nginx/sites-available/staging.idauto.tn` (→ 127.0.0.1:3999, `noindex`) is written but **not enabled**. Owner steps, in order:
-1. DNS: create the A record `staging.idauto.tn → 51.68.226.211` (same host as idauto.tn). No record exists today.
+1. DNS: create the A record `staging.idauto.tn` pointing at the same host as `idauto.tn` (the operator has the address; this repository is public and does not carry it). No record exists today.
 2. On the host: `ln -s /etc/nginx/sites-available/staging.idauto.tn /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx`, then `certbot --nginx -d staging.idauto.tn` (adds the 443 block and the redirect).
 3. `https://staging.idauto.tn/login` from the phone.
 
-**Fallback without DNS (one session):** on a laptop `ssh -L 3999:127.0.0.1:3999 deploy@51.68.226.211`; start the instance with `IDAUTO_STAGING_INSECURE=1 ops/staging-v14.sh start` (cookies without `Secure`, staging only); on the Android phone (same Wi-Fi as the laptop) set `chrome://flags/#unsafely-treat-insecure-origin-as-secure` to `http://<laptop-ip>:3999`, relaunch Chrome, open `http://<laptop-ip>:3999/login`. Remove the flag afterwards.
+**Fallback without DNS (one session):** on a laptop, open an SSH tunnel to the host as the operations account — `ssh -L 3999:127.0.0.1:3999 <operations-account>@<host>`, both of which the operator has and neither of which belongs in a public repository — start the instance with `IDAUTO_STAGING_INSECURE=1 ops/staging-v14.sh start` (cookies without `Secure`, staging only); on the Android phone (same Wi-Fi as the laptop) set `chrome://flags/#unsafely-treat-insecure-origin-as-secure` to `http://<laptop-ip>:3999`, relaunch Chrome, open `http://<laptop-ip>:3999/login`. Remove the flag afterwards.
 
 Delete the faces at the end of the test; the scratch database and media directory can be dropped.
 
