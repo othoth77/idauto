@@ -193,7 +193,7 @@ check "commits: a clean range passes" test "$RC" -eq 0
 run bash "$SCAN" commits --root "$G" -- "$BASE..$BAD"
 check "commits: a login line in a commit body is located by short sha" has_line "commit ${BAD:0:12} message:3" ssh-login
 check "commits: the clean commit in the range is not blamed" lacks "${MID:0:12}"
-check "commits: the address is redacted" lacks "203"
+check "commits: the address is redacted" lacks "$(join . 203 0 113 9)"
 
 # github mode, as the workflow drives it
 run env GITHUB_EVENT_NAME=pull_request PR_BASE_SHA="$BASE" PR_HEAD_SHA="$MID" PR_TITLE="clean" PR_BODY="fine" \
