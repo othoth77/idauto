@@ -23,6 +23,7 @@ check() { # description, then a command; passes when the command succeeds
   CHECKS=$(( CHECKS + 1 ))
   if "$@"; then return 0; fi
   FAILS=$(( FAILS + 1 )); echo "selftest: FAIL - $desc" >&2
+  if [[ -n ${SELFTEST_DEBUG-} ]]; then printf '%s\n' "$OUT" | head -12 | sed 's/^/    | /' >&2; fi
 }
 
 # ---- fragment helpers ------------------------------------------------------
@@ -83,6 +84,12 @@ pos public-ipv4 "hosts: $(join . 10 0 0 1);$(join . 8 8 8 8)"
 pos public-ipv4 "next=http://$(at u "$(join . 8 8 8 8)")/" "" txt
 pos public-ipv4 "q=$(printf 'user%s%s' '%40' "$(join . 8 8 8 8)")"
 pos login-at-ipv4 "q=$(printf 'user%s%s' '%40' "$(join . 203 0 113 9)")"
+# F2: double and triple URL-encoding
+pos public-ipv4 "q=$(printf 'user%s%s' '%2540' "$(join . 8 8 8 8)")"
+pos login-at-ipv4 "q=$(printf 'user%s%s' '%2540' "$(join . 203 0 113 9)")"
+pos public-ipv4 "q=$(printf '8%s8%s8%s8' '%252E' '%252e' '%252E')"
+pos public-ipv4 "q=$(printf '8%s8%s8%s8' '%25252E' '%25252E' '%25252E')"
+pos ssh-login "$(printf 'ssh admin%s%s' '%2540' box.internal.corp)"
 pos public-ipv4 "q=$(printf 'a%s%s' '%20' "$(join . 8 8 8 8)")"
 pos public-ipv4 "q=$(printf '8%s8%s8%s8' '%2E' '%2e' '%2E')"
 pos ssh-login "$(printf 'ssh admin%s%s' '%40' box.internal.corp)"
@@ -106,6 +113,18 @@ pos env-assignment "$(printf '%s="%s"' AUTH_TOKEN Zq8wLm3nVb7c)" "" sh
 pos credential-literal "$(printf "%s: '%s'," db_password Sup3rS3cretValue)" "" js
 pos credential-literal "$(printf '"%s": "%s"' apiKey Sup3rS3cretValue)" "" json
 pos credential-literal "$(printf "var %s = '%s';" SESSION_SECRET Sup3rS3cretValue)" "" js
+# F1b: a NUL must never make a file be skipped (grep -I would), early or late in the file
+{ printf 'ssh \0'; at user box.internal.corp; printf '\n'; } >"$P/nul_early.txt"
+EXPECT_FILE+=(nul_early.txt); EXPECT_RULE+=(ssh-login)
+{ printf 'ssh '; at user box.internal.corp; printf '\n'; head -c 9000 /dev/zero | tr '\0' a; printf '\nx\0y\n'; } >"$P/nul_late.txt"
+EXPECT_FILE+=(nul_late.txt); EXPECT_RULE+=(ssh-login)
+# a NUL inside the address itself: only stripping the NUL reveals it
+{ printf 'dns 8.8'; printf '\0'; printf '.8.8\n'; } >"$P/nul_split_ip.txt"
+EXPECT_FILE+=(nul_split_ip.txt); EXPECT_RULE+=(public-ipv4)
+# F3: a file NAMED after a login is a finding, and the name is never printed (a short hash is)
+PNAME="$(at opsuser "$(join . 203 0 113 9)").md"
+printf 'token: gh%s_%s\n' r "$A36" >"$P/$PNAME"
+PHASH=$(printf '%s' "$PNAME" | git hash-object --stdin | cut -c1-8)
 printf 'x\n' >"$P/.env";        EXPECT_FILE+=(.env);            EXPECT_RULE+=(secret-file)
 printf 'x\n' >"$P/server.pem";  EXPECT_FILE+=(server.pem);      EXPECT_RULE+=(secret-file)
 mkdir -p "$P/builder"; printf 'x\n' >"$P/builder/id_rsa"; EXPECT_FILE+=(builder/id_rsa); EXPECT_RULE+=(secret-file)
@@ -117,6 +136,10 @@ for i in "${!EXPECT_FILE[@]}"; do
   check "positive ${EXPECT_FILE[i]} flagged as ${EXPECT_RULE[i]}" has_line "${EXPECT_FILE[i]}:1" "${EXPECT_RULE[i]}"
 done
 for pr in "${PROBES[@]}"; do check "matched text is redacted from the output" lacks "$pr"; done
+check "F3 tree: a login in a file NAME is a finding (shown as a hash)" has_line "path#$PHASH:1" login-at-ipv4
+check "F3 tree: a content finding in such a file also hides the name" has_line "path#$PHASH:1" github-token
+check "F3 tree: the name itself is never printed" lacks "$PNAME"
+check "F3 tree: the address in the name is never printed" lacks "$(join . 203 0 113 9)"
 
 # ---- 2. negatives: placeholders and safe forms must pass --------------------
 N=$W/neg; mkdir -p "$N/.github"; cp "$REAL_ALLOW" "$N/.github/secret-scan-allow.txt"
@@ -191,6 +214,12 @@ printf 'Please review.\nledger token: gh%s_%s\n' r "$A36" >"$W/body.txt"
 run bash "$SCAN" text --label "PR body" --file "$W/body.txt" --allow "$REAL_ALLOW"
 check "text: token on line 2 of the PR body is located" has_line "PR body:2" github-token
 check "text: token is redacted" lacks "$A36"
+printf 'see %s\n' "$(printf 'user%s%s' '%2540' "$(join . 8 8 8 8)")" >"$W/body.txt"
+run bash "$SCAN" text --label "PR body" --file "$W/body.txt" --allow "$REAL_ALLOW"
+check "F2 text: a double-encoded login in the PR body is found" has_line "PR body:1" public-ipv4
+{ printf 'a b 8.8'; printf '\0'; printf '.8.8\n'; } >"$W/body.txt"
+run bash "$SCAN" text --label "PR body" --file "$W/body.txt" --allow "$REAL_ALLOW"
+check "F1 text: a NUL in the text does not hide a finding" has_line "PR body:1" public-ipv4
 printf 'Please review.\nNo secrets here.\n' >"$W/body.txt"
 run bash "$SCAN" text --label "PR body" --file "$W/body.txt" --allow "$REAL_ALLOW"
 check "text: a clean PR body passes" test "$RC" -eq 0
@@ -215,10 +244,11 @@ check "commits: the address is redacted" lacks "$(join . 203 0 113 9)"
 # github mode, as the workflow drives it: the scanner reads the PR title/body and the SHAs from
 # the event payload FILE. They must never come from step env (the runner prints those values in
 # the public job log), so env-supplied PR text is ignored.
-mkpr() { # file title body base-sha head-sha base-ref
+mkpr() { # file title body base-sha head-sha base-ref [head-ref]
   python3 -I -c 'import json,sys
 t, b, bs, hs, br = sys.argv[2:7]
-json.dump({"pull_request": {"title": t, "body": b, "base": {"sha": bs, "ref": br}, "head": {"sha": hs}}}, open(sys.argv[1], "w"))' "$@"
+hr = sys.argv[7] if len(sys.argv) > 7 else "feature"
+json.dump({"pull_request": {"title": t, "body": b, "base": {"sha": bs, "ref": br}, "head": {"sha": hs, "ref": hr}}}, open(sys.argv[1], "w"))' "$@"
 }
 mkpush() { # file before after ref default-branch
   python3 -I -c 'import json,sys
@@ -271,7 +301,8 @@ git init -q -b main "$H"
 cp "$REAL_ALLOW" "$H/.github/secret-scan-allow.txt"
 hg add -A; hg commit -q -m "base"
 B0=$(git -C "$H" rev-parse HEAD)
-hg commit -q --allow-empty -m "squash of an old fix" -m "was: ssh -L 3999:127.0.0.1:3999 $(at user "$(join . 203 0 113 9)")"
+printf 'old: ssh %s\n' "$(at user "$(join . 203 0 113 9)")" >"$H/mainfile.txt"; hg add -A
+hg commit -q -m "squash of an old fix" -m "was: ssh -L 3999:127.0.0.1:3999 $(at user "$(join . 203 0 113 9)")"
 M1=$(git -C "$H" rev-parse HEAD)                       # a commit on main whose message is a finding
 git -C "$H" update-ref refs/remotes/origin/main "$M1"
 hg checkout -q -b feature "$B0"
@@ -311,6 +342,84 @@ check "added lines: path-scoped allowlist entries apply (reference/api.js)" lack
 check "added lines: the same address elsewhere is a finding" has_line "commit ${A1:0:12} added lines in src/z.js:1" public-ipv4
 check "added lines: the address is redacted" lacks "$(join . 1 2 3 4)"
 
+# F1 (github mode): a NUL, late in a text file, must not turn the whole scan into a pass
+hg checkout -q -b nul "$B0"
+printf 'run: ssh %s\n' "$(at u "$(join . 203 0 113 9)")" >"$H/notes.md"; hg add -A; hg commit -q -m notes
+N1=$(git -C "$H" rev-parse HEAD)
+{ printf 'ssh %s\n' "$(at u "$(join . 203 0 113 9)")"; head -c 9000 /dev/zero | tr '\0' a; printf '\nx\0y\n'; } >"$H/late.txt"
+{ printf 'ssh \0%s\n' "$(at u "$(join . 203 0 113 9)")"; } >"$H/early.txt"
+hg add -A; hg commit -q -m pad
+N2=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t "see $(at u "$(join . 203 0 113 9)")" "$B0" "$N2" main
+run gh_pr "$EV" "$H"
+check "F1 github: the PR body is still scanned after a NUL appears" has_line "PR body:1" login-at-ipv4
+check "F1 github: earlier commits are still scanned" has_line "commit ${N1:0:12} added lines in notes.md:1" ssh-login
+check "F1 github: a login before a late NUL is found" has_line "commit ${N2:0:12} added lines in late.txt:1" ssh-login
+check "F1 github: a login split by an early NUL is found" has_line "commit ${N2:0:12} added lines in early.txt:1" ssh-login
+
+# F4: content that is new only in a merge commit, and later removed, is still seen; content a
+# merge merely brings in from a parent is not blamed on it (that is R3's case above)
+hg checkout -q -b side "$B0"; hg commit -q --allow-empty -m "side work"
+S1=$(git -C "$H" rev-parse HEAD)
+hg checkout -q -b evilmerge "$B0"; hg commit -q --allow-empty -m "own work"
+hg merge -q --no-commit "$S1" >/dev/null 2>&1 || true
+printf 'login %s\n' "$(at u "$(join . 203 0 113 9)")" >"$H/evil.txt"; hg add -A
+hg commit -q -m "Merge side"
+E1=$(git -C "$H" rev-parse HEAD)
+hg rm -q evil.txt; hg commit -q -m "drop it"
+E2=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t b "$B0" "$E2" main
+run gh_pr "$EV" "$H"
+check "F4 merge: content added only by a merge commit is located in it" has_line "commit ${E1:0:12} added lines in evil.txt:1" login-at-ipv4
+
+# F3: file names, branch names and author fields
+hg checkout -q -b names "$B0"
+NAME="$(at u "$(join . 203 0 113 9)").md"
+printf 'token: gh%s_%s\n' r "$A36" >"$H/$NAME"; hg add -A
+hg -c user.name="$(at u "$(join . 203 0 113 9)")" commit -q -m "add a file" --author="$(at u "$(join . 203 0 113 9)") <x@example.invalid>"
+C1=$(git -C "$H" rev-parse HEAD)
+HASH=$(printf '%s' "$NAME" | git hash-object --stdin | cut -c1-8)
+mkpr "$EV" t b "$B0" "$C1" main "feature/$(at u "$(join . 203 0 113 9)")"
+run gh_pr "$EV" "$H"
+check "F3 diff: a login in an added file's NAME is a finding (hash only)" has_line "path#$HASH:1" login-at-ipv4
+check "F3 diff: a content finding in it is located by hash too" has_line "commit ${C1:0:12} added lines in path#$HASH:1" github-token
+check "F3 diff: the name is never printed" lacks "$NAME"
+check "F3: the author name/email is scanned" has_line "commit ${C1:0:12} author fields:1" login-at-ipv4
+check "F3: the PR branch name is scanned" has_line "PR branch names:1" login-at-ipv4
+mkpush "$EV" "$B0" "$C1" "refs/heads/feature/$(at u "$(join . 203 0 113 9)")" main
+run gh_push "$EV" "$H"
+check "F3: the pushed ref name is scanned" has_line "pushed ref name:1" login-at-ipv4
+
+# F5: the allowlist cannot approve its own additions (judged against the base branch's copy)
+hg checkout -q -b allowadd "$B0"
+{ cat "$H/.github/secret-scan-allow.txt"; printf 'ipv4 %s/32 # test\n' "$(join . 8 8 8 8)"; } >"$H/al.new"; mv "$H/al.new" "$H/.github/secret-scan-allow.txt"
+hg add -A; hg commit -q -m "allow something"
+AL=$(git -C "$H" rev-parse HEAD)
+LN=$(wc -l <"$H/.github/secret-scan-allow.txt"); LN=${LN//[[:space:]]/}
+mkpr "$EV" t b "$B0" "$AL" main
+run gh_pr "$EV" "$H"
+check "F5 PR: a new public address in the allowlist file is a finding" has_line "commit ${AL:0:12} added lines in .github/secret-scan-allow.txt:$LN" public-ipv4
+mkpush "$EV" "$B0" "$AL" refs/heads/feature main
+run gh_push "$EV" "$H"
+check "F5 push off the default branch: same" test "$RC" -eq 1
+mkpush "$EV" "$B0" "$AL" refs/heads/main main
+run gh_push "$EV" "$H"
+check "F5 push to the default branch: an already-merged registry change is not re-failed" test "$RC" -eq 0
+hg checkout -q -b allowok "$B0"
+{ cat "$H/.github/secret-scan-allow.txt"; printf 'ipv4 10.0.0.0/8 # dup\n'; } >"$H/al.new"; mv "$H/al.new" "$H/.github/secret-scan-allow.txt"
+hg add -A; hg commit -q -m "allow a reserved range"
+AK=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t b "$B0" "$AK" main
+run gh_pr "$EV" "$H"
+check "F5 PR: a range the base allowlist already covers passes" test "$RC" -eq 0
+
+# F6: no `before` on the default branch scans only the tip, not 200 commits of old findings
+gitc commit -q --allow-empty -m "clean tip"
+TIP=$(git -C "$G" rev-parse HEAD)
+mkpush "$EV" "$(rep 0 40)" "$TIP" refs/heads/main main
+run gh_push "$EV" "$G"
+check "F6 push: default branch without a before-SHA scans the tip only" test "$RC" -eq 0
+
 # ---- 5. a broken scanner must fail, never pass ------------------------------
 run bash "$SCAN" tree --root "$W/does-not-exist"
 check "error: missing root exits 2" test "$RC" -eq 2
@@ -340,6 +449,9 @@ if [[ -f $WF ]]; then
   nogrep() { ! grep -Eq "$1" "$2"; }
   check "workflow: no PR title/body expression anywhere" nogrep 'github\.event\.pull_request\.(title|body)' "$WF"
   check "workflow: no PR_TITLE/PR_BODY step env" nogrep 'PR_(TITLE|BODY)' "$WF"
+  check "workflow: no toJSON(github...) expression" nogrep 'toJSON\(github' "$WF"
+  check "workflow: every action is pinned to a commit" nogrep 'uses: [^ ]+@v[0-9]' "$WF"
+  check "workflow: both checkouts drop credentials" test "$(grep -c 'persist-credentials: false' "$WF")" -ge 2
   step_has_no_env() { awk '/secret_scan\.sh github/ { exit bad } /name: Commit messages/ { f = 1 } f && /^[[:space:]]+env:/ { bad = 1 }' "$1"; }
   check "workflow: the PR-text scan step has no env block" step_has_no_env "$WF"
   check "workflow: checkout is pinned to a commit and drops credentials" grep -Eq 'actions/checkout@[0-9a-f]{40}' "$WF"
