@@ -139,6 +139,9 @@ LFNAME="notes"$'\n'"$(at opsuser "$(join . 203 0 113 9)").md"
 printf 'token: gh%s_%s\n' r "$A36" >"$P/$LFNAME"
 SPLITNAME="$(at opsuser "$(join . 203 0 113 '')")"$'\n'"9.md"
 printf 'harmless\n' >"$P/$SPLITNAME"
+# a harmless name with a control character is still never printed when something in the file is flagged
+TABNAME="tab"$'\t'"name.txt"
+printf 'token: gh%s_%s\n' r "$A36" >"$P/$TABNAME"
 # N9: a symlink's target text is content
 ln -s "$(at opsuser "$(join . 203 0 113 9)")" "$P/lnk"
 EXPECT_FILE+=(lnk); EXPECT_RULE+=(login-at-ipv4)
@@ -158,6 +161,9 @@ done
 for pr in "${PROBES[@]}"; do check "matched text is redacted from the output" lacks "$pr"; done
 check "F3 tree: a login in a file NAME is a finding (shown as an ordinal)" has_re 'path#[0-9]+:1  \[login-at-ipv4\]'
 check "F3 tree: a content finding in such a file also hides the name" has_re 'path#[0-9]+:1  \[github-token\]'
+check "N2 tree: the login-named, newline-in-name and newline-split files are all findings (three ordinals)" test "$(printf '%s\n' "$OUT" | grep -Ec 'path#[0-9]+:1  \[login-at-ipv4\]')" -eq 3
+check "N2 tree: a harmless name with a control character is shown as an ordinal too (three token files)" test "$(printf '%s\n' "$OUT" | grep -Ec 'path#[0-9]+:1  \[github-token\]')" -eq 3
+check "N2 tree: ... and not as tab?name" lacks "tab?name"
 check "N2 tree: a name with a newline is not printed (no fragment of it)" lacks "opsuser"
 check "N2 tree: ... nor the part before the newline" lacks "notes?"
 run env GITHUB_ACTIONS=true bash "$SCAN" tree --root "$P"
