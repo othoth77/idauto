@@ -59,8 +59,8 @@ add_rule() { # name flags kind pattern [each] [exclude] [require]
 
 NOQ="[:space:]\"'\`"                       # characters that end a URL/credential token
 PH='change[-_ ]?me|placeholder|example|your[-_ ]|replace|redacted|dummy|fake|sample|xxxx|[*][*][*]|[.][.][.]|<[^>]*>|[{][^}]*[}]|randomBytes|urandom|%s|%[(]'
-DOT='(\.|\[\.\]|\\\.|%(25)*2[Ee])'      # plain, defanged [.], regex-escaped \., %2E, %252E, %25252E...
-AT='(@|%(25)*40)'                            # an @ or its URL-encoded form (%40, %2540, %252540...)
+DOT='(\.|\[\.\]|\\\.|%(25)*2[Ee]|&#46;|&#[xX]2[eE];|&period;)'   # plain, defanged, escaped, %2E/%252E..., HTML entities
+AT='(@|%(25)*40|&#64;|&#[xX]40;|&commat;)'                                # an @ or its URL/HTML-encoded form
 
 add_rule private-key        Ei plain '-----BEGIN ([A-Z0-9]+ )*PRIVATE KEY( BLOCK)?-----'
 add_rule github-token       E  plain 'gh[pousr]_[A-Za-z0-9]{36,}'
@@ -80,7 +80,7 @@ add_rule env-assignment     Ei plain "^[[:space:]]*(export[[:space:]]+)?[A-Za-z0
 add_rule credential-literal Ei plain "(api_?key|secret|password|passwd|token|private_?key|access_?key)[A-Za-z0-9_]*[\"']?[[:space:]]*[:=][[:space:]]*[\"'][^\"'\$[:space:]]{8,}[\"'][[:space:]]*([^+[:space:]]|\$)" '' \
   "$PH|_(file|path|name|env|header|field|label|prefix|url)[\"']?[[:space:]]*[:=]"
 add_rule login-at-ipv4      Ei plain "[A-Za-z_][A-Za-z0-9._-]*${AT}([0-9]{1,3}${DOT}){3}[0-9]{1,3}"
-add_rule ssh-login          Ei each  '(^|[^A-Za-z0-9_])(ssh|scp|rsync|sftp)([^A-Za-z0-9_@]|$).*[A-Za-z_][A-Za-z0-9._-]*(@|%(25)*40)[A-Za-z0-9]' \
+add_rule ssh-login          Ei each  "(^|[^A-Za-z0-9_])(ssh|scp|rsync|sftp)([^A-Za-z0-9_@]|\$).*[A-Za-z_][A-Za-z0-9._-]*${AT}[A-Za-z0-9]" \
   '[A-Za-z_][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*' \
   '@(localhost|([A-Za-z0-9-]+[.])*(example[.](com|org|net)|github[.]com|gitlab[.]com|bitbucket[.]org)|[A-Za-z0-9.-]*[.](example|invalid|test|localhost|local))[.]?$'
 # The two address rules select whole lines and test every candidate token in bash, because a
@@ -99,7 +99,10 @@ SECRET_FILE_OK_RE='(^|/)\.env\.(example|sample|template|dist)$'
 # ----------------------------------------------------------------------------
 # Allowlist
 # ----------------------------------------------------------------------------
-ALLOW_LO=() ALLOW_HI=() ALLOW_PATHS=() SKIP_RULE=() SKIP_PATH=()
+# Three allowlist sets share the loader: ALLOW (the one that judges content), WORK (the working
+# copy's own file when a trusted copy judges instead) and nothing else.
+ALLOW_LO=() ALLOW_HI=() ALLOW_PATHS=() ALLOW_LN=() SKIP_RULE=() SKIP_PATH=() SKIP_LN=()
+WORK_LO=() WORK_HI=() WORK_PATHS=() WORK_LN=() WORK_SKIP_RULE=() WORK_SKIP_PATH=() WORK_SKIP_LN=()
 
 ip_to_int() { # a.b.c.d -> integer in $IPINT, returns 1 if not a valid dotted quad
   local a b c d extra
@@ -113,8 +116,11 @@ ip_to_int() { # a.b.c.d -> integer in $IPINT, returns 1 if not a valid dotted qu
   IPINT=$(( (10#$a << 24) | (10#$b << 16) | (10#$c << 8) | 10#$d ))
 }
 
-load_allow() {
-  local file=$1 line kind rest arg len size lo lineno=0
+load_allow() { # file [prefix: ALLOW (default) or WORK]
+  local file=$1 pfx=${2:-ALLOW} line kind arg len size lo lineno=0
+  local skr=SKIP_RULE skp=SKIP_PATH skl=SKIP_LN
+  if [[ $pfx == WORK ]]; then skr=WORK_SKIP_RULE skp=WORK_SKIP_PATH skl=WORK_SKIP_LN; fi
+  local -n LO=${pfx}_LO HI=${pfx}_HI PA=${pfx}_PATHS LN=${pfx}_LN SR=$skr SP=$skp SL=$skl
   [[ -f $file ]] || die "allowlist not found: $file"
   while IFS= read -r line || [[ -n $line ]]; do
     lineno=$(( lineno + 1 ))
@@ -131,12 +137,12 @@ load_allow() {
         ip_to_int "$arg" || die "allowlist line $lineno: bad IPv4 address"
         size=$(( 1 << (32 - 10#$len) ))
         lo=$(( IPINT - (IPINT % size) ))
-        ALLOW_LO+=("$lo"); ALLOW_HI+=("$(( lo + size - 1 ))")
-        ALLOW_PATHS+=("${parts[*]:2}")
+        LO+=("$lo"); HI+=("$(( lo + size - 1 ))")
+        PA+=("${parts[*]:2}"); LN+=("$lineno")
         ;;
       skip)
         [[ ${#parts[@]} -eq 3 ]] || die "allowlist line $lineno: skip needs <rule|*> <path>"
-        SKIP_RULE+=("${parts[1]}"); SKIP_PATH+=("${parts[2]}")
+        SR+=("${parts[1]}"); SP+=("${parts[2]}"); SL+=("$lineno")
         ;;
       *) die "allowlist line $lineno: unknown directive (text withheld)" ;;
     esac
@@ -157,16 +163,13 @@ skipped() { # rule path -> 0 if an allowlist skip entry covers it
   return 1
 }
 
-IPBASE=0 STRICT_ALLOW=0 BASE_LO=() BASE_HI=() BASE_PATHS=()
-ip_allowed() { # int path-or-empty; IPBASE=1 consults the trusted base allowlist instead
-  local i p pfx=ALLOW
-  if [[ $IPBASE == 1 ]]; then pfx=BASE; fi
-  local -n LO=${pfx}_LO HI=${pfx}_HI PA=${pfx}_PATHS
-  for i in "${!LO[@]}"; do
-    if (( $1 >= LO[i] && $1 <= HI[i] )); then
-      if [[ -z ${PA[i]} ]]; then return 0; fi
+ip_allowed() { # int path-or-empty
+  local i p
+  for i in "${!ALLOW_LO[@]}"; do
+    if (( $1 >= ALLOW_LO[i] && $1 <= ALLOW_HI[i] )); then
+      if [[ -z ${ALLOW_PATHS[i]} ]]; then return 0; fi
       if [[ -n $2 ]]; then
-        for p in ${PA[i]}; do path_matches "$2" "$p" && return 0; done
+        for p in ${ALLOW_PATHS[i]}; do path_matches "$2" "$p" && return 0; done
       fi
     fi
   done
@@ -174,10 +177,90 @@ ip_allowed() { # int path-or-empty; IPBASE=1 consults the trusted base allowlist
 }
 
 # ----------------------------------------------------------------------------
+# Trusted allowlist. In CI the allowlist that JUDGES is the base branch's copy, never the one a
+# PR brings: otherwise a change could approve itself (a `skip`, a wide range, a symlink). The PR's
+# own copy is only compared against it (registry_check): anything it adds beyond what the
+# trusted copy already allows is a finding. Outside CI (no event) the working copy judges.
+# ----------------------------------------------------------------------------
+TRUSTED_REV=""
+pick_trusted_rev() {
+  TRUSTED_REV=""
+  local evn=${GITHUB_EVENT_NAME-}
+  [[ $evn == pull_request || $evn == push ]] || return 0
+  [[ -n ${GITHUB_EVENT_PATH-} ]] || return 0
+  read_event
+  if [[ $evn == pull_request ]]; then
+    local bref base
+    bref=$(ev pr_base_ref); base=$(ev pr_base_sha); need_ref "$bref" "PR base ref"
+    if [[ -n $bref ]] && git rev-parse -q --verify "refs/remotes/origin/$bref" >/dev/null; then
+      TRUSTED_REV=refs/remotes/origin/$bref
+    elif [[ $base =~ ^[0-9a-f]{40,64}$ ]] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+      TRUSTED_REV=$base
+    fi
+  else
+    local ref def
+    ref=$(ev push_ref); def=$(ev default_branch); need_ref "$def" "default branch"
+    if [[ -n $def && $ref != "refs/heads/$def" ]] && git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null; then
+      TRUSTED_REV=refs/remotes/origin/$def
+    fi
+  fi
+}
+
+# Last commit with a known finding in its message (#34's squash). History up to here is not
+# re-scanned when a push has no usable before-SHA.
+GATE_BASELINE=3c88bb83b3bdb707f78f7c58944346f7874d77f7
+BASELINE=${SECRET_SCAN_BASELINE:-$GATE_BASELINE}
+
+REGISTRY_CHECK=0
+setup_allow() { # called after cd $ROOT
+  if [[ -L $ALLOW ]]; then die "the allowlist must be a regular file, not a symlink"; fi
+  pick_trusted_rev
+  local rel=${ALLOW_ABS#"$ROOT"/}
+  if [[ -n $TRUSTED_REV && $ALLOW_ABS == "$ROOT"/* ]] && git cat-file -e "$TRUSTED_REV:$rel" 2>/dev/null; then
+    git show "$TRUSTED_REV:$rel" >"$TMP/trusted-allow" 2>/dev/null || die "cannot read the trusted allowlist"
+    load_allow "$TMP/trusted-allow" ALLOW
+    if [[ -f $ALLOW ]]; then load_allow "$ALLOW" WORK; REGISTRY_CHECK=1; fi
+  else
+    load_allow "$ALLOW" ALLOW
+  fi
+}
+
+# Every directive of the working copy must be already covered by the trusted copy.
+registry_check() {
+  (( REGISTRY_CHECK == 1 )) || return 0
+  local saved=$MODE rel=${ALLOW_ABS#"$ROOT"/} i j p q tp ok covered
+  MODE=tree
+  for i in "${!WORK_LO[@]}"; do
+    ok=0
+    for j in "${!ALLOW_LO[@]}"; do
+      (( ALLOW_LO[j] <= WORK_LO[i] && WORK_HI[i] <= ALLOW_HI[j] )) || continue
+      if [[ -z ${ALLOW_PATHS[j]} ]]; then ok=1; break; fi
+      [[ -n ${WORK_PATHS[i]} ]] || continue
+      covered=1
+      for p in ${WORK_PATHS[i]}; do
+        tp=0
+        for q in ${ALLOW_PATHS[j]}; do if path_matches "$p" "$q"; then tp=1; break; fi; done
+        (( tp == 1 )) || { covered=0; break; }
+      done
+      if (( covered == 1 )); then ok=1; break; fi
+    done
+    (( ok == 1 )) || record allowlist-widened "$rel" "${WORK_LN[i]}"
+  done
+  for i in "${!WORK_SKIP_RULE[@]}"; do
+    ok=0
+    for j in "${!SKIP_RULE[@]}"; do
+      if [[ ${SKIP_RULE[j]} == '*' || ${SKIP_RULE[j]} == "${WORK_SKIP_RULE[i]}" ]] && path_matches "${WORK_SKIP_PATH[i]}" "${SKIP_PATH[j]}"; then ok=1; break; fi
+    done
+    (( ok == 1 )) || record allowlist-widened "$rel" "${WORK_SKIP_LN[i]}"
+  done
+  MODE=$saved
+}
+
+# ----------------------------------------------------------------------------
 # Reporting. Locations only; the matched text is never printed.
 # ----------------------------------------------------------------------------
 FINDINGS=0
-declare -A SEEN=() BADPATH=() SANMAP=() NULCOPY=()
+declare -A SEEN=() BADPATH=() SANMAP=() NULCOPY=() NULCOPY2=()
 SEG_START=() SEG_LABEL=() SEG_PATH=()
 SEG_IDX=0
 MODE=tree
@@ -192,27 +275,35 @@ seg_lookup() { # corpus line -> SEG_IDX (last segment starting at or before it)
   done
 }
 
-h8() { local h; h=$(printf '%s' "$1" | git hash-object --stdin) || die "git hash-object failed"; printf '%s' "${h:0:8}"; }
+# Path names are withheld whenever they are a finding or contain characters that make them
+# unsafe to print (control characters, quotes, backslashes): only an ordinal is shown, the
+# position in the scanned path list (git ls-files order for the tree scan).
+declare -A PATHIDX=()
+PATHARR=() PATHCOUNTER=0
+needs_redact() { [[ -n ${BADPATH["$1"]+x} || $1 == *[[:cntrl:]]* || $1 == *'"'* || $1 == *\\* ]]; }
+pathlabel() { # path -> path#N
+  local n=${PATHIDX["$1"]-}
+  if [[ -z $n ]]; then PATHCOUNTER=$(( PATHCOUNTER + 1 )); n=$(( 100000 + PATHCOUNTER )); PATHIDX["$1"]=$n; fi
+  printf 'path#%s' "$n"
+}
 
 record() { # rule file line
-  local rule=$1 f=$2 ln=$3 loc shown sp
+  local rule=$1 f=$2 ln=$3 loc shown sp idx
   if [[ $MODE == paths ]]; then
-    # A finding in a path NAME: remember it, and never print the path (only a short hash).
-    sp=$(sed -n "${ln}p" "$PATHLIST")
-    if [[ -n $sp ]]; then BADPATH["$sp"]=1; loc="path#$(h8 "$sp")"; else loc="path#empty"; fi
-    ln=1
+    idx=$(sed -n "${ln}p" "$TMP/pathidx"); sp=${PATHARR[idx]-}
+    BADPATH["$sp"]=1; loc=$(pathlabel "$sp"); ln=1
   elif [[ $MODE == text ]]; then
     seg_lookup "$ln"
     loc=${SEG_LABEL[SEG_IDX]}
     sp=${SEG_PATH[SEG_IDX]}
     if [[ -n $sp ]]; then
-      if [[ -n ${BADPATH["$sp"]+x} ]]; then loc="$loc in path#$(h8 "$sp")"; else loc="$loc in $sp"; fi
+      if needs_redact "$sp"; then loc="$loc in $(pathlabel "$sp")"; else loc="$loc in $sp"; fi
     fi
     loc=$(sanitize "$loc")
     shown=$(sed -n "${ln}p" "$LNMAP")
     ln=${shown:-$ln}
-  elif [[ -n ${BADPATH["$f"]+x} ]]; then
-    loc="path#$(h8 "$f")"
+  elif needs_redact "$f"; then
+    loc=$(pathlabel "$f")
   else
     loc=$(sanitize "$f")
   fi
@@ -225,11 +316,13 @@ record() { # rule file line
   fi
 }
 
-decode() { # URL-decode the escapes that hide a login or an address (%40 @, %20 space, %2E dot), repeatedly so %2540 / %252E are covered
+decode() { # URL/HTML-decode the escapes that hide a login or an address (%40 @, %20 space, %2E dot, &#46; &#64; ...), repeatedly so %2540 / %252E are covered
   local s=$1 prev=
   while [[ $s != "$prev" ]]; do
     prev=$s
     s=${s//%25/%}; s=${s//%40/@}; s=${s//%20/ }; s=${s//%2[Ee]/.}
+    s=${s//&#46;/.}; s=${s//&#[xX]2[eE];/.}; s=${s//&period;/.}
+    s=${s//&#64;/@}; s=${s//&#[xX]40;/@}; s=${s//&commat;/@}
   done
   DECODED=$s
 }
@@ -260,13 +353,9 @@ handle_hit() { # rule-index file line match
       done
       ;;
     ip)
-      # The allowlist file is the registry of exceptions; it is not itself scanned for them.
-      IPBASE=0
-      if [[ -n $rel && -n ${ALLOW_ABS-} && $ROOT/$rel == "$ALLOW_ABS" ]]; then
-        # Additions to the registry are judged against the TRUSTED (base) allowlist when one is
-        # available, so a change cannot approve its own address; otherwise the file is exempt.
-        if [[ $MODE == text && $STRICT_ALLOW == 1 ]]; then IPBASE=1; else return 0; fi
-      fi
+      # The allowlist file is the registry of exceptions; it is not scanned for them here
+      # (registry_check compares it with the trusted copy instead).
+      if [[ -n $rel && -n ${ALLOW_ABS-} && $ROOT/$rel == "$ALLOW_ABS" ]]; then return 0; fi
       decode "$m"; rest=$DECODED; prev=""
       while [[ $rest =~ $each ]]; do
         tok=${BASH_REMATCH[0]}
@@ -280,9 +369,8 @@ handle_hit() { # rule-index file line match
         norm=${tok//\[/}; norm=${norm//\]/}; norm=${norm//\\/}; norm=${norm//-/.}; norm=${norm#[Ii][Pp].}
         ip_to_int "$norm" || continue
         if ip_allowed "$IPINT" "$rel"; then continue; fi
-        IPBASE=0; record "$rule" "$f" "$ln"; return 0
+        record "$rule" "$f" "$ln"; return 0
       done
-      IPBASE=0
       ;;
   esac
 }
@@ -317,12 +405,29 @@ scan_files() {
 }
 
 # Path NAMES are content too: a file named after a login line must not pass, nor leak through
-# a location in the log. Scanned first so any later location can redact the path.
-PATHLIST=""
-scan_path_file() { # file with one path per line
-  local saved=$MODE
-  PATHLIST=$1; MODE=paths
-  scan_files "$1"
+# a location in the log. Names come from NUL-separated lists, so a newline inside a name cannot
+# split it; each name is scanned with its newlines removed and with them turned into spaces.
+# Scanned first so any later location can redact the path.
+scan_path_names() { # paths...
+  local saved=$MODE p a b i=0
+  PATHARR=("$@")
+  {
+    for p in "$@"; do
+      a=${p//$'\n'/}; a=${a//$'\r'/}
+      printf '%s\n' "$a"
+      if [[ $p == *$'\n'* || $p == *$'\r'* ]]; then b=${p//$'\n'/ }; b=${b//$'\r'/ }; printf '%s\n' "$b"; fi
+    done
+  } >"$TMP/pathlist"
+  {
+    for p in "$@"; do
+      PATHIDX["$p"]=$(( i + 1 ))
+      printf '%s\n' "$i"
+      if [[ $p == *$'\n'* || $p == *$'\r'* ]]; then printf '%s\n' "$i"; fi
+      i=$(( i + 1 ))
+    done
+  } >"$TMP/pathidx"
+  MODE=paths
+  scan_files "$TMP/pathlist"
   MODE=$saved
 }
 
@@ -341,7 +446,7 @@ scan_secret_file_names() { # paths...
 finish() {
   if (( FINDINGS > 0 )); then
     echo "secret-scan: FAIL - $FINDINGS finding(s). Matched text is deliberately not printed." >&2
-    echo "secret-scan: Fix the location, or (for a reviewed exception) edit .github/secret-scan-allow.txt." >&2
+    echo "secret-scan: Fix the location. A reviewed exception is an owner-approved change to .github/secret-scan-allow.txt on the base branch; a PR's own edit never approves itself." >&2
     exit 1
   fi
   echo "secret-scan: OK - no findings ($1)."
@@ -350,32 +455,36 @@ finish() {
 mode_tree() {
   MODE=tree
   cd "$ROOT" || die "cannot enter root: $ROOT"
-  load_allow "$ALLOW"
+  setup_allow
   local -a all=() files=()
   local top
   if top=$(git rev-parse --show-toplevel 2>/dev/null) && [[ $(cd "$top" && pwd -P) == "$(pwd -P)" ]]; then
     git ls-files -z >"$TMP/list" || die "git ls-files failed"
   else
-    find . -type f -not -path './.git/*' -print0 >"$TMP/list" || die "find failed"
+    find . \( -type f -o -type l \) -not -path './.git/*' -print0 >"$TMP/list" || die "find failed"
   fi
   mapfile -d '' all <"$TMP/list"
   local f
   for f in "${all[@]}"; do
     f=${f#./}
-    [[ -f $f && ! -L $f ]] || continue
+    if [[ -L $f ]]; then :; elif [[ -f $f ]]; then :; else continue; fi
     if skipped '*' "$f"; then continue; fi
     files+=("$f")
   done
   (( ${#files[@]} > 0 )) || die "no files to scan under $ROOT"
-  printf '%s\n' "${files[@]}" >"$TMP/pathlist"
-  scan_path_file "$TMP/pathlist"
+  scan_path_names "${files[@]}"
   scan_secret_file_names "${files[@]}"
+  registry_check
   # Scan every byte as text. A NUL must not disable matching (git itself sniffs only the first
-  # 8000 bytes), so files containing one are scanned from a NUL-stripped copy.
-  local -a scan=() nulls=() batch
-  local n=${#files[@]} start=0 rc k=0 nf
+  # 8000 bytes), so a file containing one is scanned twice, from a copy with the NULs deleted
+  # and from one with them turned into spaces (deleting can glue digits onto an address,
+  # a space can split one). A symlink's content is its target text, which GitHub displays.
+  local -a scan=() nulls=() batch regular=()
+  local n start=0 rc k=0 nf nf2
+  for f in "${files[@]}"; do if [[ ! -L $f ]]; then regular+=("$f"); fi; done
+  n=${#regular[@]}
   while (( start < n )); do
-    batch=("${files[@]:start:300}"); start=$(( start + 300 ))
+    batch=("${regular[@]:start:300}"); start=$(( start + 300 ))
     rc=0
     grep -l -a -P --null -e '\x00' -- "${batch[@]}" >"$TMP/nul" 2>"$TMP/err" || rc=$?
     if (( rc > 1 )); then die "grep failed (exit $rc) while looking for NUL bytes"; fi
@@ -383,26 +492,55 @@ mode_tree() {
   done
   mkdir -p "$TMP/san"
   for f in "${nulls[@]}"; do
-    k=$(( k + 1 )); nf=$TMP/san/$k
+    k=$(( k + 1 )); nf=$TMP/san/$k; nf2=$TMP/san/$k.sp
     tr -d '\000' <"$f" >"$nf" || die "cannot strip NUL bytes from a file"
-    SANMAP["$nf"]=$f; NULCOPY["$f"]=$nf
+    tr '\000' ' ' <"$f" >"$nf2" || die "cannot convert NUL bytes in a file"
+    SANMAP["$nf"]=$f; SANMAP["$nf2"]=$f; NULCOPY["$f"]=$nf; NULCOPY2["$f"]=$nf2
   done
-  for f in "${files[@]}"; do scan+=("${NULCOPY["$f"]:-$f}"); done
+  for f in "${files[@]}"; do
+    if [[ -L $f ]]; then
+      k=$(( k + 1 )); nf=$TMP/san/$k
+      { readlink -- "$f" | tr -d '\000'; } >"$nf" || die "readlink failed"
+      SANMAP["$nf"]=$f; scan+=("$nf")
+    elif [[ -n ${NULCOPY["$f"]-} ]]; then
+      scan+=("${NULCOPY["$f"]}" "${NULCOPY2["$f"]}")
+    else
+      scan+=("$f")
+    fi
+  done
   scan_files "${scan[@]}"
   finish "${#files[@]} files"
 }
 
 CORPUS="" CORPUS_LINES=0 LNMAP=""
-add_segment() { # label file [path]: a block of text scanned as one unit, located by label
-  if [[ -z $CORPUS ]]; then CORPUS=$TMP/corpus; LNMAP=$TMP/lnmap; : >"$CORPUS"; : >"$LNMAP"; fi
+add_block() { # label file path : append one already NUL-free block
   local before=$CORPUS_LINES delta
   SEG_START+=("$(( before + 1 ))"); SEG_LABEL+=("$1"); SEG_PATH+=("${3-}")
-  tr -d '\000' <"$2" >>"$CORPUS" || die "cannot read text segment: $1"
+  cat -- "$2" >>"$CORPUS" || die "cannot read text segment: $1"
   printf '\n' >>"$CORPUS"
   CORPUS_LINES=$(wc -l <"$CORPUS")
   CORPUS_LINES=${CORPUS_LINES//[[:space:]]/}
   delta=$(( CORPUS_LINES - before ))
   awk -v n="$delta" 'BEGIN { for (i = 1; i <= n; i++) print i }' >>"$LNMAP" || die "awk failed"
+}
+
+has_nul() { # file -> 0 if it contains a NUL byte
+  local rc=0
+  tr -d '\000' <"$1" | cmp -s - "$1" || rc=$?
+  (( rc <= 1 )) || die "cmp failed"
+  (( rc == 1 ))
+}
+
+add_segment() { # label file [path]: text scanned as one unit, located by label. Input with a
+  # NUL is added twice (NULs deleted, NULs as spaces), like tree files.
+  if [[ -z $CORPUS ]]; then CORPUS=$TMP/corpus; LNMAP=$TMP/lnmap; : >"$CORPUS"; : >"$LNMAP"; fi
+  cat -- "$2" >"$TMP/seg.raw" || die "cannot read text segment: $1"
+  tr -d '\000' <"$TMP/seg.raw" >"$TMP/seg.a" || die "tr failed"
+  add_block "$1" "$TMP/seg.a" "${3-}"
+  if has_nul "$TMP/seg.raw"; then
+    tr '\000' ' ' <"$TMP/seg.raw" >"$TMP/seg.b" || die "tr failed"
+    add_block "$1" "$TMP/seg.b" "${3-}"
+  fi
 }
 
 # The lines a commit ADDS, per file, so content added and then removed by a later commit in
@@ -412,12 +550,23 @@ add_segment() { # label file [path]: a block of text scanned as one unit, locate
 # "commit <sha> added lines in <path>:<file line>".
 DIFFPATHS=""
 add_commit_diff() { # sha
-  local sha=$1 base st pth added
+  local sha=$1
   [[ -n $DIFFPATHS ]] || { DIFFPATHS=$TMP/diffpaths; : >"$DIFFPATHS"; }
-  if ! git -c core.quotePath=false diff-tree -p --cc --text -U0 --no-color --no-ext-diff --no-renames -r --root --no-commit-id "$sha" \
-        2>"$TMP/err" | tr -d '\000' >"$TMP/diff"; then
-    die "git diff-tree failed"
+  # Every changed path NAME (also empty files, odd names), NUL-separated, for the name scan.
+  git diff-tree -r -z --root --no-commit-id --name-only --no-renames "$sha" >>"$DIFFPATHS" 2>"$TMP/err" \
+    || die "git diff-tree (names) failed"
+  git -c core.quotePath=false diff-tree -p --cc --text -U0 --no-color --no-ext-diff --no-renames -r --root --no-commit-id "$sha" \
+    >"$TMP/diff.raw" 2>"$TMP/err" || die "git diff-tree failed"
+  tr -d '\000' <"$TMP/diff.raw" >"$TMP/diff"
+  diff_segments "$sha"
+  if has_nul "$TMP/diff.raw"; then
+    tr '\000' ' ' <"$TMP/diff.raw" >"$TMP/diff"
+    diff_segments "$sha"
   fi
+}
+
+diff_segments() { # sha ; reads $TMP/diff
+  local sha=$1 base st pth added
   : >"$TMP/added"; : >"$TMP/addedln"; : >"$TMP/meta"
   awk -v out="$TMP/added" -v lnm="$TMP/addedln" -v meta="$TMP/meta" '
     BEGIN { inh = 0; n = 0; last = "\001"; ncol = 1; plus = "+" }
@@ -446,7 +595,6 @@ add_commit_diff() { # sha
   base=$CORPUS_LINES
   while IFS=$'\t' read -r st pth; do
     SEG_START+=("$(( base + st ))"); SEG_LABEL+=("commit ${sha:0:12} added lines"); SEG_PATH+=("$pth")
-    printf '%s\n' "$pth" >>"$DIFFPATHS"
   done <"$TMP/meta"
   cat -- "$TMP/added" >>"$CORPUS"; cat -- "$TMP/addedln" >>"$LNMAP"
   CORPUS_LINES=$(( base + added ))
@@ -455,12 +603,32 @@ add_commit_diff() { # sha
 scan_corpus() { # description
   if [[ -z $CORPUS ]]; then finish "$1: nothing to scan"; return; fi
   if [[ -n $DIFFPATHS && -s $DIFFPATHS ]]; then
-    sort -u "$DIFFPATHS" >"$TMP/diffpaths.u" || die "sort failed"
-    scan_path_file "$TMP/diffpaths.u"
+    local -a names=()
+    sort -zu "$DIFFPATHS" >"$TMP/diffpaths.u" || die "sort failed"
+    mapfile -d '' -t names <"$TMP/diffpaths.u"
+    if (( ${#names[@]} )); then scan_path_names "${names[@]}"; fi
   fi
   MODE=text
   scan_files "$CORPUS"
   finish "$1"
+}
+
+# The whole commit object (headers: tree, parents, author, committer, signature, mergetag;
+# then the message), not `git log --format=%B`, which stops at the first NUL.
+add_commit_text() { # sha
+  local sha=$1 variant
+  git cat-file commit "$sha" >"$TMP/commit.raw" 2>"$TMP/err" || die "git cat-file failed"
+  for variant in a b; do
+    if [[ $variant == a ]]; then tr -d '\000' <"$TMP/commit.raw" >"$TMP/commit.txt"
+    elif has_nul "$TMP/commit.raw"; then tr '\000' ' ' <"$TMP/commit.raw" >"$TMP/commit.txt"
+    else break; fi
+    # headers end at the first empty line; the message follows (its line 1 is the subject)
+    awk -v hdr="$TMP/commit.hdr" -v msg="$TMP/commit.msg" 'BEGIN { h = 1; printf "" > hdr; printf "" > msg }
+      h && $0 == "" { h = 0; next }
+      { if (h) print > hdr; else print > msg }' "$TMP/commit.txt" || die "awk failed"
+    add_segment "commit ${sha:0:12} header fields" "$TMP/commit.hdr"
+    add_segment "commit ${sha:0:12} message" "$TMP/commit.msg"
+  done
 }
 
 add_commits() { # rev-list args
@@ -468,10 +636,7 @@ add_commits() { # rev-list args
   git rev-list "$@" >"$TMP/revs" 2>"$TMP/err" || die "git rev-list failed for the requested range"
   while IFS= read -r sha; do
     [[ $sha =~ ^[0-9a-f]{40,64}$ ]] || die "unexpected rev-list output"
-    git log -1 --format=%B "$sha" >"$TMP/msg" || die "git log failed"
-    add_segment "commit ${sha:0:12} message" "$TMP/msg"
-    git log -1 --format='%an%n%ae%n%cn%n%ce' "$sha" >"$TMP/author" || die "git log failed"
-    add_segment "commit ${sha:0:12} author fields" "$TMP/author"
+    add_commit_text "$sha"
     add_commit_diff "$sha"
     COMMITS=$(( ${COMMITS:-0} + 1 ))
   done <"$TMP/revs"
@@ -512,25 +677,9 @@ ev() { local v=; [[ -f $TMP/ev/$1 ]] && v=$(<"$TMP/ev/$1"); printf '%s' "$v"; }
 need_sha() { [[ $1 =~ ^[0-9a-f]{40,64}$ ]] || die "event payload: $2 is not a commit id"; }
 need_ref() { [[ -z $1 || $1 =~ ^[A-Za-z0-9._/-]+$ ]] || die "event payload: $2 is not a plain ref name"; }
 
-# Load the allowlist as it is at <rev> into BASE_*, so additions to the registry can be judged
-# against a trusted version. No registry at <rev> (or not under the root): stays non-strict.
-load_base_allow() { # rev
-  local rel
-  [[ -n ${ALLOW_DIR-} && $ALLOW_ABS == "$ROOT"/* ]] || return 0
-  rel=${ALLOW_ABS#"$ROOT"/}
-  git cat-file -e "$1:$rel" 2>/dev/null || return 0
-  git show "$1:$rel" >"$TMP/base-allow" 2>/dev/null || die "cannot read the base allowlist"
-  local sLO=("${ALLOW_LO[@]}") sHI=("${ALLOW_HI[@]}") sPA=("${ALLOW_PATHS[@]}") sSR=("${SKIP_RULE[@]}") sSP=("${SKIP_PATH[@]}")
-  ALLOW_LO=() ALLOW_HI=() ALLOW_PATHS=() SKIP_RULE=() SKIP_PATH=()
-  load_allow "$TMP/base-allow"
-  BASE_LO=("${ALLOW_LO[@]}") BASE_HI=("${ALLOW_HI[@]}") BASE_PATHS=("${ALLOW_PATHS[@]}")
-  ALLOW_LO=("${sLO[@]}") ALLOW_HI=("${sHI[@]}") ALLOW_PATHS=("${sPA[@]}") SKIP_RULE=("${sSR[@]}") SKIP_PATH=("${sSP[@]}")
-  STRICT_ALLOW=1
-}
-
 mode_github() {
   cd "$ROOT" || die "cannot enter root: $ROOT"
-  load_allow "$ALLOW"
+  setup_allow
   local evname=${GITHUB_EVENT_NAME-}
   COMMITS=0
   local -a excl=()
@@ -552,12 +701,7 @@ mode_github() {
       if [[ -n $bref ]] && git rev-parse -q --verify "refs/remotes/origin/$bref" >/dev/null; then
         excl+=("^refs/remotes/origin/$bref")
       fi
-      # Additions to the allowlist itself are judged against the base branch's version.
-      if [[ -n $bref ]] && git rev-parse -q --verify "refs/remotes/origin/$bref" >/dev/null; then
-        load_base_allow "refs/remotes/origin/$bref"
-      else
-        load_base_allow "$base"
-      fi
+      registry_check
       add_commits "$head" "${excl[@]}"
       scan_corpus "PR title, PR body and $COMMITS commit(s)"
       ;;
@@ -574,17 +718,20 @@ mode_github() {
         on_default=0
         if git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null; then excl=("^refs/remotes/origin/$def"); fi
       fi
+      registry_check
       if [[ $before =~ ^0+$ || -z $before ]] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
         # New branch, or a force push whose old tip is gone. Off the default branch that is
-        # everything not already on it; with no such bound only the tip is scanned, because the
-        # default branch's own history holds old, known findings that must not turn every such
-        # push red (the tree scan still covers the whole tree).
-        if (( ${#excl[@]} )); then add_commits "$after" "${excl[@]}"; else add_commits -n 1 "$after"; fi
-        if (( on_default == 0 )) && git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null; then
-          load_base_allow "refs/remotes/origin/$def"
+        # everything not already on it. Otherwise everything after GATE_BASELINE (the last
+        # commit whose message is a known finding), so old history cannot turn every such
+        # push red and a force push cannot hide new commits behind its tip.
+        if (( ${#excl[@]} )); then
+          add_commits "$after" "${excl[@]}"
+        elif git cat-file -e "${BASELINE}^{commit}" 2>/dev/null; then
+          add_commits -n 200 "$after" "^$BASELINE"
+        else
+          add_commits -n 1 "$after"
         fi
       else
-        if (( on_default == 0 )); then load_base_allow "$before"; fi
         add_commits "${before}..${after}" "${excl[@]}"
       fi
       scan_corpus "$COMMITS pushed commit(s)"
