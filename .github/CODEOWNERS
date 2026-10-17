@@ -1,0 +1,8 @@
+# Code owners for the public idauto repository.
+#
+# Any change to CI, the secret gate, its self-test or the allowlist must be
+# reviewed by the repository owner. This file only takes effect once the `main`
+# branch rule "Require review from Code Owners" is enabled (owner action, see
+# .github/scripts/secret_scan.sh header and the othkm record
+# projects/idauto/IDAUTO_SECRET_GATE_REVIEWS_2026-10-17.md).
+/.github/ @othoth77
