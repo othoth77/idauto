@@ -262,6 +262,7 @@ git init -q "$G"
 mkdir -p "$G/.github"; cp "$REAL_ALLOW" "$G/.github/secret-scan-allow.txt"
 gitc add -A; gitc commit -q -m "base commit"
 BASE=$(git -C "$G" rev-parse HEAD)
+git -C "$G" update-ref refs/remotes/origin/main "$BASE"      # the trusted (default-branch) allowlist lives here
 gitc commit -q --allow-empty -m "clean change"
 MID=$(git -C "$G" rev-parse HEAD)
 gitc commit -q --allow-empty -m "fix the doc" -m "was: ssh -L 3999:127.0.0.1:3999 $(at user "$(join . 203 0 113 9)")"
@@ -276,11 +277,12 @@ check "commits: the address is redacted" lacks "$(join . 203 0 113 9)"
 # github mode, as the workflow drives it: the scanner reads the PR title/body and the SHAs from
 # the event payload FILE. They must never come from step env (the runner prints those values in
 # the public job log), so env-supplied PR text is ignored.
-mkpr() { # file title body base-sha head-sha base-ref [head-ref]
+mkpr() { # file title body base-sha head-sha base-ref [head-ref [default-branch]]
   python3 -I -c 'import json,sys
 t, b, bs, hs, br = sys.argv[2:7]
 hr = sys.argv[7] if len(sys.argv) > 7 else "feature"
-json.dump({"pull_request": {"title": t, "body": b, "base": {"sha": bs, "ref": br}, "head": {"sha": hs, "ref": hr}}}, open(sys.argv[1], "w"))' "$@"
+df = sys.argv[8] if len(sys.argv) > 8 else "main"
+json.dump({"pull_request": {"title": t, "body": b, "base": {"sha": bs, "ref": br}, "head": {"sha": hs, "ref": hr}}, "repository": {"default_branch": df}}, open(sys.argv[1], "w"))' "$@"
 }
 mkpush() { # file before after ref default-branch
   python3 -I -c 'import json,sys
@@ -495,13 +497,82 @@ run gh_tree "$EV" "$H"
 check "N1c PR tree step: same" test "$RC" -eq 2
 hg checkout -q main 2>/dev/null || hg checkout -q "$B0"
 
+# M1: the allowlist file is scanned like any other (comments, scope fields, encodings); only the
+# address of an accepted `ipv4` directive is exempt
+P8=$(join . 8 8 8 8)
+hg checkout -q main
+hg checkout -q -b leak "$B0"
+{ printf '# the old vps was %s, do not use\n' "$P8"
+  printf 'ipv4 10.0.0.0/8 %s\n' "$P8"
+  printf 'ipv4 10.0.0.0/8 %s\n' "$(printf '8%s8%s8%s8' '%2E' '%2E' '%2E')"
+  printf 'ipv4 10.0.0.0/8 # see %s\n' "$P8"; } >>"$H/$ALLOWREL"
+hg add -A; hg commit -q -m "leak in comments and scope fields"
+LKB=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t b "$B0" "$LKB" main
+run gh_pr "$EV" "$H"
+for k in 1 2 3 4; do
+  check "M1 PR: address in allowlist line #$k is found in the commit's added lines" has_line "commit ${LKB:0:12} added lines in $ALLOWREL:$(( LN + k ))" public-ipv4
+done
+run gh_tree "$EV" "$H"
+for k in 1 2 3 4; do check "M1 PR tree step: address in allowlist line #$k is found" has_line "$ALLOWREL:$(( LN + k ))" public-ipv4; done
+hg checkout -q -b dupok "$B0"
+printf 'ipv4 %s docs/AI_HANDOVER.md\n' "$(join . 213 186 33 5)" >>"$H/$ALLOWREL"
+hg add -A; hg commit -q -m "repeat an accepted directive"
+DK=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t b "$B0" "$DK" main
+run gh_pr "$EV" "$H"
+check "M1 PR: the address of an accepted directive (already covered by the base copy) is exempt" test "$RC" -eq 0
+run gh_tree "$EV" "$H"
+check "M1 PR tree step: same" test "$RC" -eq 0
+mkdir -p "$W/al2/.github"
+{ printf '# vps was %s\n' "$P8"; printf 'ipv4 %s docs/\n' "$P8"; } >"$W/al2/.github/secret-scan-allow.txt"
+run bash "$SCAN" tree --root "$W/al2"
+check "M1 local: a comment in the allowlist is scanned" has_line "$ALLOWREL:1" public-ipv4
+check "M1 local: ... while the directive's own address is exempt" lacks "$ALLOWREL:2 "
+
+# M2: the trusted copy is the DEFAULT branch's, whatever the PR targets
+hg checkout -q main; hg checkout -q -b nobase "$B0"
+hg rm -q -f "$ALLOWREL"; hg commit -q -m "a side branch without an allowlist"
+NB=$(git -C "$H" rev-parse HEAD); git -C "$H" update-ref refs/remotes/origin/nobase "$NB"
+hg checkout -q -b viaside "$NB"
+mkdir -p "$H/.github"; git -C "$H" show "$B0:$ALLOWREL" >"$H/$ALLOWREL"
+printf 'skip * notes.md\n' >>"$H/$ALLOWREL"
+printf 'ssh %s\n' "$(at opsuser "$(join . 203 0 113 9)")" >"$H/notes.md"
+hg add -A; hg commit -q -m "own allowlist with a skip"
+VS=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t b "$NB" "$VS" nobase feature main
+run gh_pr "$EV" "$H"
+check "M2 PR into a branch without an allowlist: the skip is still a finding (default branch judges)" has_line "$ALLOWREL:$(( LN + 1 ))" allowlist-widened
+check "M2 PR: ... and the login in the file it tried to skip is found" has_re 'added lines in notes.md:1  \[login-at-ipv4\]'
+run gh_tree "$EV" "$H"
+check "M2 PR tree step: same" has_line "notes.md:1" login-at-ipv4
+mkpr "$EV" t b "$NB" "$VS" nobase feature nobase
+run gh_pr "$EV" "$H"
+check "M2 PR: a default branch whose allowlist cannot be read is a scanner error, never a fallback" test "$RC" -eq 2
+run gh_tree "$EV" "$H"
+check "M2 PR tree step: same" test "$RC" -eq 2
+mkpr "$EV" t b "$NB" "$VS" nobase feature nosuchbranch
+run gh_pr "$EV" "$H"
+check "M2 PR: a default branch that is not in the checkout is a scanner error" test "$RC" -eq 2
+
+# M3: no component of the allowlist path may be a symlink
+hg checkout -q main; hg checkout -q -b dirlink "$B0"
+hg mv .github cfg; ln -s cfg "$H/.github"; hg add -A; hg commit -q -m "symlinked .github"
+DL=$(git -C "$H" rev-parse HEAD)
+mkpr "$EV" t b "$B0" "$DL" main
+run gh_pr "$EV" "$H"
+check "M3 PR: a symlinked directory in the allowlist path is a scanner error" test "$RC" -eq 2
+run gh_tree "$EV" "$H"
+check "M3 PR tree step: same" test "$RC" -eq 2
+hg checkout -q main
+
 # F6/N7: a default-branch push with no usable before-SHA scans what is newer than the baseline
 # commit (the last one with a known finding), not 200 commits of old findings, and not the tip only
 gitc commit -q --allow-empty -m "clean tip"
 TIP=$(git -C "$G" rev-parse HEAD)
 mkpush "$EV" "$(rep 0 40)" "$TIP" refs/heads/main main
 run gh_push "$EV" "$G"
-check "F6 push: with no baseline commit available only the tip is scanned" test "$RC" -eq 0
+check "N7 push: a baseline commit that is not in the checkout is a scanner error, not a silent tip-only scan" test "$RC" -eq 2
 export SECRET_SCAN_BASELINE=$BAD
 run gh_push "$EV" "$G"
 check "F6 push: commits after the baseline are clean, old findings are not re-reported" test "$RC" -eq 0
@@ -571,7 +642,7 @@ check "error: a grep that fails outright exits 2" test "$RC" -eq 2
 WF=$HERE/../workflows/ci.yml
 if [[ -f $WF ]]; then
   nogrep() { ! grep -Eq "$1" "$2"; }
-  wf_event_expr() { grep -Eiq '\$\{\{[^}]*(github\.(event|head_ref)|tojson|fromjson)' "$1"; }       # 0 = a PR/event expression is present
+  wf_event_expr() { tr '\n' ' ' <"$1" | grep -Eiq '\$\{\{[^}]*(github[[:space:]]*(\.[[:space:]]*(event|head_ref)|\[)|tojson|fromjson)'; }       # 0 = a PR/event expression is present
   wf_unpinned()   { grep -E '^[[:space:]-]*uses:' "$1" | grep -Evq '@[0-9a-f]{40}([[:space:]]|$)'; } # 0 = some action is not pinned to a commit
   check "workflow: no event/PR-text expression of any spelling" test "$(wf_event_expr "$WF" && echo yes || echo no)" = no
   check "workflow: no PR_TITLE/PR_BODY step env" nogrep 'PR_(TITLE|BODY)' "$WF"
@@ -580,10 +651,13 @@ if [[ -f $WF ]]; then
   # the guards themselves must catch the spellings the review listed
   for bad in '${{ toJson(github.event) }}' '${{ tojson( github ) }}' "\${{ github.event.pull_request['title'] }}" \
              '${{ github.event.pull_request.TITLE }}' '${{ github.event.head_commit.message }}' \
-             '${{ join(github.event.commits.*.message) }}' '${{ github.event.changes.body.from }}' '${{ github.head_ref }}'; do
+             '${{ join(github.event.commits.*.message) }}' '${{ github.event.changes.body.from }}' '${{ github.head_ref }}' \
+             "\${{ github['event'].pull_request.title }}" "\${{ github[ 'head_ref' ] }}"; do
     printf 'x: %s\n' "$bad" >"$W/guard.yml"
     check "workflow guard catches: $bad" wf_event_expr "$W/guard.yml"
   done
+  printf 'x: ${{\n  github.event\n    .pull_request.title }}\n' >"$W/guard.yml"
+  check "workflow guard catches an expression split across lines" wf_event_expr "$W/guard.yml"
   for bad in 'actions/checkout@main' 'actions/checkout@v4' 'actions/checkout@master' 'actions/checkout@34e11487'; do
     printf '      - uses: %s\n' "$bad" >"$W/guard.yml"
     check "pin guard catches: $bad" wf_unpinned "$W/guard.yml"

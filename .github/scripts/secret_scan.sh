@@ -116,8 +116,9 @@ ip_to_int() { # a.b.c.d -> integer in $IPINT, returns 1 if not a valid dotted qu
   IPINT=$(( (10#$a << 24) | (10#$b << 16) | (10#$c << 8) | 10#$d ))
 }
 
-load_allow() { # file [prefix: ALLOW (default) or WORK]
-  local file=$1 pfx=${2:-ALLOW} line kind arg len size lo lineno=0
+declare -A REGARG=() ACCEPTED=()   # working copy: line -> the address of its ipv4 directive; lines accepted as covered
+load_allow() { # file [prefix: ALLOW (default) or WORK] [register: 1 = record this file's ipv4 lines in REGARG]
+  local file=$1 pfx=${2:-ALLOW} reg=${3:-0} line kind arg len size lo lineno=0
   local skr=SKIP_RULE skp=SKIP_PATH skl=SKIP_LN
   if [[ $pfx == WORK ]]; then skr=WORK_SKIP_RULE skp=WORK_SKIP_PATH skl=WORK_SKIP_LN; fi
   local -n LO=${pfx}_LO HI=${pfx}_HI PA=${pfx}_PATHS LN=${pfx}_LN SR=$skr SP=$skp SL=$skl
@@ -139,6 +140,7 @@ load_allow() { # file [prefix: ALLOW (default) or WORK]
         lo=$(( IPINT - (IPINT % size) ))
         LO+=("$lo"); HI+=("$(( lo + size - 1 ))")
         PA+=("${parts[*]:2}"); LN+=("$lineno")
+        if [[ $reg == 1 ]]; then REGARG[$lineno]=$arg; fi
         ;;
       skip)
         [[ ${#parts[@]} -eq 3 ]] || die "allowlist line $lineno: skip needs <rule|*> <path>"
@@ -150,9 +152,12 @@ load_allow() { # file [prefix: ALLOW (default) or WORK]
   done <"$file"
 }
 
-path_matches() { # path entry
-  [[ $2 == */ ]] && [[ $1 == "$2"* ]] && return 0
-  [[ $1 == "$2" ]]
+path_matches() { # path entry (case-sensitive, no globbing)
+  local rc=1
+  shopt -u nocasematch
+  if [[ $2 == */ && $1 == "$2"* ]] || [[ $1 == "$2" ]]; then rc=0; fi
+  shopt -s nocasematch
+  return $rc
 }
 
 skipped() { # rule path -> 0 if an allowlist skip entry covers it
@@ -164,7 +169,9 @@ skipped() { # rule path -> 0 if an allowlist skip entry covers it
 }
 
 ip_allowed() { # int path-or-empty
+  local -
   local i p
+  set -f
   for i in "${!ALLOW_LO[@]}"; do
     if (( $1 >= ALLOW_LO[i] && $1 <= ALLOW_HI[i] )); then
       if [[ -z ${ALLOW_PATHS[i]} ]]; then return 0; fi
@@ -184,26 +191,22 @@ ip_allowed() { # int path-or-empty
 # ----------------------------------------------------------------------------
 TRUSTED_REV=""
 pick_trusted_rev() {
+  # In CI the trusted copy is ALWAYS the default branch's, whatever branch a PR targets or a
+  # push goes to (a side branch may have no allowlist, or a bad one). Unreadable = exit 2.
   TRUSTED_REV=""
-  local evn=${GITHUB_EVENT_NAME-}
+  local evn=${GITHUB_EVENT_NAME-} ref def
   [[ $evn == pull_request || $evn == push ]] || return 0
   [[ -n ${GITHUB_EVENT_PATH-} ]] || return 0
   read_event
-  if [[ $evn == pull_request ]]; then
-    local bref base
-    bref=$(ev pr_base_ref); base=$(ev pr_base_sha); need_ref "$bref" "PR base ref"
-    if [[ -n $bref ]] && git rev-parse -q --verify "refs/remotes/origin/$bref" >/dev/null; then
-      TRUSTED_REV=refs/remotes/origin/$bref
-    elif [[ $base =~ ^[0-9a-f]{40,64}$ ]] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
-      TRUSTED_REV=$base
-    fi
-  else
-    local ref def
-    ref=$(ev push_ref); def=$(ev default_branch); need_ref "$def" "default branch"
-    if [[ -n $def && $ref != "refs/heads/$def" ]] && git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null; then
-      TRUSTED_REV=refs/remotes/origin/$def
-    fi
+  def=$(ev default_branch); need_ref "$def" "default branch"
+  [[ -n $def ]] || die "event payload carries no default branch"
+  if [[ $evn == push ]]; then
+    ref=$(ev push_ref)
+    [[ $ref != "refs/heads/$def" ]] || return 0      # a push to the default branch: post-merge, the working copy judges
   fi
+  git rev-parse -q --verify "refs/remotes/origin/$def" >/dev/null \
+    || die "the default branch origin/$def is not in the checkout (fetch-depth: 0 required)"
+  TRUSTED_REV=refs/remotes/origin/$def
 }
 
 # Last commit with a known finding in its message (#34's squash). History up to here is not
@@ -213,22 +216,35 @@ BASELINE=${SECRET_SCAN_BASELINE:-$GATE_BASELINE}
 
 REGISTRY_CHECK=0
 setup_allow() { # called after cd $ROOT
+  local rel comp path=$ROOT l
   if [[ -L $ALLOW ]]; then die "the allowlist must be a regular file, not a symlink"; fi
+  if [[ $ALLOW == "$ROOT"/* ]]; then   # no component of the path may be a symlink either
+    rel=${ALLOW#"$ROOT"/}
+    while [[ $rel == */* ]]; do
+      comp=${rel%%/*}; rel=${rel#*/}; path=$path/$comp
+      if [[ -L $path ]]; then die "the allowlist path has a symlinked component"; fi
+    done
+  fi
   pick_trusted_rev
-  local rel=${ALLOW_ABS#"$ROOT"/}
-  if [[ -n $TRUSTED_REV && $ALLOW_ABS == "$ROOT"/* ]] && git cat-file -e "$TRUSTED_REV:$rel" 2>/dev/null; then
+  rel=${ALLOW_ABS#"$ROOT"/}
+  if [[ -n $TRUSTED_REV ]]; then
+    [[ $ALLOW_ABS == "$ROOT"/* ]] || die "in CI the allowlist must live under the checkout"
+    git cat-file -e "$TRUSTED_REV:$rel" 2>/dev/null || die "the default branch has no $rel to judge by"
     git show "$TRUSTED_REV:$rel" >"$TMP/trusted-allow" 2>/dev/null || die "cannot read the trusted allowlist"
     load_allow "$TMP/trusted-allow" ALLOW
-    if [[ -f $ALLOW ]]; then load_allow "$ALLOW" WORK; REGISTRY_CHECK=1; fi
+    if [[ -f $ALLOW ]]; then load_allow "$ALLOW" WORK 1; REGISTRY_CHECK=1; fi
   else
-    load_allow "$ALLOW" ALLOW
+    load_allow "$ALLOW" ALLOW 1
+    for l in "${!REGARG[@]}"; do ACCEPTED[$l]=1; done   # no trusted copy: the file judges itself
   fi
 }
 
 # Every directive of the working copy must be already covered by the trusted copy.
 registry_check() {
   (( REGISTRY_CHECK == 1 )) || return 0
+  local -
   local saved=$MODE rel=${ALLOW_ABS#"$ROOT"/} i j p q tp ok covered
+  set -f
   MODE=tree
   for i in "${!WORK_LO[@]}"; do
     ok=0
@@ -244,7 +260,7 @@ registry_check() {
       done
       if (( covered == 1 )); then ok=1; break; fi
     done
-    (( ok == 1 )) || record allowlist-widened "$rel" "${WORK_LN[i]}"
+    if (( ok == 1 )); then ACCEPTED[${WORK_LN[i]}]=1; else record allowlist-widened "$rel" "${WORK_LN[i]}"; fi
   done
   for i in "${!WORK_SKIP_RULE[@]}"; do
     ok=0
@@ -336,7 +352,7 @@ handle_hit() { # rule-index file line match
     seg_lookup "$ln"; rel=${SEG_PATH[SEG_IDX]}
   fi
   if [[ -n $rel ]] && skipped "$rule" "$rel"; then return 0; fi
-  local excl=${RULE_EXCL[i]} req=${RULE_REQ[i]} each=${RULE_EACH[i]} rest tok norm pre after prev cur_prev
+  local excl=${RULE_EXCL[i]} req=${RULE_REQ[i]} each=${RULE_EACH[i]} rest tok norm pre after prev cur_prev dirline dirarg
   case "$kind" in
     plain)
       if [[ -n $excl && $m =~ $excl ]]; then return 0; fi
@@ -353,9 +369,14 @@ handle_hit() { # rule-index file line match
       done
       ;;
     ip)
-      # The allowlist file is the registry of exceptions; it is not scanned for them here
-      # (registry_check compares it with the trusted copy instead).
-      if [[ -n $rel && -n ${ALLOW_ABS-} && $ROOT/$rel == "$ALLOW_ABS" ]]; then return 0; fi
+      # The allowlist file is scanned like any other file (comments and scope fields included);
+      # only the address of an ACCEPTED `ipv4` directive, i.e. one the trusted copy already covers,
+      # is exempt, once per line.
+      dirline="" dirarg=""
+      if [[ -n $rel && -n ${ALLOW_ABS-} && $ROOT/$rel == "$ALLOW_ABS" ]]; then
+        if [[ $MODE == text ]]; then dirline=$(sed -n "${ln}p" "$LNMAP"); else dirline=$ln; fi
+        if [[ -n $dirline && ${ACCEPTED[$dirline]-} == 1 ]]; then dirarg=${REGARG[$dirline]-}; fi
+      fi
       decode "$m"; rest=$DECODED; prev=""
       while [[ $rest =~ $each ]]; do
         tok=${BASH_REMATCH[0]}
@@ -368,6 +389,7 @@ handle_hit() { # rule-index file line match
         if [[ -n $after && -n $excl && ${after:0:2} =~ $excl ]]; then continue; fi
         norm=${tok//\[/}; norm=${norm//\]/}; norm=${norm//\\/}; norm=${norm//-/.}; norm=${norm#[Ii][Pp].}
         ip_to_int "$norm" || continue
+        if [[ -n $dirarg && $norm == "$dirarg" ]]; then dirarg=""; continue; fi
         if ip_allowed "$IPINT" "$rel"; then continue; fi
         record "$rule" "$f" "$ln"; return 0
       done
@@ -729,7 +751,7 @@ mode_github() {
         elif git cat-file -e "${BASELINE}^{commit}" 2>/dev/null; then
           add_commits -n 200 "$after" "^$BASELINE"
         else
-          add_commits -n 1 "$after"
+          die "the baseline commit is not in the checkout (fetch-depth: 0 required)"
         fi
       else
         add_commits "${before}..${after}" "${excl[@]}"
