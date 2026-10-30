@@ -126,7 +126,7 @@ async function main() {
   var routesSrc = fs.readFileSync(path.join(BASE, 'reference', 'admin-routes.js'), 'utf8');
   ok(!/\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|GRANT|CREATE)\b/.test(repoSrc), 'admin-repository.js contains no SQL write verb (comments included)');
   ok(!/withAudit|db\.query/.test(routesSrc), 'admin-routes.js holds no SQL and calls no write helper');
-  ok(!/\bvin\b[^_]/i.test(repoSrc.replace(/\/\/.*$/gm, '').replace(/fact_key <> 'vin'|fact_key = 'vin'/g, '')), 'admin-repository.js selects no VIN (its only VIN references exclude it)');
+  ok(!/\bvin\b[^_]/i.test(repoSrc.replace(/\/\/.*$/gm, '').replace(/var NOT_VIN = "LOWER\(TRIM\(f\.fact_key\)\) <> 'vin'";/, '')), 'admin-repository.js selects no VIN (its only VIN references exclude it)');
   ok(!/customer_ref\b(?!_id|_present)/.test(repoSrc.replace(/\/\/.*$/gm, '')), 'admin-repository.js never selects the customer reference, only whether one exists');
   ok(!/storage_key|capture_time|plate_candidate|ocr_confidence|ip_hash|ocr_fields/.test(repoSrc.replace(/\/\/.*$/gm, '')), 'no storage key, capture time, OCR candidate, IP hash or OCR fields are selected');
   var scopeTables = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8').split('var ROUTES = [')[0];
@@ -257,11 +257,16 @@ async function main() {
   ok(!/"vin"/.test(withMerged.raw) && withMerged.raw.indexOf(VIN) === -1, 'no registry response carries a VIN');
   var bads = [['year=15', 'a two-digit year'], ['page_size=101', 'page_size above 100'], ['page_size=0', 'page_size 0'], ['sort=password', 'an unknown sort column'],
     ['dir=sideways', 'an unknown direction'], ['fiche_status=bogus', 'an unknown fiche status'], ['verified=maybe', 'a non-boolean verified'],
-    ['page=-1', 'a negative page'], ['page=999&page_size=100', 'a page beyond the browsable range']];
+    ['page=-1', 'a negative page'], ['page=999&page_size=100', 'a page beyond the browsable range'],
+    // Review 2026-10-30 (L6, L7): values used to be CUT before validation.
+    ['year=20245', 'a five-digit year (was cut to 2024)'], ['page_size=1000', 'page_size 1000 (was cut to 100)'],
+    ['page=1.5', 'a fractional page (parseInt made it 1)'], ['page_size=2abc', 'a page_size with trailing junk'],
+    ['dir=descending', 'dir=descending (was cut to desc)'], ['q=a%00b', 'a NUL byte in the text (was a 500)']];
   for (var b = 0; b < bads.length; b++) {
     var bad = await asAdmin('GET', '/api/admin/vehicles?' + bads[b][0]);
     ok(bad.status === 400 && bad.body && typeof bad.body.message_fr === 'string', 'registry refuses ' + bads[b][1] + ' with 400 and a French message');
   }
+  ok((await asAdmin('GET', '/api/admin/vehicles?make=' + TAG + '&dir=DESC')).status === 200, 'dir stays case-insensitive (DESC accepted)');
   var unknownPage = await asAdmin('GET', '/api/admin/vehicles?make=' + TAG + '&page=9&page_size=10');
   ok(unknownPage.status === 200 && unknownPage.body.results.length === 0 && unknownPage.body.total === 31, 'a page past the end is empty, not an error, and still reports the total');
 
@@ -303,6 +308,26 @@ async function main() {
   ok(auditTypes.indexOf('workshop.visit.create') !== -1 && auditTypes.indexOf('workshop.operation.create') !== -1, 'the audit section includes the visit and operation writes');
   ok(auditTypes.some(function (t) { return /^vehicle\.(identify|merge)|vehicle\.merge/.test(t) || t === 'vehicle.identify.create' || t === 'vehicle.identify.confirmed'; }), 'and the identification writes (' + auditTypes.filter(function (t) { return /^vehicle/.test(t); }).slice(0, 4).join(', ') + ')');
   ok(/n'est pas la preuve/.test(d.body.completeness_note), 'the completeness note says absence is not proof');
+
+  /* Review 2026-10-30 — regression tests for the confirmed findings. */
+  // M2: a VIN keyed in another case, public by default, must stay hidden.
+  var VIN2 = randomVin();
+  ok((await asAdmin('POST', '/api/vehicles/' + encodeURIComponent(REF) + '/facts', { fact_key: ' VIN ', fact_value: VIN2 })).status === 201, 'M2 fixture: a VIN fact keyed « VIN » with the default (public) scope');
+  // M1: an observation of this vehicle, then a review decision on it — both audited against idauto_observations.
+  var obs = await asAdmin('POST', '/api/observations', { vehicle_internal_ref: REF, status: 'pending_review' });
+  ok(obs.status === 201, 'M1 fixture: an observation pending review');
+  // L3: an audited VIN search leaves a vin_digest in the audit summary of this vehicle.
+  ok((await asAdmin('GET', '/api/search/vehicles?vin=' + VIN)).status === 200, 'L3 fixture: an audited VIN search');
+  var d2 = await asAdmin('GET', '/api/admin/vehicles/' + encodeURIComponent(IVID) + '/dossier');
+  ok(d2.raw.indexOf(VIN2) === -1 && !d2.body.facts.some(function (f) { return /^\s*vin\s*$/i.test(f.fact_key); }), 'M2: a VIN keyed « VIN » (any case, padded) never appears in the dossier');
+  ok(d2.body.restricted_fact_count === d.body.restricted_fact_count + 1, 'M2: it is counted as restricted instead');
+  ok(!d2.body.audit.some(function (a) { return a.target_type === 'idauto_observations'; }), 'M1: no observation audit row (submission time, submitter) reaches the dossier');
+  ok(d2.body.quality.pending_observations >= 1, 'L8: the pending observation is still counted in data quality');
+  var vinAudit = d2.body.audit.filter(function (a) { return a.event_type === 'vehicle.search.vin'; })[0];
+  ok(vinAudit && /vin_digest=\[masqué\]/.test(vinAudit.summary) && !/vin_digest=[0-9a-f]{8}/.test(d2.raw), 'L3: the VIN search is listed, its digest masked');
+  var listedM2 = (await asAdmin('GET', '/api/admin/vehicles?q=' + encodeURIComponent(VIN2))).body;
+  ok(listedM2.total === 0, 'M2: the registry free text does not match that VIN either');
+  ok((await asAdmin('GET', '/api/admin/vehicles/a%00b/dossier')).status === 404, 'L6: a NUL byte in the reference -> 404, not 500');
 
   var viaAlias = await asAdmin('GET', '/api/admin/vehicles/' + encodeURIComponent(dup.id) + '/dossier');
   ok(viaAlias.status === 200 && viaAlias.body.vehicle.id === IVID && viaAlias.body.requested_alias === dup.id, 'asking for the alias answers with the canonical dossier and says so');

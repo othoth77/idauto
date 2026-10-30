@@ -43,7 +43,9 @@ Anonymous → 401 `{ login: '/login' }`. The owner cookie (IDA-V1B) is honoured 
 
 **Never returned, even to an admin:** VIN value; any `mythos_private` fact or media (counted only); observation
 `capture_time`/`created_at`, `plate_candidate`, `ocr_confidence`, `ip_hash`, camera/contributor/session; workshop
-customer reference; document storage keys and OCR fields. Reason: no read of restricted data is audit-logged yet
+customer reference; document storage keys and OCR fields; a VIN fact under any key spelling (`vin`, `VIN`, ` Vin `);
+audit rows about observations (submission time and submitter identity); the VIN digest of a `vehicle.search.vin`
+audit summary (masked). Reason: no read of restricted data is audit-logged yet
 (`PRIVACY_ARCHITECTURE.md` §3), the rule every other GET here already follows.
 
 ## 3. Pages
@@ -57,7 +59,7 @@ empty / error states, filter state in the URL (Back works). French copy, like `/
 ## 4. Tests
 
 - `tests/ida-admin-registry-test.js` (in `npm run test:db`; refuses any database not named `idauto_scratch_*`):
-  **118 passed, 0 failed**. Fixtures go through the real routes (`/api/resolve/confirm`, facts, review, workshop visits
+  **135 passed, 0 failed** (118 before the pre-release review, §6). Fixtures go through the real routes (`/api/resolve/confirm`, facts, review, workshop visits
   and operations, merge). Mutation-checked: dropping the restricted-scope filter, selecting the customer reference, and
   removing the handler's admin check each turn the suite red.
 - `tests/ida-2g-admin-manual-entry-ui-test.js`: one assertion looked for the English title removed in #33 and had
@@ -74,3 +76,23 @@ empty / error states, filter state in the URL (Back works). French copy, like `/
   admin-only; organisations keep the capped search.
 - Review decisions, merge/split from the dossier, a data-sources page and ANPR in the console are not in this slice;
   their backend contracts exist (review, merge/split) or are legally gated (Smart Gate).
+
+## 6. Pre-release review (2026-10-30)
+
+An independent review of the PR found no critical or high issue (access control, SQL construction and XSS checked
+clean). Fixed before merge, each with a regression test that fails on the earlier commit:
+
+| Finding | Fix |
+|---|---|
+| M1 — the dossier's audit join included `idauto_observations` rows, i.e. submission times and submitter identities | observation targets dropped from the audit join |
+| M2 — VIN exclusion matched `fact_key = 'vin'` exactly; `createFact` stores keys verbatim and defaults to public | `LOWER(TRIM(fact_key)) <> 'vin'` on every fact read |
+| L3 — `vin_digest=` in audit summaries | masked in the dossier |
+| L6 — a NUL byte in `q` or `:ref` produced a 500 | 400 / 404 |
+| L7 — filter values were cut before validation (`year=20245` → 2024, `page=1.5` → 1) | refused instead |
+| L8 — registry conflict count included restricted facts; pending observations counted from a 200-row list | aligned with the dossier; counted in SQL |
+
+Accepted residual risks (admin-only surface): fact dates and evidence dates approximate when a published fact was
+observed; free-text workshop fields (visit reason, operation description) are shown as entered and could contain
+personal data typed by a workshop; plates, facts and aliases lists are not row-limited; the registry's free-text OR
+and per-request `count(*)` scan the vehicle table (fine at today's size, revisit past ~10⁵ vehicles).
+

@@ -38,6 +38,10 @@ var plateNormalizer = require('../vehicle/plate-normalizer.js');
 var plateValidator = require('../plate-validator.js');
 
 var PAGE_SIZE_DEFAULT = 25;
+// createFact() stores fact_key exactly as sent (and defaults the scope to
+// public), so a VIN keyed 'VIN', 'Vin' or ' vin ' must be excluded as surely
+// as one keyed 'vin'. Every fact read below uses this predicate.
+var NOT_VIN = "LOWER(TRIM(f.fact_key)) <> 'vin'";
 var PAGE_SIZE_MAX = 100;
 // An admin can page the whole register, but not by an unbounded OFFSET: past
 // this many rows the filters are the way in, not the page number.
@@ -58,12 +62,19 @@ function badRequest(message, details) {
   return Object.assign(new Error(message), { httpStatus: 400, details: details });
 }
 
+// A value longer than `max` is REFUSED, not cut: cutting turned year=20245
+// into 2024 and page_size=1000 into 100 before validation ever saw them.
+// A NUL byte is refused too — PostgreSQL rejects it in text (22021), which
+// would otherwise surface as a 500.
 function oneParam(q, name, max) {
   var v = q[name];
   if (Array.isArray(v)) v = v[0];                   // ?make=a&make=b — the first, never concatenated
   if (typeof v !== 'string') return null;
   v = v.trim();
-  return v.length ? v.slice(0, max || 64) : null;
+  if (!v.length) return null;
+  if (v.length > (max || 64)) throw badRequest(name + ' is too long', { max: max || 64 });
+  if (v.indexOf('\u0000') !== -1) throw badRequest(name + ' contains a NUL character');
+  return v;
 }
 
 function likePrefix(text) {
@@ -78,15 +89,20 @@ function parseRegistryQuery(q) {
     q: oneParam(q, 'q'),
     make: oneParam(q, 'make'),
     model: oneParam(q, 'model'),
-    year: oneParam(q, 'year', 4),
+    year: oneParam(q, 'year', 8),
     fiche_status: oneParam(q, 'fiche_status', 20),
     verified: oneParam(q, 'verified', 5),
     include_merged: oneParam(q, 'include_merged', 5) === '1',
     sort: oneParam(q, 'sort', 20) || 'updated',
-    dir: (oneParam(q, 'dir', 4) || 'desc').toLowerCase(),
-    page: parseInt(oneParam(q, 'page', 6) || '1', 10),
-    page_size: parseInt(oneParam(q, 'page_size', 3) || String(PAGE_SIZE_DEFAULT), 10)
+    dir: (oneParam(q, 'dir', 8) || 'desc').toLowerCase(),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
   };
+  // Whole positive integers only: parseInt('1.5') is 1 and parseInt('2abc') is 2.
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10);
+  out.page_size = parseInt(out.page_size, 10);
   if (out.year !== null && !/^\d{4}$/.test(out.year)) throw badRequest('year must be a four-digit year');
   if (out.fiche_status !== null && FICHE_STATUSES.indexOf(out.fiche_status) === -1) throw badRequest('unknown fiche_status', { allowed: FICHE_STATUSES });
   if (out.verified !== null && out.verified !== 'true' && out.verified !== 'false') throw badRequest('verified must be true or false');
@@ -147,12 +163,12 @@ async function listVehicles(filter) {
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate, " +
     '(SELECT count(*)::int FROM idauto_plates p WHERE p.vehicle_id = v.id) AS plate_count, ' +
     '(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.vehicle_id = v.id) AS visit_count, ' +
-    "(SELECT count(*)::int FROM idauto_vehicle_facts f WHERE f.vehicle_id = v.id AND f.verification_status = 'conflict') AS conflict_count, " +
+    "(SELECT count(*)::int FROM idauto_vehicle_facts f WHERE f.vehicle_id = v.id AND f.verification_status = 'conflict' AND f.access_scope <> 'mythos_private' AND " + NOT_VIN + ") AS conflict_count, " +
     // Keys holding more than one distinct ACTIVE value: createFact() adds a
     // value without retiring the previous one, so this is where real
     // disagreement shows up (no code path sets verification_status='conflict').
     "(SELECT count(*)::int FROM (SELECT f.fact_key FROM idauto_vehicle_facts f WHERE f.vehicle_id = v.id AND f.is_active " +
-    "AND f.access_scope <> 'mythos_private' AND f.fact_key <> 'vin' GROUP BY f.fact_key " +
+    "AND f.access_scope <> 'mythos_private' AND " + NOT_VIN + " GROUP BY f.fact_key " +
     'HAVING count(DISTINCT UPPER(TRIM(f.fact_value))) > 1) d) AS disagreement_count ' +
     'FROM idauto_vehicles v LEFT JOIN idauto_vehicles m ON m.id = v.merged_into_id' + whereSql +
     ' ORDER BY ' + orderCol + ' ' + dir + ' NULLS LAST, v.id ' + dir +
@@ -229,11 +245,11 @@ async function dossier(canonicalRow, vehicleRecord) {
     'SELECT f.id, f.vehicle_id, f.fact_key, f.fact_value, f.confidence_score, f.verification_status, f.access_scope, f.is_active, ' +
     'f.first_seen_at, f.last_seen_at, f.validated_at, f.observation_id, cs.code AS source_code, cs.source_type, cs.trust_level AS source_trust_level ' +
     'FROM idauto_vehicle_facts f LEFT JOIN idauto_capture_sources cs ON cs.id = f.source_id ' +
-    "WHERE f.vehicle_id = ANY($1::int[]) AND f.access_scope <> 'mythos_private' AND f.fact_key <> 'vin' " +
+    "WHERE f.vehicle_id = ANY($1::int[]) AND f.access_scope <> 'mythos_private' AND " + NOT_VIN + " " +
     'ORDER BY f.fact_key, f.is_active DESC, f.last_seen_at DESC, f.id DESC',
     [ids])).rows;
   var restricted = (await db.query(
-    "SELECT count(*)::int AS n FROM idauto_vehicle_facts WHERE vehicle_id = ANY($1::int[]) AND (access_scope = 'mythos_private' OR fact_key = 'vin')",
+    "SELECT count(*)::int AS n FROM idauto_vehicle_facts f WHERE f.vehicle_id = ANY($1::int[]) AND (f.access_scope = 'mythos_private' OR NOT " + NOT_VIN + ")",
     [ids])).rows[0].n;
   var factIds = facts.map(function (f) { return f.id; });
   var evidence = factIds.length ? (await db.query(
@@ -292,7 +308,10 @@ async function dossier(canonicalRow, vehicleRecord) {
   });
   plates.forEach(function (p) { target('idauto_plates', p.plate); target('plate', p.plate); });
   facts.forEach(function (f) { target('idauto_vehicle_facts', f.id); });
-  observations.forEach(function (o) { target('idauto_observations', o.id); });
+  // NOT idauto_observations: their audit rows (ingestion.submit,
+  // observation.review.*) carry the submission time and the submitter's
+  // identity — a per-contributor sighting timeline. The observation list above
+  // already omits both for the same reason.
   documents.forEach(function (d) { target('idauto_vehicle_documents', d.id); });
   visits.forEach(function (w) { target('idauto_workshop_visits', w.id); });
   operations.forEach(function (o) { target('idauto_workshop_operations', o.id); });
@@ -311,7 +330,10 @@ async function dossier(canonicalRow, vehicleRecord) {
   });
   var disagreements = Object.keys(activeValues).filter(function (k) { return Object.keys(activeValues[k]).length > 1; })
     .map(function (k) { return { fact_key: k, distinct_active_values: Object.keys(activeValues[k]).length }; });
-  var pendingObservations = observations.filter(function (o) { return o.status === 'pending_review' || o.status === 'pending_confirmation'; }).length;
+  // Counted in SQL, not from the observation list, which stops at 200 rows.
+  var pendingObservations = (await db.query(
+    "SELECT count(*)::int AS n FROM idauto_observations WHERE vehicle_id = ANY($1::int[]) AND status IN ('pending_review','pending_confirmation')",
+    [ids])).rows[0].n;
 
   var timeline = [];
   visits.forEach(function (w) {
@@ -374,7 +396,8 @@ async function dossier(canonicalRow, vehicleRecord) {
     },
     audit: audit.map(function (a) {
       return { id: a.id, at: a.event_time, event_type: a.event_type, actor_type: a.actor_type, actor_ref: a.actor_ref,
-        org_id: a.org_id, target_type: a.target_type, target_ref: a.target_ref, summary: a.change_summary };
+        org_id: a.org_id, target_type: a.target_type, target_ref: a.target_ref,
+        summary: a.change_summary === null ? null : String(a.change_summary).replace(/vin_digest=[0-9a-f]+/gi, 'vin_digest=[masqué]') };
     }),
     completeness_note: 'Ce dossier montre ce qui a été enregistré dans IDauto. Une intervention absente ' +
       'n\'est pas la preuve qu\'elle n\'a pas eu lieu, et un enregistrement intact ne prouve pas que son contenu est exact.'

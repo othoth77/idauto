@@ -15,7 +15,7 @@ historical plates, one dossier per canonical identity with its aliases,
 maintenance timeline, facts with their provenance, identification history,
 data quality and audit. No VIN, restricted fact or workshop customer reference
 is ever returned; the VIN stays behind the audited fiche. No migration, no new
-write path. `tests/ida-admin-registry-test.js` (118); `ida-2g` assertion fixed
+write path. `tests/ida-admin-registry-test.js` (135); `ida-2g` assertion fixed
 (it had failed on `main` since the console went French). Details:
 `docs/ADMIN_CONSOLE.md`.
 

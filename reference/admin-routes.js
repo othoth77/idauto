@@ -66,7 +66,7 @@ function createAdminRoutes(ctx) {
 
   async function getDossier(req, res, m) {
     var ref = decode(m[1]);
-    if (typeof ref !== 'string' || !ref || ref.length > 64) {
+    if (typeof ref !== 'string' || !ref || ref.length > 64 || ref.indexOf('\u0000') !== -1) {
       return sendJson(res, 404, { error: 'VEHICLE_NOT_FOUND', message_fr: 'Véhicule introuvable.' });
     }
     var row = await vehicleRepository.findByRef(ref);   // follows merges to the canonical record
