@@ -106,7 +106,7 @@ Nothing in this repository pretends to be further along than it is.
 | Read + write API, atomic audit logging | **IMPLEMENTED** (reference implementation; not deployed publicly) |
 | Content-addressed media storage | **IMPLEMENTED** |
 | Community ingestion service, rate limiting, review queue | **IMPLEMENTED** (admin-only route; no public endpoint exists) |
-| Off-host backup, restore-verified | **IMPLEMENTED** — a verified off-host copy of the database exists (2026-08-14); recurring scheduling and retention automation are **PLANNED** |
+| Off-host backup, restore-verified | **IMPLEMENTED** — a verified off-host copy of the database exists (2026-08-14); since then a nightly scheduled off-host backup (database + media), remote verification and a monthly restore test run on the host (re-checked 2026-10-30) |
 | Real multi-user authentication | **BLOCKED** — see [`docs/ROADMAP.md`](docs/ROADMAP.md) IDA-2E |
 | Citizen passport, professional issuers, AI verification | **SPECIFIED**, not implemented |
 | W3C Verifiable Credentials / DID interoperability | **SPECIFIED**, not implemented |

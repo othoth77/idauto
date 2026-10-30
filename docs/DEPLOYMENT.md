@@ -4,9 +4,7 @@
 
 ## 1. Topology (as deployed on idauto.tn)
 
-nginx (TLS, `idauto.tn`) → `127.0.0.1:3001` ← `idauto-api.service` (user unit, `deploy`, `node reference/api.js`, checkout `/home/deploy/projects/idauto` = `main`) → PostgreSQL 16 (`idauto-postgres` container, `idauto_production`) + media root `/home/deploy/deployments/idauto-api/media`. Env file `/home/deploy/deployments/idauto-api/.env` (0600, outside the worktree).
-
-> **Corrected 2026-10-30.** This paragraph ended "Nightly off-host backup of `idauto_production`." No recurring backup job for `idauto_production` was found on the host in a read-only inventory that day; the README's status ("recurring scheduling and retention automation are **PLANNED**") is the accurate one. The last verified off-host copy on record is the 2026-08-14 execution in `AI_HANDOVER.md`.
+nginx (TLS, `idauto.tn`) → `127.0.0.1:3001` ← `idauto-api.service` (user unit, `deploy`, `node reference/api.js`, checkout `/home/deploy/projects/idauto` = `main`) → PostgreSQL 16 (`idauto-postgres` container, `idauto_production`) + media root `/home/deploy/deployments/idauto-api/media`. Env file `/home/deploy/deployments/idauto-api/.env` (0600, outside the worktree). Nightly off-host backup of `idauto_production` (database + media set, remote verification, monthly restore test — re-checked read-only 2026-10-30).
 
 **IDA-ADMIN-1 (2026-10-30):** the registry and dossier need no host change — `/admin/*` and `/api/admin/*` are served by the same process behind the same `location /`. Release = pull + `systemctl --user restart idauto-api`; no migration, no environment variable. Smoke: `GET /admin/vehicles` 200 · `GET /api/admin/vehicles` 401 anonymous · signed in as admin, the registry lists vehicles and a dossier opens. Rollback = previous commit + restart.
 

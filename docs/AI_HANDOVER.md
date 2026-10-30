@@ -6,7 +6,7 @@
 
 **Changes:** `reference/admin/admin-repository.js` (read model, no SQL write verb), `reference/admin-routes.js` (3 admin-only GET routes, mounted in `api.js`, in no scope table), pages `admin-vehicles.html`/`admin-vehicle.html` + `admin-console.js`/`admin-vehicles-ui.js`/`admin-vehicle-ui.js`, `admin.css` layout (tokens only), nav link on `/admin` and `/admin/review`. Contract and capability matrix: `docs/ADMIN_CONSOLE.md`.
 
-**Findings:** visits record no mileage; no code writes `idauto_service_events` or `verification_status='conflict'`; no trust level is persisted; `ida-2g` had failed on `main` since #33 (fixed); `DEPLOYMENT.md` claimed a nightly backup of `idauto_production` that a read-only inventory did not find (corrected).
+**Findings:** visits record no mileage; no code writes `idauto_service_events` or `verification_status='conflict'`; no trust level is persisted; `ida-2g` had failed on `main` since #33 (fixed); the README still called recurring backups PLANNED although a nightly off-host backup of `idauto_production` (database + media, remote verify, monthly restore test) runs on the host — README corrected.
 
 **Tests (scratch PostgreSQL 16.9, `idauto_scratch_admin`):** offline 16 suites 1481/0; `test:db` 14 suites all green incl. `ida-admin-registry` 118/0; `test:v12` 125/0, atelier browser 28/0; `test:v13` 61/0; `test:v14` 68/0, 38/0, browser suites pass except Tesseract VIN reads that flake on a loaded host (same on `main`). Real-browser check of the new pages at 390/1280 px: 34/0.
 
