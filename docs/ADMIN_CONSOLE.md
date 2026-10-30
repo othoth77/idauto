@@ -110,7 +110,7 @@ and `/admin/review` (Revue)** — PR #39 is merged but not deployed.
 | 3. Maintenance History | per-vehicle section of the dossier only; no page, no nav entry | workshop routes are **per organisation** (admin must pass `org_id`); no cross-organisation list | yes (visits, operations, service events) | org-scoped for workshops | `ida-v12` (workshop API) | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/maintenance` + `GET /api/admin/maintenance` (§8) | merge + deploy |
 | 4. Ateliers & Data Sources | none on `main` | **no route lists organisations or capture sources** on `main`; `GET /api/resolution/providers` and `/api/catalog/status` exist (admin) | tables `idauto_organizations`, `idauto_capture_sources`, `idauto_auth_user` (role/org); provider/TecDoc state | — | none for a listing | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/sources` + `GET /api/admin/organisations`, `GET /api/admin/sources` (§9) | merge + deploy |
 | 5. Data Quality | `/admin/review` (Revue) — pending observations + accept/reject; **English copy**; no conflict view | `/api/review/observations`, `…/decision`, `/api/review/submissions` (unused by the page), `/api/review/facts/:id/decision`, merge/split routes | yes | admin-only (absent from scope tables) | `ida-2h` 37/0, `ida-3e` 63/0 | **PARTIAL** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/quality` + `GET /api/admin/quality`, `/admin/review` in French (§10) | merge + deploy; fact-level accept/reject UI (route exists, not wired) |
-| 6. Security & Audit | none | **no route reads `idauto_audit_log` globally** (dossier shows one vehicle's rows); `GET /api/metrics` (admin); users only via `ops/auth-users.js` CLI | `idauto_audit_log`, `idauto_auth_user`/`_session` | — | auth suites (`ida-v13`) test the mechanism, not a console | **MISSING** | read routes + page: audit log with filters (event, actor type, org, date) and masked summaries; accounts and roles (no password/hash/token), active session counts; auth denial metrics |
+| 6. Security & Audit | none | **no route reads `idauto_audit_log` globally** (dossier shows one vehicle's rows); `GET /api/metrics` (admin); users only via `ops/auth-users.js` CLI | `idauto_audit_log`, `idauto_auth_user`/`_session` | — | auth suites (`ida-v13`) test the mechanism, not a console | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/security` + `GET /api/admin/audit`, `GET /api/admin/accounts` (§11) | merge + deploy; account actions (create, role, revoke) stay in `ops/auth-users.js` until audited routes exist |
 
 **Plan, in order of product value and dependency:**
 1. **Maintenance History** (this branch, `ida-admin-2-maintenance`) — the vehicle history the product exists for, across every organisation; plus one shared navigation for all console pages.
@@ -203,3 +203,29 @@ admin check removed, the review VIN filter reverted, the issue filter ignored �
 
 Not done: the per-fact accept/reject route (`POST /api/review/facts/:id/decision`) has no UI yet; submissions are counted
 by status, not listed.
+
+## 11. Security & Audit (IDA-ADMIN-5, branch `ida-admin-2-maintenance`)
+
+`/admin/security` (nav « Sécurité ») — read only, admin only.
+
+- `GET /api/admin/audit?event=&actor_type=&actor=&org_id=&target_type=&target=&from=&to=&page=&page_size=` →
+  `{ page, page_size, total, pages, filters{event_types, target_types, actor_types}, last_30_days{by_family,
+  by_actor_type, by_type}, results[{ id, at, masked, event_type, actor_type, actor_ref, actor_name, org_id, org_name,
+  target_type, target_ref, summary }] }`. `event` is an exact type or a family ending in `.` (`workshop.`). Never
+  returned: `old_value_json` / `new_value_json` (they hold the record written — a restricted fact's value, an IVID),
+  the client hash, the request id. `vin_digest` is masked. **Capture rows** (target an observation, its media, a
+  submission or a rate-limit bucket) keep only event, actor type and day: actor, target and hour together would rebuild
+  a contributor's sightings; an `actor` or `target` filter never matches them. (Their position in the time-ordered list
+  still brackets them between neighbouring rows; it reveals no actor or vehicle.)
+- `GET /api/admin/accounts?role=&q=` → `{ totals{accounts, active_sessions, accounts_signed_in, without_organisation,
+  by_role}, truncated, results[{ id, name, email, email_verified, role, org_id, org_name, org_status, created_at,
+  can_sign_in, active_sessions, last_seen_at }], service_credentials{admin_credentials, invalid_entries,
+  organisations[{org_id, credentials, scopes}]}, auth_decisions{since, counters} }`. Staff name and e-mail are shown to
+  admins. Never read: `idauto_auth_account` (password hash, OAuth tokens), a session's token, address or user agent.
+- Auth decisions: `api.js logAuthDecision` now also counts `auth_granted`, `auth_denied` and `auth_denied:<reason class>`
+  (`missing_scope:x` → `missing_scope`), never by actor. They are in-process counters, reset on restart, reported with
+  the process start time; password failures at `/login` (Better Auth) are not counted.
+
+Tests: `tests/ida-admin-security-test.js` 75/0 (mutation-checked: new_value_json returned, capture masking off, the actor
+filter reaching capture rows, vin_digest unmasked, a session user agent selected, counters keyed by actor, the handler's
+admin check removed — each turns it red). Browser 390/1280 px 23/0.

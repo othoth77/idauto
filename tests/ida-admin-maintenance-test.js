@@ -126,8 +126,8 @@ async function main() {
   ok(!/localStorage|sessionStorage|Authorization|Bearer/.test(ui), 'no browser storage, no token');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-maintenance.html'), 'utf8');
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html), 'the page has no inline script/style and is French');
-  var NAV = ['/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/review', '/admin'];
-  ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html'].forEach(function (f) {
+  var NAV = ['/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/security', '/admin/review', '/admin'];
+  ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html'].forEach(function (f) {
     var page = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8');
     var links = (page.match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [''])[0].match(/href="[^"]+"/g) || [];
     ok(JSON.stringify(links.map(function (l) { return l.slice(6, -1); })) === JSON.stringify(NAV) && (page.match(/aria-current="page"/g) || []).length === 1,

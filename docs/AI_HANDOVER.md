@@ -1,10 +1,10 @@
 # IDauto — Implementation Record (AI Handover)
 
-## Current record — 2026-10-30 IDA-ADMIN-2..4 (branch `ida-admin-2-maintenance`, not merged, not deployed)
+## Current record — 2026-10-30 IDA-ADMIN-2..5 (branch `ida-admin-2-maintenance`, not merged, not deployed)
 
-Maintenance History (`/admin/maintenance`), Ateliers & Data Sources (`/admin/sources`) and Data Quality
-(`/admin/quality`, French `/admin/review`) on top of `main` @ `138aa5e`. Contracts, tests and residual work:
-`docs/ADMIN_CONSOLE.md` §7–§10. Remaining modules: Security & Audit, then the Dashboard page.
+Maintenance History (`/admin/maintenance`), Ateliers & Data Sources (`/admin/sources`), Data Quality
+(`/admin/quality`, French `/admin/review`) and Security & Audit (`/admin/security`) on top of `main` @ `138aa5e`.
+Contracts, tests and residual work: `docs/ADMIN_CONSOLE.md` §7–§11. Remaining module: the Dashboard page.
 
 ## Previous record — 2026-10-30 IDA-ADMIN-1 REGISTRY + VEHICLE DOSSIER (branch `ida-admin-registry-dossier`)
 

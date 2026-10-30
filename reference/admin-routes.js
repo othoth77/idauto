@@ -10,6 +10,8 @@
 //   GET /api/admin/organisations             ateliers: identity, status, accounts, integration, activity
 //   GET /api/admin/sources                   capture sources, identification providers, parts catalogue
 //   GET /api/admin/quality                   data quality: identities with an open issue, review backlog
+//   GET /api/admin/audit                     the audit trail, filtered and paged (capture rows withheld in part)
+//   GET /api/admin/accounts                  web accounts and sessions, service-credential counts, auth decisions
 //
 // ADMIN ONLY, TWICE. These routes are in no scope table (api.js ROUTE_SCOPES,
 // v12/v14 scopes), so api.js answers 403 to every organisation credential —
@@ -27,6 +29,7 @@
 var identity = require('./identity.js');
 var vehicleRepository = require('./vehicle/vehicle-repository.js');
 var adminRepository = require('./admin/admin-repository.js');
+var observability = require('./observability.js');
 
 function createAdminRoutes(ctx) {
   var sendJson = ctx.sendJson, decode = ctx.decodePathSegment;
@@ -111,6 +114,27 @@ function createAdminRoutes(ctx) {
     sendJson(res, 200, await adminRepository.qualityReport(filter));
   }
 
+  // IDA-ADMIN-5 — security and audit. Read only: revoking a session or
+  // changing a role stays with ops/auth-users.js until an audited route exists.
+  async function getAudit(req, res) {
+    var filter = adminRepository.parseAuditQuery(query(req));
+    sendJson(res, 200, await adminRepository.listAudit(filter));
+  }
+  async function getAccounts(req, res) {
+    var filter = adminRepository.parseAccountQuery(query(req));
+    var out = await adminRepository.listAccounts(filter);
+    var cred = identity.credentialSummary();
+    out.service_credentials = { admin_credentials: cred.admin_credentials, invalid_entries: cred.invalid_entries,
+      organisations: cred.organisations };
+    // In-process counters (api.js logAuthDecision): since this process started,
+    // lost on restart — reported with the start time, never as a history.
+    var counters = observability.shared().snapshot().counters;
+    var auth = {};
+    Object.keys(counters).forEach(function (k) { if (/^auth_/.test(k)) auth[k] = counters[k]; });
+    out.auth_decisions = { since: new Date(Date.now() - process.uptime() * 1000).toISOString(), counters: auth };
+    sendJson(res, 200, out);
+  }
+
   var routes = [
     { method: 'GET', pattern: /^\/api\/admin\/overview$/, handler: adminOnly(getOverview) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
@@ -118,7 +142,9 @@ function createAdminRoutes(ctx) {
     { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) },
     { method: 'GET', pattern: /^\/api\/admin\/organisations$/, handler: adminOnly(getOrganisations) },
     { method: 'GET', pattern: /^\/api\/admin\/sources$/, handler: adminOnly(getSources) },
-    { method: 'GET', pattern: /^\/api\/admin\/quality$/, handler: adminOnly(getQuality) }
+    { method: 'GET', pattern: /^\/api\/admin\/quality$/, handler: adminOnly(getQuality) },
+    { method: 'GET', pattern: /^\/api\/admin\/audit$/, handler: adminOnly(getAudit) },
+    { method: 'GET', pattern: /^\/api\/admin\/accounts$/, handler: adminOnly(getAccounts) }
   ];
 
   return { routes: routes };

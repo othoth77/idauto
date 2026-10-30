@@ -861,7 +861,152 @@ async function qualityReport(filter) {
   };
 }
 
+/* =========================================================================
+ * IDA-ADMIN-5 — SECURITY & AUDIT.
+ *
+ * The audit trail across the register, and the web accounts.
+ *
+ * AUDIT. Every column but three: old_value_json / new_value_json (they can
+ * carry the values written), the client hash and the request id are never
+ * selected. The summary is masked like the dossier's (vin_digest). Rows whose target is a
+ * capture — an observation, its media, a submission, a rate-limit bucket —
+ * are listed with their event and actor TYPE only: the actor reference and
+ * the target are withheld and the time is cut to the day, because together
+ * they would rebuild a per-contributor sighting timeline (the dossier omits
+ * those rows for the same reason). Filtering by actor or target never matches
+ * such a row, so a filter cannot be used to recover what the list withholds.
+ *
+ * ACCOUNTS. Name, e-mail, role, organisation, creation, whether the e-mail is
+ * verified, and per account the number of unexpired sessions and the last
+ * session activity. Never: the password hash (idauto_auth_account is not
+ * read), a session token, a session's address or user agent.
+ * ========================================================================= */
+var CAPTURE_TARGETS = ['idauto_observations', 'idauto_observation_media', 'idauto_submissions', 'idauto_rate_limit_counters'];
+var ACTOR_TYPES = ['system', 'contributor', 'professional_user', 'admin', 'anonymous'];
+var ACCOUNT_ROLES = ['admin', 'manager', 'technician'];
+
+function parseAuditQuery(q) {
+  q = q || {};
+  var out = {
+    event: oneParam(q, 'event', 60),
+    actor_type: oneParam(q, 'actor_type', 20),
+    actor: oneParam(q, 'actor', 64),
+    org_id: oneParam(q, 'org_id', 10),
+    target_type: oneParam(q, 'target_type', 40),
+    target: oneParam(q, 'target', 64),
+    from: dateParam(q, 'from'),
+    to: dateParam(q, 'to'),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  // An event filter is an exact type ('vehicle.merge') or a family ending in
+  // a dot ('workshop.'): letters, digits, '_' and '.' only.
+  if (out.event !== null && !/^[a-z0-9_]+(\.[a-z0-9_]+)*\.?$/.test(out.event)) throw badRequest('event must be an event type or a family ending in "."');
+  if (out.actor_type !== null && ACTOR_TYPES.indexOf(out.actor_type) === -1) throw badRequest('unknown actor_type', { allowed: ACTOR_TYPES });
+  if (out.target_type !== null && !/^[a-z_]+$/.test(out.target_type)) throw badRequest('target_type must be a table name');
+  if (out.org_id !== null && !/^\d+$/.test(out.org_id)) throw badRequest('org_id must be a positive integer');
+  if (out.from && out.to && out.from > out.to) throw badRequest('from is after to');
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10); out.page_size = parseInt(out.page_size, 10);
+  if (out.org_id !== null) out.org_id = parseInt(out.org_id, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+async function listAudit(filter) {
+  var where = [], params = [];
+  function add(sql, value) { params.push(value); where.push(sql.replace('?', '$' + params.length)); }
+  if (filter.event) {
+    if (/\.$/.test(filter.event)) add("a.event_type LIKE ? ESCAPE '\\'", likePrefix(filter.event));
+    else add('a.event_type = ?', filter.event);
+  }
+  if (filter.actor_type) add('a.actor_type = ?', filter.actor_type);
+  if (filter.org_id !== null) add('a.org_id = ?', filter.org_id);
+  if (filter.target_type) add('a.target_type = ?', filter.target_type);
+  if (filter.from) add('a.event_time >= ?::date', filter.from);
+  if (filter.to) add("a.event_time < (?::date + INTERVAL '1 day')", filter.to);
+  // A constant list from this file, never from the request.
+  var capture = "COALESCE(a.target_type IN ('" + CAPTURE_TARGETS.join("','") + "'), FALSE)";
+  if (filter.actor) add('a.actor_ref = ? AND NOT ' + capture, filter.actor);
+  if (filter.target) add('a.target_ref = ? AND NOT ' + capture, filter.target);
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var total = (await db.query('SELECT count(*)::int AS n FROM idauto_audit_log a' + whereSql, params)).rows[0].n;
+  var li = params.length + 1, oi = params.length + 2;
+  var rows = (await db.query(
+    'SELECT a.id, ' + capture + ' AS masked, ' +
+    "CASE WHEN " + capture + " THEN date_trunc('day', a.event_time) ELSE a.event_time END AS at, " +
+    'a.event_type, a.actor_type, CASE WHEN ' + capture + ' THEN NULL ELSE a.actor_ref END AS actor_ref, ' +
+    "CASE WHEN " + capture + " THEN NULL ELSE u.\"name\" END AS actor_name, " +
+    'a.org_id, o.name AS org_name, a.target_type, CASE WHEN ' + capture + ' THEN NULL ELSE a.target_ref END AS target_ref, a.change_summary ' +
+    'FROM idauto_audit_log a LEFT JOIN idauto_organizations o ON o.id = a.org_id ' +
+    "LEFT JOIN idauto_auth_user u ON a.actor_ref = 'user:' || u.\"id\"" + whereSql +
+    ' ORDER BY a.event_time DESC, a.id DESC LIMIT $' + li + ' OFFSET $' + oi,
+    params.concat([filter.page_size, (filter.page - 1) * filter.page_size]))).rows;
+  var families = (await db.query(
+    "SELECT split_part(event_type, '.', 1) AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 2 DESC, 1")).rows;
+  var actors = await countBy("SELECT actor_type AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1");
+  var types = (await db.query('SELECT DISTINCT event_type AS t FROM idauto_audit_log ORDER BY 1 LIMIT 500')).rows.map(function (r) { return r.t; });
+  var targets = (await db.query('SELECT DISTINCT target_type AS t FROM idauto_audit_log WHERE target_type IS NOT NULL ORDER BY 1 LIMIT 100')).rows.map(function (r) { return r.t; });
+  var byType = await countBy("SELECT event_type AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1");
+  return {
+    page: filter.page, page_size: filter.page_size, total: total, pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    filters: { event_types: types, target_types: targets, actor_types: ACTOR_TYPES.slice() },
+    last_30_days: { by_family: families, by_actor_type: actors, by_type: byType },
+    results: rows.map(function (r) {
+      return { id: r.id, at: r.at, masked: r.masked, event_type: r.event_type, actor_type: r.actor_type, actor_ref: r.actor_ref,
+        actor_name: r.actor_name, org_id: r.org_id, org_name: r.org_name, target_type: r.target_type, target_ref: r.target_ref,
+        summary: r.change_summary === null ? null : String(r.change_summary).replace(/vin_digest=[0-9a-f]+/gi, 'vin_digest=[masqué]') };
+    })
+  };
+}
+
+function parseAccountQuery(q) {
+  q = q || {};
+  var out = { role: oneParam(q, 'role', 20), q: oneParam(q, 'q', 100) };
+  if (out.role !== null && ACCOUNT_ROLES.indexOf(out.role) === -1) throw badRequest('unknown role', { allowed: ACCOUNT_ROLES });
+  return out;
+}
+
+async function listAccounts(filter) {
+  var where = [], params = [];
+  if (filter.role) { params.push(filter.role); where.push('u."role" = $' + params.length); }
+  if (filter.q) { params.push('%' + filter.q.replace(/[\\%_]/g, function (c) { return '\\' + c; }) + '%'); where.push('(u."name" ILIKE $' + params.length + ' OR u."email" ILIKE $' + params.length + ')'); }
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var rows = (await db.query(
+    'SELECT u."id", u."name", u."email", u."emailVerified" AS email_verified, u."role", u."org_id", o.name AS org_name, o.status AS org_status, u."createdAt" AS created_at, ' +
+    '(SELECT count(*)::int FROM idauto_auth_session s WHERE s."userId" = u."id" AND s."expiresAt" > NOW()) AS active_sessions, ' +
+    '(SELECT max(s."updatedAt") FROM idauto_auth_session s WHERE s."userId" = u."id") AS last_seen_at ' +
+    'FROM idauto_auth_user u LEFT JOIN idauto_organizations o ON o.id = u."org_id"' + whereSql +
+    ' ORDER BY CASE u."role" WHEN \'admin\' THEN 0 WHEN \'manager\' THEN 1 ELSE 2 END, u."name", u."id" LIMIT 500', params)).rows;
+  var totals = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_auth_user) AS accounts, ' +
+    '(SELECT count(*)::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS active_sessions, ' +
+    '(SELECT count(DISTINCT "userId")::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS accounts_signed_in, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user WHERE "role" <> \'admin\' AND "org_id" IS NULL) AS without_organisation')).rows[0];
+  var byRole = await countBy('SELECT "role" AS k, count(*)::int AS n FROM idauto_auth_user GROUP BY 1');
+  return {
+    totals: { accounts: totals.accounts, active_sessions: totals.active_sessions, accounts_signed_in: totals.accounts_signed_in,
+      without_organisation: totals.without_organisation, by_role: byRole },
+    truncated: rows.length === 500,
+    results: rows.map(function (r) {
+      return { id: r.id, name: r.name, email: r.email, email_verified: r.email_verified, role: r.role,
+        org_id: r.org_id, org_name: r.org_name, org_status: r.org_status, created_at: r.created_at,
+        // A manager or technician without an organisation is refused at sign-in (principal.js).
+        can_sign_in: r.role === 'admin' || r.org_id !== null,
+        active_sessions: r.active_sessions, last_seen_at: r.last_seen_at };
+    })
+  };
+}
+
 module.exports = {
+  parseAuditQuery: parseAuditQuery,
+  listAudit: listAudit,
+  parseAccountQuery: parseAccountQuery,
+  listAccounts: listAccounts,
+  CAPTURE_TARGETS: CAPTURE_TARGETS.slice(),
   parseQualityQuery: parseQualityQuery,
   qualityReport: qualityReport,
   QUALITY_ISSUES: QUALITY_ISSUES.slice(),

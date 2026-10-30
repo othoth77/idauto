@@ -66,6 +66,7 @@ var plateNormalizer = require('./vehicle/plate-normalizer.js');
 var sessionAuth = require('./auth/principal.js');
 var v14Routes = require('./v14-routes.js');
 var adminRoutes = require('./admin-routes.js');
+var observability = require('./observability.js');
 
 //
 // IDA-V1B, 2026-08-27 — OWNER SESSION.
@@ -179,6 +180,11 @@ function logAuthDecision(req, fields) {
   if (fields.org !== undefined && fields.org !== null) entry.org = fields.org;
   if (typeof fields.credentialLength === 'number') entry.credential_length = fields.credentialLength;
   console.log(JSON.stringify(entry));
+  // IDA-ADMIN-5 — counted for /admin/security: the decision and the reason's
+  // class only (missing_scope:x counts as missing_scope), never the actor.
+  var counters = observability.shared();
+  counters.inc(fields.result === 'granted' ? 'auth_granted' : 'auth_denied');
+  if (fields.result !== 'granted') counters.inc('auth_denied:' + String(fields.reason || 'unknown').split(':')[0]);
 }
 
 // IDA-V13 — three credentials, one order, one gate.
@@ -419,6 +425,9 @@ var ADMIN_ASSETS = {
   '/admin/quality': { file: 'admin-quality.html', contentType: 'text/html; charset=utf-8' },
   '/admin/quality/': { file: 'admin-quality.html', contentType: 'text/html; charset=utf-8' },
   '/admin/quality-ui.js': { file: 'admin-quality-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/security': { file: 'admin-security.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/security/': { file: 'admin-security.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/security-ui.js': { file: 'admin-security-ui.js', contentType: 'application/javascript; charset=utf-8' },
 
   // The Design System itself — the same files web/ serves to the citizen
   // surface, mounted under /admin/ so they are never phase-gated.

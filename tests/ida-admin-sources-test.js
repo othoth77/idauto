@@ -109,7 +109,8 @@ async function main() {
   var repoSrc = fs.readFileSync(path.join(BASE, 'reference', 'admin', 'admin-repository.js'), 'utf8');
   ok(!/\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|GRANT|CREATE)\b/.test(repoSrc), 'the read model contains no SQL write verb');
   // The marker sits inside the section's header comment: drop the rest of that comment first.
-  var seg = (repoSrc.split('IDA-ADMIN-3 — ATELIERS & DATA SOURCES')[1] || '').replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  // Bounded at the next section: the security section reads account names and e-mails by design.
+  var seg = ((repoSrc.split('IDA-ADMIN-3 — ATELIERS & DATA SOURCES')[1] || '').split('IDA-ADMIN-4')[0]).replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   ok(seg.length > 0 && !/\bcontact_email\b/.test(seg.replace(/\(o\.contact_email IS NOT NULL AND o\.contact_email <> \\'\\'\)/, '')), 'contact_email is read only as a presence test');
   ok(!/\btax_id\b/.test(seg.replace(/\(o\.tax_id IS NOT NULL AND o\.tax_id <> \\'\\'\)/, '')), 'tax_id is read only as a presence test');
   ok(!/"email"|"name"|password|"id" =/.test(seg), 'no auth user column but role and org_id is read (no e-mail, name or password)');

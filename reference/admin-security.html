@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Sécurité et audit</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-1 — same Design System files as /admin and /admin/review. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/vehicles">Véhicules</a></li>
+        <li><a href="/admin/maintenance">Entretien</a></li>
+        <li><a href="/admin/sources">Ateliers</a></li>
+        <li><a href="/admin/quality">Qualité</a></li>
+        <li><a href="/admin/security" aria-current="page">Sécurité</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Sécurité et audit</h1>
+      <p class="ida-muted ida-u-maxch-52">Les comptes web et leurs sessions, les accès de service, les décisions d'accès
+      et le journal d'audit. Lecture seule : aucun mot de passe, jeton ou adresse n'est lu. Créer un compte, changer un
+      rôle ou révoquer une session se fait encore avec l'outil d'exploitation <code>ops/auth-users.js</code>.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <div id="totals" class="ida-admin-stats" aria-live="polite"></div>
+
+    <section class="ida-stack" aria-labelledby="sec-accounts">
+      <h2 id="sec-accounts" class="ida-h3">Comptes web</h2>
+      <form id="account-filters" class="ida-card ida-stack" role="search">
+        <div class="ida-admin-grid">
+          <div class="ida-field"><label for="a-q">Nom ou e-mail</label><input class="ida-input" id="a-q" name="q" maxlength="100" autocomplete="off"></div>
+          <div class="ida-field">
+            <label for="a-role">Rôle</label>
+            <select class="ida-input" id="a-role" name="role">
+              <option value="">Tous</option>
+              <option value="admin">Administrateur</option>
+              <option value="manager">Gestionnaire</option>
+              <option value="technician">Technicien</option>
+            </select>
+          </div>
+        </div>
+        <div class="ida-admin-actions"><button type="submit" class="ida-btn ida-btn--primary">Afficher</button></div>
+      </form>
+      <p id="accounts-summary" class="ida-small" role="status" aria-live="polite"></p>
+      <div id="accounts" class="ida-table-wrap"></div>
+    </section>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-access">
+      <h2 id="sec-access" class="ida-h3">Accès de service et décisions d'accès</h2>
+      <div id="access" class="ida-stack"></div>
+    </section>
+
+    <section class="ida-stack" aria-labelledby="sec-audit">
+      <h2 id="sec-audit" class="ida-h3">Journal d'audit</h2>
+      <p class="ida-caption">Chaque écriture d'IDauto y laisse une ligne. Pour une capture (observation, média, soumission,
+      limite de débit), seuls le type d'événement, le type d'acteur et le jour sont affichés : l'acteur, la cible et l'heure
+      formeraient un relevé des passages d'un contributeur.</p>
+      <form id="filters" class="ida-card ida-stack" role="search">
+        <div class="ida-admin-grid">
+          <div class="ida-field">
+            <label for="f-event">Événement</label>
+            <select class="ida-input" id="f-event" name="event"><option value="">Tous</option></select>
+          </div>
+          <div class="ida-field">
+            <label for="f-actor-type">Type d'acteur</label>
+            <select class="ida-input" id="f-actor-type" name="actor_type">
+              <option value="">Tous</option>
+              <option value="admin">Administrateur</option>
+              <option value="professional_user">Professionnel</option>
+              <option value="contributor">Contributeur</option>
+              <option value="system">Système</option>
+              <option value="anonymous">Anonyme</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-target-type">Cible</label>
+            <select class="ida-input" id="f-target-type" name="target_type"><option value="">Toutes</option></select>
+          </div>
+          <div class="ida-field"><label for="f-actor">Acteur (référence exacte)</label><input class="ida-input" id="f-actor" name="actor" maxlength="64" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-from">Du</label><input class="ida-input" id="f-from" name="from" type="date"></div>
+          <div class="ida-field"><label for="f-to">Au</label><input class="ida-input" id="f-to" name="to" type="date"></div>
+        </div>
+        <div class="ida-admin-actions">
+          <button type="submit" class="ida-btn ida-btn--primary">Afficher</button>
+          <button type="reset" class="ida-btn ida-btn--ghost">Effacer</button>
+        </div>
+      </form>
+      <p id="results-summary" class="ida-small" role="status" aria-live="polite"></p>
+      <div id="results" class="ida-table-wrap"></div>
+      <nav class="ida-admin-actions" aria-label="Pagination">
+        <button type="button" id="prev" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page précédente</button>
+        <button type="button" id="next" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page suivante</button>
+      </nav>
+    </section>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-activity">
+      <h2 id="sec-activity" class="ida-h3">Activité des 30 derniers jours</h2>
+      <div id="activity" class="ida-stack"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/security-ui.js"></script>
+</body>
+</html>

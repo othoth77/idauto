@@ -6,6 +6,17 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-10-30 — ida-admin-5: security and audit
+
+`/admin/security` with `GET /api/admin/audit` and `GET /api/admin/accounts` (admin
+only, read only): the audit trail with filters, values written and client hashes
+withheld, capture rows reduced to event, actor type and day; web accounts with
+roles, organisations and session counts, never a hash, token, address or user
+agent; service-credential counts; auth decisions counted by reason class since
+the process started. `tests/ida-admin-security-test.js` (75).
+
+---
+
 ## 2026-10-30 — ida-admin-4: data quality
 
 `/admin/quality` and `GET /api/admin/quality` (admin only, read only): every
