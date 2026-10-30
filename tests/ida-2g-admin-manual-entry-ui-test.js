@@ -48,7 +48,11 @@ function fakeForm(seed) {
   console.log('\n1. ADMIN SHELL — static only, no credential disclosure');
   var page = await request('GET', '/admin');
   ok(page.status === 200 && /^text\/html/.test(page.headers['content-type']), 'GET /admin serves the manual-entry page');
-  ok(page.raw.indexOf('Admin manual entry') !== -1 && page.raw.indexOf('Review queue') === -1, 'Page is manual-entry UI only (no review queue)');
+  // Structure, not copy: the page went French in #33 and this line still
+  // looked for the English title, so it failed on main from then on (the
+  // database suites do not run in CI). The entry form is there; the review
+  // queue's list and script are not — whatever language the labels are in.
+  ok(page.raw.indexOf('id="entry-form"') !== -1 && page.raw.indexOf('id="queue-list"') === -1 && page.raw.indexOf('review-ui.js') === -1, 'Page is manual-entry UI only (no review queue)');
   // IDA-V13: the page asks for NO token — it is authenticated by the session cookie set at /login.
   ok(page.raw.indexOf('admin-token') === -1 && page.raw.indexOf('localStorage') === -1 && page.raw.indexOf('session-line') !== -1, 'Page asks for no token (session cookie) and has no browser-storage persistence');
   ok((page.headers['content-security-policy'] || '').indexOf("default-src 'self'") !== -1, 'Admin shell has a restrictive same-origin CSP');

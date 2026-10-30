@@ -65,6 +65,7 @@ var v12Routes = require('./v12-routes.js');
 var plateNormalizer = require('./vehicle/plate-normalizer.js');
 var sessionAuth = require('./auth/principal.js');
 var v14Routes = require('./v14-routes.js');
+var adminRoutes = require('./admin-routes.js');
 
 //
 // IDA-V1B, 2026-08-27 — OWNER SESSION.
@@ -398,6 +399,15 @@ var ADMIN_ASSETS = {
   '/admin/review': { file: 'review.html', contentType: 'text/html; charset=utf-8' },
   '/admin/review/': { file: 'review.html', contentType: 'text/html; charset=utf-8' },
   '/admin/review-ui.js': { file: 'review-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-ADMIN-1 — registry and vehicle dossier. Static shells; every datum
+  // comes from the admin-only /api/admin/* routes.
+  '/admin/vehicles': { file: 'admin-vehicles.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/vehicles/': { file: 'admin-vehicles.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/vehicles-ui.js': { file: 'admin-vehicles-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/vehicle': { file: 'admin-vehicle.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/vehicle/': { file: 'admin-vehicle.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/vehicle-ui.js': { file: 'admin-vehicle-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/console.js': { file: 'admin-console.js', contentType: 'application/javascript; charset=utf-8' },
 
   // The Design System itself — the same files web/ serves to the citizen
   // surface, mounted under /admin/ so they are never phase-gated.
@@ -2048,6 +2058,10 @@ var ROUTE_SCOPES = [
 var v12 = v12Routes.createV12({ sendJson: sendJson, readJsonBody: readJsonBody, requireScope: requireScope, decodePathSegment: decodePathSegment });
 // IDA-V14 — carte grise routes, same gate, same discipline.
 var v14 = v14Routes.createV14({ sendJson: sendJson, readJsonBody: readJsonBody, readBinaryBody: readBinaryBody, requireScope: requireScope, decodePathSegment: decodePathSegment, resolver: v12.resolver });
+// IDA-ADMIN-1 — operator console read routes. Deliberately NOT added to
+// ALL_ROUTE_SCOPES: absent from the table means admin-only (see the gate in
+// createServer()), and admin-routes.js checks the admin scope again.
+var adminConsole = adminRoutes.createAdminRoutes({ sendJson: sendJson, decodePathSegment: decodePathSegment, resolver: v12.resolver, catalog: v12.catalog });
 var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes, v14.scopes);
 
 function scopeForRoute(method, pathname) {
@@ -2084,7 +2098,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/facts\/([^/]+)\/evidence$/, handler: function (req, res, m) { return getEvidenceForFact(res, decodePathSegment(m[1])); } }
 ];
 
-var ALL_ROUTES = ROUTES.concat(v14.routes, v12.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
+var ALL_ROUTES = ROUTES.concat(v14.routes, v12.routes, adminConsole.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
 
 function createServer() {
   return http.createServer(function (req, res) {

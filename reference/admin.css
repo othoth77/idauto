@@ -175,3 +175,54 @@
   .review-auth { grid-template-columns: 1fr; }
   .detail-field { grid-template-columns: 1fr; gap: var(--ida-space-1); }
 }
+
+/* ---------- IDA-ADMIN-1: registry and vehicle dossier ---------- */
+/* Overview tiles: one column at 320px, as many as fit above it. */
+.ida-admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: var(--ida-space-3);
+}
+.ida-admin-stats > * { min-width: 0; }
+.ida-admin-stat-value {
+  font-size: var(--ida-size-28);
+  font-weight: var(--ida-weight-semibold);
+}
+/* A plate is an identifier (its typeface comes from .ida-id), never wrapped,
+ * left-to-right (a <bdi dir="ltr"> so the Arabic word does not reorder it). */
+.ida-admin-plate {
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+/* Key/value list of the dossier overview. */
+.ida-admin-dl {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: var(--ida-space-2) var(--ida-space-4);
+  margin: 0;
+}
+.ida-admin-dl dt { color: var(--ida-text-muted); }
+.ida-admin-dl dd { margin: 0; overflow-wrap: anywhere; }
+/* In-page section index. */
+.ida-admin-toc ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ida-space-2) var(--ida-space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* A fact superseded by a newer value stays visible, quieter. */
+.ida-admin-superseded { color: var(--ida-text-muted); }
+/* Narrow screens: the table keeps readable columns and scrolls inside its
+ * .ida-table-wrap (overflow-x: auto) instead of crushing every column to one
+ * character. break-word, not anywhere: it wraps a long value without lowering
+ * the column's minimum width. */
+.ida-table-wrap > .ida-table { min-width: 40rem; }
+.ida-table thead th { white-space: nowrap; }
+.ida-table td { overflow-wrap: break-word; }
+
+@media (max-width: 520px) {
+  .ida-admin-dl { grid-template-columns: 1fr; gap: var(--ida-space-1); }
+  .ida-admin-dl dd { margin-block-end: var(--ida-space-2); }
+}

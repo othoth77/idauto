@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Dossier véhicule</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/vehicles" aria-current="page">Véhicules</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <p><a href="/admin/vehicles" id="back-link">← Retour au registre</a></p>
+
+    <header class="ida-stack">
+      <p class="ida-label">Dossier véhicule</p>
+      <h1 id="title">Chargement…</h1>
+      <div id="subtitle" class="ida-admin-actions"></div>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <div id="page-state" role="status" aria-live="polite"></div>
+
+    <div id="dossier" class="ida-stack-lg" hidden>
+      <div class="ida-alert ida-alert--info" id="alias-note" hidden><p id="alias-text"></p></div>
+      <div class="ida-alert ida-alert--info"><p id="completeness"></p></div>
+
+      <nav aria-label="Sections du dossier" class="ida-admin-toc">
+        <ul>
+          <li><a href="#sec-overview">Aperçu</a></li>
+          <li><a href="#sec-plates">Plaques</a></li>
+          <li><a href="#sec-maintenance">Entretien et ateliers</a></li>
+          <li><a href="#sec-facts">Données et provenance</a></li>
+          <li><a href="#sec-documents">Documents</a></li>
+          <li><a href="#sec-identification">Identification</a></li>
+          <li><a href="#sec-quality">Qualité des données</a></li>
+          <li><a href="#sec-audit">Audit</a></li>
+        </ul>
+      </nav>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-overview">
+        <h2 id="sec-overview" class="ida-h3">Aperçu et caractéristiques techniques</h2>
+        <dl id="overview" class="ida-admin-dl"></dl>
+        <div class="ida-stack">
+          <p class="ida-small" id="vin-line"></p>
+          <div class="ida-admin-actions">
+            <button type="button" id="vin-reveal" class="ida-btn ida-btn--secondary ida-btn--sm" hidden>Afficher le numéro de châssis (lecture auditée)</button>
+          </div>
+          <p class="ida-small" id="vin-result" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-plates">
+        <h2 id="sec-plates" class="ida-h3">Plaques — actuelles et anciennes</h2>
+        <div id="plates" class="ida-table-wrap"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-maintenance">
+        <h2 id="sec-maintenance" class="ida-h3">Entretien et ateliers</h2>
+        <p class="ida-caption">Toutes organisations confondues (vue administrateur). Les clients des ateliers ne sont jamais
+        affichés : seule la présence d'une référence opaque est indiquée. Le kilométrage n'est pas saisi lors des visites
+        atelier ; il n'apparaît que sur les événements d'entretien qui le portent.</p>
+        <div id="maintenance" class="ida-stack"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-facts">
+        <h2 id="sec-facts" class="ida-h3">Données, observations et provenance</h2>
+        <p class="ida-caption">Chaque donnée garde sa source, son statut de vérification, sa portée et ses preuves.
+        « Appuyé par un document » et « Attestation professionnelle » viennent des preuves enregistrées ; aucune source
+        institutionnelle n'est connectée à IDauto aujourd'hui.</p>
+        <div id="facts" class="ida-table-wrap"></div>
+        <p class="ida-small" id="restricted"></p>
+        <h3 class="ida-h3">Observations</h3>
+        <div id="observations" class="ida-table-wrap"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-documents">
+        <h2 id="sec-documents" class="ida-h3">Documents</h2>
+        <div id="documents"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-identification">
+        <h2 id="sec-identification" class="ida-h3">Historique d'identification</h2>
+        <div id="aliases"></div>
+        <div id="identification" class="ida-table-wrap"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-quality">
+        <h2 id="sec-quality" class="ida-h3">Qualité des données</h2>
+        <div id="quality" class="ida-stack"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-audit">
+        <h2 id="sec-audit" class="ida-h3">Journal d'audit</h2>
+        <div id="audit" class="ida-table-wrap"></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Un enregistrement intact ne prouve pas que son contenu est exact.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/vehicle-ui.js"></script>
+</body>
+</html>

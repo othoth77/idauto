@@ -120,6 +120,7 @@ Nothing in this repository pretends to be further along than it is.
 | Mock providers | tests only — refuse to construct in production |
 | Carte grise scanner: capture → Scanic → optimisation → face 1 / face 2 → OCR fra+ara → parser → conflicts → confirmation → passport (IDA-V14) | **IMPLEMENTED** — images in the private media store, technical fields only, retention and legal basis « à définir » (`docs/PRIVACY.md`) |
 | Homepage « Rechercher par carte grise » — same scanner in identify mode, VIN → plate → make/model, nothing stored | **IMPLEMENTED** (home search) |
+| Operator console: registry `/admin/vehicles` (paged, current + historical plates) and vehicle dossier `/admin/vehicle` (plates, maintenance, facts + provenance, identification, quality, audit), admin only, read only (IDA-ADMIN-1) | **IMPLEMENTED** on branch `ida-admin-registry-dossier`, not deployed — [`docs/ADMIN_CONSOLE.md`](docs/ADMIN_CONSOLE.md) |
 | Web authentication: `/login` (e-mail + password, Better Auth), server-side sessions, HttpOnly + Secure cookie, roles admin / manager / technician (IDA-V13) | **IMPLEMENTED** — the manual admin access token is gone from every web page; Bearer remains for server-to-server integrations |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /
