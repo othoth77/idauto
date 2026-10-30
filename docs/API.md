@@ -99,6 +99,7 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 | `GET /api/admin/maintenance?kind=visits\|service_events&q=&org_id=&status=&operation_type=&identified=&from=&to=&dir=&page=&page_size=` | workshop visits (with operations) or service events across every organisation; no customer reference; visit mileage not recorded |
 | `GET /api/admin/organisations?q=&status=&org_type=&sort=&dir=&page=&page_size=` | organisations with accounts per role, integration (credential count + scopes), measured activity; contact e-mail and tax id as presence flags only |
 | `GET /api/admin/sources` | capture sources with usage, identification providers, parts catalogue state, service-credential counts (never a credential) |
+| `GET /api/admin/quality?issue=&q=&page=&page_size=` | canonical identities with an open data-quality issue (disagreement, pending/conflict facts, pending observations, incomplete, no active plate) and the review backlog; no VIN, no restricted fact |
 | `GET /api/admin/vehicles/:ref/dossier` | one canonical identity and everything recorded against it; no VIN, no restricted fact, no customer reference |
 
 In no scope table: every organisation credential gets 403. Contract and field lists: [`ADMIN_CONSOLE.md`](ADMIN_CONSOLE.md). Pages: `/admin/vehicles`, `/admin/vehicle?ref=`.

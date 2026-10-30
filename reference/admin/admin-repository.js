@@ -707,7 +707,164 @@ async function dataSources() {
   });
 }
 
+/* =========================================================================
+ * IDA-ADMIN-4 — DATA QUALITY across the register.
+ *
+ * One row per CANONICAL identity: what is recorded on it and on every record
+ * merged into it (the same set the dossier reads), so a disagreement left on
+ * an alias is not lost behind the merge. Each issue is a fact of the data,
+ * computed in SQL — nothing here is a score or an estimate:
+ *   disagreement          a fact key holding more than one distinct active value
+ *   pending_facts         facts recorded as verification_status 'pending_review'
+ *   conflict_facts        facts recorded as 'conflict' — only when an operator
+ *                         enters one so (createFact keeps the status sent); no
+ *                         automatic detection sets it, hence 'disagreement'
+ *   pending_observations  observations in 'pending_review' / 'pending_confirmation'
+ *   incomplete            make, model or year missing on the identity
+ *   no_plate              no active plate on the identity or its aliases
+ * Same exclusions as the dossier: no mythos_private fact and no chassis number (NOT_VIN), by key
+ * in any case. A disagreement lists at most five distinct values per key,
+ * compared and shown trimmed and upper-cased. The totals describe the whole
+ * register; q (an IVID, an internal reference, or a make/model prefix) only
+ * narrows the list.
+ * ========================================================================= */
+var QUALITY_ISSUES = ['all', 'disagreement', 'pending_facts', 'conflict_facts', 'pending_observations', 'incomplete', 'no_plate'];
+var QUALITY_VALUE_MAX = 80;
+
+function parseQualityQuery(q) {
+  q = q || {};
+  var out = {
+    issue: oneParam(q, 'issue', 24) || 'all',
+    q: oneParam(q, 'q', 64),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  if (QUALITY_ISSUES.indexOf(out.issue) === -1) throw badRequest('unknown issue', { allowed: QUALITY_ISSUES });
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10); out.page_size = parseInt(out.page_size, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+// Every record mapped to the canonical identity it resolves to (depth bounded
+// like the dossier's alias walk), then one grouped pass per source table —
+// joins, not a subquery per identity, so the cost grows with the register,
+// not with its square.
+var FACT_GUARD = "f.access_scope <> 'mythos_private' AND " + NOT_VIN;
+var CANON_CTE =
+  'WITH RECURSIVE canon(id, root, depth) AS (' +
+  'SELECT v.id, v.id, 0 FROM idauto_vehicles v WHERE v.merged_into_id IS NULL ' +
+  'UNION ALL SELECT v.id, c.root, c.depth + 1 FROM idauto_vehicles v JOIN canon c ON v.merged_into_id = c.id WHERE c.depth < 16), ' +
+  'dis AS (SELECT d.root, count(*)::int AS n FROM (SELECT c.root, f.fact_key FROM idauto_vehicle_facts f JOIN canon c ON c.id = f.vehicle_id ' +
+  'WHERE f.is_active AND ' + FACT_GUARD + ' GROUP BY c.root, f.fact_key HAVING count(DISTINCT UPPER(TRIM(f.fact_value))) > 1) d GROUP BY d.root), ' +
+  "fst AS (SELECT c.root, count(*) FILTER (WHERE f.verification_status = 'pending_review')::int AS pending, " +
+  "count(*) FILTER (WHERE f.verification_status = 'conflict')::int AS conflict FROM idauto_vehicle_facts f JOIN canon c ON c.id = f.vehicle_id " +
+  'WHERE ' + FACT_GUARD + ' GROUP BY c.root), ' +
+  'obs AS (SELECT c.root, count(*)::int AS n FROM idauto_observations o JOIN canon c ON c.id = o.vehicle_id ' +
+  "WHERE o.status IN ('pending_review','pending_confirmation') GROUP BY c.root), " +
+  "pl AS (SELECT DISTINCT c.root FROM idauto_plates p JOIN canon c ON c.id = p.vehicle_id WHERE p.status = 'active'), " +
+  'al AS (SELECT c.root, count(*)::int - 1 AS n FROM canon c GROUP BY c.root), ' +
+  'issues AS (SELECT r.id AS root, COALESCE(dis.n, 0) AS disagreement, COALESCE(fst.pending, 0) AS pending_facts, ' +
+  'COALESCE(fst.conflict, 0) AS conflict_facts, COALESCE(obs.n, 0) AS pending_observations, ' +
+  '((r.make IS NULL OR TRIM(r.make) = \'\')::int + (r.model IS NULL OR TRIM(r.model) = \'\')::int + (r.year IS NULL)::int) AS incomplete, ' +
+  '(pl.root IS NULL)::int AS no_plate, COALESCE(al.n, 0) AS aliases ' +
+  'FROM idauto_vehicles r LEFT JOIN dis ON dis.root = r.id LEFT JOIN fst ON fst.root = r.id LEFT JOIN obs ON obs.root = r.id ' +
+  'LEFT JOIN pl ON pl.root = r.id LEFT JOIN al ON al.root = r.id WHERE r.merged_into_id IS NULL) ';
+
+var ISSUE_PREDICATE = {
+  all: '(i.disagreement > 0 OR i.pending_facts > 0 OR i.conflict_facts > 0 OR i.pending_observations > 0 OR i.incomplete > 0 OR i.no_plate > 0)',
+  disagreement: 'i.disagreement > 0',
+  pending_facts: 'i.pending_facts > 0',
+  conflict_facts: 'i.conflict_facts > 0',
+  pending_observations: 'i.pending_observations > 0',
+  incomplete: 'i.incomplete > 0',
+  no_plate: 'i.no_plate > 0'
+};
+
+async function qualityReport(filter) {
+  var totals = (await db.query(CANON_CTE +
+    'SELECT count(*)::int AS identities, ' +
+    Object.keys(ISSUE_PREDICATE).map(function (k) { return 'count(*) FILTER (WHERE ' + ISSUE_PREDICATE[k] + ')::int AS ' + k; }).join(', ') +
+    ' FROM issues i')).rows[0];
+  var where = ISSUE_PREDICATE[filter.issue], params = [];
+  if (filter.q) {
+    params.push(filter.q, likePrefix(filter.q));
+    where += ' AND (v.ivid = $1 OR v.internal_ref = $1 OR v.make ILIKE $2 OR v.model ILIKE $2)';
+  }
+  var total = filter.q
+    ? (await db.query(CANON_CTE + 'SELECT count(*)::int AS n FROM issues i JOIN idauto_vehicles v ON v.id = i.root WHERE ' + where, params)).rows[0].n
+    : totals[filter.issue];
+
+  var li = params.length + 1, oi = params.length + 2;
+  var rows = (await db.query(CANON_CTE +
+    'SELECT v.id, v.ivid, v.internal_ref, v.make, v.model, v.year, v.fiche_status, v.updated_at, ' +
+    "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate, " +
+    'i.disagreement, i.pending_facts, i.conflict_facts, i.pending_observations, i.incomplete, i.no_plate, i.aliases ' +
+    'FROM issues i JOIN idauto_vehicles v ON v.id = i.root WHERE ' + where +
+    ' ORDER BY (i.disagreement + i.conflict_facts) DESC, (i.pending_facts + i.pending_observations) DESC, v.updated_at DESC, v.id DESC LIMIT $' + li + ' OFFSET $' + oi,
+    params.concat([filter.page_size, (filter.page - 1) * filter.page_size]))).rows;
+
+  // The disagreeing values, for the identities on this page only.
+  var detail = {};
+  var roots = rows.filter(function (r) { return r.disagreement > 0; }).map(function (r) { return r.id; });
+  if (roots.length) {
+    (await db.query(
+      'WITH RECURSIVE canon(id, root, depth) AS (SELECT v.id, v.id, 0 FROM idauto_vehicles v WHERE v.id = ANY($1::int[]) ' +
+      'UNION ALL SELECT v.id, c.root, c.depth + 1 FROM idauto_vehicles v JOIN canon c ON v.merged_into_id = c.id WHERE c.depth < 16) ' +
+      'SELECT c.root, f.fact_key, array_agg(DISTINCT UPPER(TRIM(f.fact_value)) ORDER BY UPPER(TRIM(f.fact_value))) AS vals ' +
+      'FROM idauto_vehicle_facts f JOIN canon c ON c.id = f.vehicle_id WHERE f.is_active AND ' + FACT_GUARD + ' GROUP BY c.root, f.fact_key ' +
+      'HAVING count(DISTINCT UPPER(TRIM(f.fact_value))) > 1 ORDER BY c.root, f.fact_key', [roots])).rows.forEach(function (r) {
+      (detail[r.root] = detail[r.root] || []).push({
+        fact_key: r.fact_key,
+        distinct_values: r.vals.length,
+        values: r.vals.slice(0, 5).map(function (v) { return v.length > QUALITY_VALUE_MAX ? v.slice(0, QUALITY_VALUE_MAX) + '…' : v; })
+      });
+    });
+  }
+
+  var review = (await db.query(
+    "SELECT (SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_review') AS pending_review, " +
+    "(SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_confirmation') AS pending_confirmation, " +
+    "(SELECT count(*)::int FROM idauto_observations WHERE status IN ('pending_review','pending_confirmation') AND vehicle_id IS NULL) AS pending_unlinked")).rows[0];
+  var pendingBySource = (await db.query(
+    'SELECT cs.code, cs.name_fr, count(*)::int AS n FROM idauto_observations o JOIN idauto_capture_sources cs ON cs.id = o.capture_source_id ' +
+    "WHERE o.status IN ('pending_review','pending_confirmation') GROUP BY cs.code, cs.name_fr ORDER BY n DESC, cs.code")).rows;
+  var submissions = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_submissions GROUP BY 1');
+  var facts = await countBy('SELECT verification_status AS k, count(*)::int AS n FROM idauto_vehicle_facts f WHERE f.is_active AND ' + FACT_GUARD + ' GROUP BY 1');
+  var fiche = await countBy('SELECT fiche_status AS k, count(*)::int AS n FROM idauto_vehicles WHERE merged_into_id IS NULL GROUP BY 1');
+  var records = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_vehicles WHERE merged_into_id IS NOT NULL) AS merged_records, ' +
+    '(SELECT count(*)::int FROM idauto_workshop_visits WHERE vehicle_id IS NULL) AS unidentified_visits')).rows[0];
+
+  return {
+    issue: filter.issue, q: filter.q, page: filter.page, page_size: filter.page_size, total: total,
+    pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    totals: totals,
+    results: rows.map(function (r) {
+      var parsed = r.plate ? plateNormalizer.parsePlate(r.plate) : null;
+      return { ivid: r.ivid, internal_ref: r.internal_ref, make: r.make, model: r.model, year: r.year, fiche_status: r.fiche_status,
+        plate: r.plate, plate_display: parsed && parsed.ok ? parsed.display : r.plate, updated_at: r.updated_at, aliases: r.aliases,
+        issues: { disagreement: r.disagreement, pending_facts: r.pending_facts, conflict_facts: r.conflict_facts,
+          pending_observations: r.pending_observations, incomplete: r.incomplete, no_plate: r.no_plate === 1 },
+        disagreements: detail[r.id] || [] };
+    }),
+    review: { pending_review: review.pending_review, pending_confirmation: review.pending_confirmation,
+      pending_unlinked: review.pending_unlinked, pending_by_source: pendingBySource,
+      submissions_by_status: submissions },
+    facts_by_status: facts,
+    fiche_by_status: fiche,
+    merged_records: records.merged_records,
+    unidentified_visits: records.unidentified_visits
+  };
+}
+
 module.exports = {
+  parseQualityQuery: parseQualityQuery,
+  qualityReport: qualityReport,
+  QUALITY_ISSUES: QUALITY_ISSUES.slice(),
   parseRegistryQuery: parseRegistryQuery,
   listVehicles: listVehicles,
   dossier: dossier,

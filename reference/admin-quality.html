@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Qualité des données</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-1 — same Design System files as /admin and /admin/review. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/vehicles">Véhicules</a></li>
+        <li><a href="/admin/maintenance">Entretien</a></li>
+        <li><a href="/admin/sources">Ateliers</a></li>
+        <li><a href="/admin/quality" aria-current="page">Qualité</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Qualité des données</h1>
+      <p class="ida-muted ida-u-maxch-52">Les identités de véhicules qui portent un point ouvert : valeurs en désaccord,
+      données ou observations en attente de revue, identité incomplète, plaque manquante. Chaque point est compté dans
+      la base, rien n'est estimé. Cette page ne modifie rien : les décisions se prennent dans la revue, qui est auditée.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <div id="totals" class="ida-admin-stats" aria-live="polite"></div>
+
+    <section class="ida-stack" aria-labelledby="sec-issues">
+      <h2 id="sec-issues" class="ida-h3">Identités à traiter</h2>
+      <form id="filters" class="ida-card ida-stack" role="search">
+        <div class="ida-admin-grid">
+          <div class="ida-field">
+            <label for="f-issue">Point relevé</label>
+            <select class="ida-input" id="f-issue" name="issue">
+              <option value="all">Tous les points ouverts</option>
+              <option value="disagreement">Valeurs en désaccord</option>
+              <option value="pending_facts">Données en attente de revue</option>
+              <option value="conflict_facts">Données marquées en conflit</option>
+              <option value="pending_observations">Observations à revoir</option>
+              <option value="incomplete">Identité incomplète</option>
+              <option value="no_plate">Sans plaque active</option>
+            </select>
+          </div>
+          <div class="ida-field"><label for="f-q">IVID, référence ou marque</label><input class="ida-input" id="f-q" name="q" maxlength="64" autocomplete="off"></div>
+        </div>
+        <div class="ida-admin-actions">
+          <button type="submit" class="ida-btn ida-btn--primary">Afficher</button>
+        </div>
+      </form>
+      <p id="results-summary" class="ida-small" role="status" aria-live="polite"></p>
+      <div id="results" class="ida-table-wrap"></div>
+      <nav class="ida-admin-actions" aria-label="Pagination">
+        <button type="button" id="prev" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page précédente</button>
+        <button type="button" id="next" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page suivante</button>
+      </nav>
+    </section>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-backlog">
+      <h2 id="sec-backlog" class="ida-h3">File de revue et statuts</h2>
+      <p class="ida-caption">Les observations en attente se traitent une à une dans la <a href="/admin/review">revue</a> ;
+      chaque décision y est enregistrée au journal d'audit. Les données restreintes et le numéro de châssis ne sont
+      jamais comptés ni affichés ici.</p>
+      <div id="backlog" class="ida-stack"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/quality-ui.js"></script>
+</body>
+</html>

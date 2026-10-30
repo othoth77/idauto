@@ -9,6 +9,7 @@
 //   GET /api/admin/maintenance               workshop visits / service events, every organisation
 //   GET /api/admin/organisations             ateliers: identity, status, accounts, integration, activity
 //   GET /api/admin/sources                   capture sources, identification providers, parts catalogue
+//   GET /api/admin/quality                   data quality: identities with an open issue, review backlog
 //
 // ADMIN ONLY, TWICE. These routes are in no scope table (api.js ROUTE_SCOPES,
 // v12/v14 scopes), so api.js answers 403 to every organisation credential —
@@ -103,13 +104,21 @@ function createAdminRoutes(ctx) {
     });
   }
 
+  // IDA-ADMIN-4 — data quality. Decisions stay on the existing audited review
+  // routes (/api/review/*); this route only reports.
+  async function getQuality(req, res) {
+    var filter = adminRepository.parseQualityQuery(query(req));
+    sendJson(res, 200, await adminRepository.qualityReport(filter));
+  }
+
   var routes = [
     { method: 'GET', pattern: /^\/api\/admin\/overview$/, handler: adminOnly(getOverview) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) },
     { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) },
     { method: 'GET', pattern: /^\/api\/admin\/organisations$/, handler: adminOnly(getOrganisations) },
-    { method: 'GET', pattern: /^\/api\/admin\/sources$/, handler: adminOnly(getSources) }
+    { method: 'GET', pattern: /^\/api\/admin\/sources$/, handler: adminOnly(getSources) },
+    { method: 'GET', pattern: /^\/api\/admin\/quality$/, handler: adminOnly(getQuality) }
   ];
 
   return { routes: routes };

@@ -109,7 +109,7 @@ and `/admin/review` (Revue)** — PR #39 is merged but not deployed.
 | 2. Vehicles | `/admin/vehicles` (registry), `/admin/vehicle?ref=` (dossier); in nav | `GET /api/admin/vehicles`, `…/:ref/dossier`, VIN via audited fiche | yes | admin-only, twice | `ida-admin-registry` 135/0, browser check 34/0 | **COMPLETE (read)** | edits stay in Saisie / review / merge routes; no merge/split UI |
 | 3. Maintenance History | per-vehicle section of the dossier only; no page, no nav entry | workshop routes are **per organisation** (admin must pass `org_id`); no cross-organisation list | yes (visits, operations, service events) | org-scoped for workshops | `ida-v12` (workshop API) | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/maintenance` + `GET /api/admin/maintenance` (§8) | merge + deploy |
 | 4. Ateliers & Data Sources | none on `main` | **no route lists organisations or capture sources** on `main`; `GET /api/resolution/providers` and `/api/catalog/status` exist (admin) | tables `idauto_organizations`, `idauto_capture_sources`, `idauto_auth_user` (role/org); provider/TecDoc state | — | none for a listing | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/sources` + `GET /api/admin/organisations`, `GET /api/admin/sources` (§9) | merge + deploy |
-| 5. Data Quality | `/admin/review` (Revue) — pending observations + accept/reject; **English copy**; no conflict view | `/api/review/observations`, `…/decision`, `/api/review/submissions` (unused by the page), `/api/review/facts/:id/decision`, merge/split routes | yes | admin-only (absent from scope tables) | `ida-2h` 37/0, `ida-3e` 63/0 | **PARTIAL** | cross-vehicle list of disagreeing facts, pending facts, aliases; submissions queue in the UI; French copy |
+| 5. Data Quality | `/admin/review` (Revue) — pending observations + accept/reject; **English copy**; no conflict view | `/api/review/observations`, `…/decision`, `/api/review/submissions` (unused by the page), `/api/review/facts/:id/decision`, merge/split routes | yes | admin-only (absent from scope tables) | `ida-2h` 37/0, `ida-3e` 63/0 | **PARTIAL** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/quality` + `GET /api/admin/quality`, `/admin/review` in French (§10) | merge + deploy; fact-level accept/reject UI (route exists, not wired) |
 | 6. Security & Audit | none | **no route reads `idauto_audit_log` globally** (dossier shows one vehicle's rows); `GET /api/metrics` (admin); users only via `ops/auth-users.js` CLI | `idauto_audit_log`, `idauto_auth_user`/`_session` | — | auth suites (`ida-v13`) test the mechanism, not a console | **MISSING** | read routes + page: audit log with filters (event, actor type, org, date) and masked summaries; accounts and roles (no password/hash/token), active session counts; auth denial metrics |
 
 **Plan, in order of product value and dependency:**
@@ -170,3 +170,36 @@ Tests: `tests/ida-admin-sources-test.js` 61/0 (mutation-checked: contact e-mail 
 to the credential summary, the handler's admin check removed, the type filter ignored — each turns it red). Browser
 390/1280 px 22/0. Row headers in console tables now read as content (no uppercase label style).
 
+## 10. Data Quality (IDA-ADMIN-4, branch `ida-admin-2-maintenance`)
+
+`/admin/quality` (nav « Qualité ») — read only, admin only. Decisions stay on `/admin/review`, through the existing
+audited routes; the quality page only links there.
+
+`GET /api/admin/quality?issue=all|disagreement|pending_facts|conflict_facts|pending_observations|incomplete|no_plate&q=&page=&page_size=`
+→ `{ issue, q, page, page_size, total, pages, totals{identities, all, disagreement, pending_facts, conflict_facts,
+pending_observations, incomplete, no_plate}, results[{ ivid, internal_ref, make, model, year, fiche_status, plate,
+plate_display, updated_at, aliases, issues{…, no_plate:boolean}, disagreements[{fact_key, distinct_values, values[≤5]}] }],
+review{pending_review, pending_confirmation, pending_unlinked, pending_by_source[{code, name_fr, n}],
+submissions_by_status}, facts_by_status, fiche_by_status, merged_records, unidentified_visits }`.
+
+- One row per **canonical** identity, over the identity and every record merged into it (the dossier's set), so a
+  disagreement left on an alias is reported on the identity. Computed with grouped joins (≈20–60 ms on the 680-identity
+  scratch register; the first version, one subquery per identity, took ≈500 ms and was replaced).
+- Each issue is a fact of the data: *disagreement* = an active fact key with more than one distinct value (trimmed,
+  upper-cased; values cut at 80 characters); *conflict_facts* = facts entered as `conflict` (createFact keeps the
+  status sent; nothing detects conflicts automatically, which is why disagreement exists); *incomplete* = make, model or
+  year missing; *no_plate* = no active plate on the identity or its aliases.
+- Totals describe the whole register; `q` (IVID, internal_ref, make/model prefix, `%`/`_` literal) narrows the list.
+- Never returned: a restricted (`mythos_private`) fact or a VIN fact (by key, any case, any scope) — not as a value, a
+  count or a disagreement; no observation timestamp or capture detail.
+
+`/admin/review` is now French (copy, statuses, roles), loads its queue once the admin session is confirmed, and shows
+the decision confirmation after the reload (it was overwritten before, in the English page too). Hardened:
+`GET /api/review/observations/:id` no longer returns a VIN fact written with a non-restricted scope.
+
+Tests: `tests/ida-admin-quality-test.js` 65/0 (mutation-checked: VIN guard dropped, aliases not followed, the handler's
+admin check removed, the review VIN filter reverted, the issue filter ignored — each turns it red). Browser 390/1280 px
+35/0, including a real Rejeter decision writing exactly one audit row.
+
+Not done: the per-fact accept/reject route (`POST /api/review/facts/:id/decision`) has no UI yet; submissions are counted
+by status, not listed.

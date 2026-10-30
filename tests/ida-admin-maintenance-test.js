@@ -114,7 +114,8 @@ async function main() {
   say('\n0. STRUCTURE');
   var repoSrc = fs.readFileSync(path.join(BASE, 'reference', 'admin', 'admin-repository.js'), 'utf8');
   ok(!/\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|GRANT|CREATE)\b/.test(repoSrc), 'the read model still contains no SQL write verb');
-  var maintSrc = repoSrc.split('IDA-ADMIN-2 — MAINTENANCE HISTORY')[1] || '';
+  // Bounded at the next section: the data-quality section reads fact keys by design.
+  var maintSrc = ((repoSrc.split('IDA-ADMIN-2 — MAINTENANCE HISTORY')[1] || '').split('IDA-ADMIN-3')[0]);
   // The marker sits inside the section's header comment: drop the rest of that comment first.
   var maintCode = maintSrc.replace(/^[\s\S]*?\*\//, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   ok(maintSrc.length > 0 && !/customer_ref\b(?!_id|_present)/.test(maintCode), 'the maintenance query never selects the customer reference');
@@ -125,8 +126,8 @@ async function main() {
   ok(!/localStorage|sessionStorage|Authorization|Bearer/.test(ui), 'no browser storage, no token');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-maintenance.html'), 'utf8');
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html), 'the page has no inline script/style and is French');
-  var NAV = ['/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/review', '/admin'];
-  ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html'].forEach(function (f) {
+  var NAV = ['/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/review', '/admin'];
+  ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html'].forEach(function (f) {
     var page = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8');
     var links = (page.match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [''])[0].match(/href="[^"]+"/g) || [];
     ok(JSON.stringify(links.map(function (l) { return l.slice(6, -1); })) === JSON.stringify(NAV) && (page.match(/aria-current="page"/g) || []).length === 1,

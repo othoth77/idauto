@@ -416,6 +416,9 @@ var ADMIN_ASSETS = {
   '/admin/sources': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
   '/admin/sources/': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
   '/admin/sources-ui.js': { file: 'admin-sources-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/quality': { file: 'admin-quality.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/quality/': { file: 'admin-quality.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/quality-ui.js': { file: 'admin-quality-ui.js', contentType: 'application/javascript; charset=utf-8' },
 
   // The Design System itself — the same files web/ serves to the citizen
   // surface, mounted under /admin/ so they are never phase-gated.
@@ -1703,7 +1706,10 @@ async function getReviewObservation(res, id) {
   var item = observation.rows[0];
   var facts = item.vehicle_internal_ref ? await db.query(
     'SELECT fact_key, fact_value, confidence_score, verification_status, access_scope FROM idauto_vehicle_facts f ' +
-    'JOIN idauto_vehicles v ON v.id = f.vehicle_id WHERE v.internal_ref = $1 AND f.access_scope != $2 ORDER BY fact_key',
+    // IDA-ADMIN-4: never the VIN, whatever scope it was written with (a VIN
+    // is disclosed only by the fiche route, which audits the read), and
+    // matched by key in any case, as createFact() stores the key as sent.
+    "JOIN idauto_vehicles v ON v.id = f.vehicle_id WHERE v.internal_ref = $1 AND f.access_scope != $2 AND LOWER(TRIM(f.fact_key)) <> 'vin' ORDER BY fact_key",
     [item.vehicle_internal_ref, 'mythos_private']
   ) : { rows: [] };
   var media = await db.query(

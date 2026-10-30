@@ -6,6 +6,18 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-10-30 — ida-admin-4: data quality
+
+`/admin/quality` and `GET /api/admin/quality` (admin only, read only): every
+canonical identity with an open issue — disagreeing values (aliases included),
+pending or conflict facts, pending observations, missing make/model/year, no
+active plate — with register totals and the review backlog. `/admin/review` in
+French; its decision confirmation is no longer overwritten. The review detail no
+longer returns a VIN fact written with a public scope.
+`tests/ida-admin-quality-test.js` (65).
+
+---
+
 ## 2026-10-30 — ida-admin-3: ateliers and data sources
 
 `/admin/sources` with `GET /api/admin/organisations` and `GET /api/admin/sources`

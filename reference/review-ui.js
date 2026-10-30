@@ -11,7 +11,7 @@
     var response = await fetch(path, settings);
     var body = await response.json().catch(function () { return {}; });
     if (response.status === 401 && typeof window !== 'undefined') { window.location.replace('/login?next=' + encodeURIComponent('/admin/review')); }
-    if (!response.ok) throw new Error(body.message_fr || body.error || ('Request failed (' + response.status + ')'));
+    if (!response.ok) throw new Error(body.message_fr || body.error || ('Échec de la requête (' + response.status + ')'));
     return body;
   }
   function loadQueue(token) { return apiRequest('/api/review/observations', token); }
@@ -32,10 +32,14 @@
   var detail = document.getElementById('review-detail');
   var activeId = null;
   function token() { return null; }
+  // Labels for the schema's observation statuses (chk_obs_status) — the two
+  // pending ones are the only ones this queue holds.
+  var STATUS_FR = { pending_review: 'En attente de revue', pending_confirmation: 'En attente de confirmation', received: 'Reçue', processing: 'En traitement', accepted: 'Acceptée', rejected: 'Rejetée', duplicate: 'Doublon', conflict: 'Conflit', blocked: 'Bloquée' };
+  function statusFr(s) { return Object.prototype.hasOwnProperty.call(STATUS_FR, s) ? STATUS_FR[s] : s; }
   (async function () {
     if (typeof window === 'undefined' || typeof fetch !== 'function') return;
     var line = document.getElementById('session-line');
-    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); var me = r.ok ? await r.json() : null; if (line) line.textContent = me && me.user ? 'Connecté : ' + me.user.name + ' · ' + me.user.role : 'Vous n\'êtes pas connecté.'; if (!me || !me.user) window.location.replace('/login?next=' + encodeURIComponent('/admin/review')); } catch (e) { if (line) line.textContent = 'Session : vérification impossible.'; }
+    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); var me = r.ok ? await r.json() : null; if (line) line.textContent = me && me.user ? 'Connecté : ' + me.user.name + ' · ' + ({ admin: 'administrateur', manager: 'gestionnaire', technician: 'technicien' }[me.user.role] || me.user.role) : 'Vous n\'êtes pas connecté.'; if (!me || !me.user) window.location.replace('/login?next=' + encodeURIComponent('/admin/review')); else if (me.user.role === 'admin') refresh(); else { status.className = 'error'; status.textContent = 'Cette page est réservée aux administrateurs.'; } } catch (e) { if (line) line.textContent = 'Session : vérification impossible.'; }
   }());
   function text(tag, value, className) {
     var node = document.createElement(tag);
@@ -52,58 +56,58 @@
   }
   async function refresh() {
     status.className = '';
-    status.textContent = 'Loading queue…';
+    status.textContent = 'Chargement de la file…';
     loadButton.disabled = true;
     list.replaceChildren();
     try {
       var data = await loadQueue(token());
       if (!data.observations.length) {
-        list.appendChild(text('p', 'No observations need review.', 'empty'));
-        status.textContent = 'Queue is empty.';
+        list.appendChild(text('p', 'Aucune observation n\'attend de revue.', 'empty'));
+        status.textContent = 'La file est vide.';
       } else {
         data.observations.forEach(function (item) {
           var button = document.createElement('button');
           button.type = 'button';
           button.className = 'queue-item';
-          button.appendChild(text('strong', '#' + item.id + ' · ' + item.status));
-          button.appendChild(text('span', [item.make, item.model, item.plate_number].filter(Boolean).join(' · ') || 'Unlinked observation'));
+          button.appendChild(text('strong', '#' + item.id + ' · ' + statusFr(item.status)));
+          button.appendChild(text('span', [item.make, item.model, item.plate_number].filter(Boolean).join(' · ') || 'Observation sans véhicule rattaché'));
           button.addEventListener('click', function () { showDetail(item.id); });
           list.appendChild(button);
         });
-        status.textContent = data.observations.length + ' observation(s) pending review.';
+        status.textContent = data.observations.length + ' observation(s) en attente.';
       }
     } catch (err) {
       status.className = 'error';
       status.textContent = err.message;
-      list.appendChild(text('p', 'Queue could not be loaded.', 'empty'));
+      list.appendChild(text('p', 'La file n\'a pas pu être chargée.', 'empty'));
     } finally { loadButton.disabled = false; }
   }
   async function showDetail(id) {
     activeId = id;
     detail.className = '';
-    detail.textContent = 'Loading observation…';
+    detail.textContent = 'Chargement de l\'observation…';
     try {
       var data = await loadDetail(id, token());
       if (activeId !== id) return;
       detail.replaceChildren();
       var observation = data.observation;
       detail.appendChild(field('Observation', '#' + observation.id));
-      detail.appendChild(field('Status', observation.status));
-      detail.appendChild(field('Vehicle', [observation.make, observation.model, observation.variant, observation.year].filter(Boolean).join(' ')));
-      detail.appendChild(field('Internal ref', observation.vehicle_internal_ref));
-      detail.appendChild(field('Plate', observation.plate_number));
-      detail.appendChild(text('h3', 'Non-private facts'));
-      detail.appendChild(text('p', data.facts.length ? data.facts.map(function (fact) { return fact.fact_key + ': ' + fact.fact_value; }).join(' · ') : 'No visible facts.', 'detail-copy'));
-      detail.appendChild(text('h3', 'Allowed media metadata'));
-      detail.appendChild(text('p', data.media.length ? data.media.map(function (media) { return media.media_type + ' · ' + media.mime_type + ' · ' + media.file_size_bytes + ' bytes'; }).join(' · ') : 'No visible media.', 'detail-copy'));
+      detail.appendChild(field('Statut', statusFr(observation.status)));
+      detail.appendChild(field('Véhicule', [observation.make, observation.model, observation.variant, observation.year].filter(Boolean).join(' ')));
+      detail.appendChild(field('Référence interne', observation.vehicle_internal_ref));
+      detail.appendChild(field('Plaque', observation.plate_number));
+      detail.appendChild(text('h3', 'Données non restreintes'));
+      detail.appendChild(text('p', data.facts.length ? data.facts.map(function (fact) { return fact.fact_key + ': ' + fact.fact_value; }).join(' · ') : 'Aucune donnée visible.', 'detail-copy'));
+      detail.appendChild(text('h3', 'Métadonnées des médias autorisés'));
+      detail.appendChild(text('p', data.media.length ? data.media.map(function (media) { return media.media_type + ' · ' + media.mime_type + ' · ' + media.file_size_bytes + ' octets'; }).join(' · ') : 'Aucun média visible.', 'detail-copy'));
       var actions = document.createElement('div');
       actions.className = 'review-actions';
       ['accept', 'reject'].forEach(function (decision) {
-        var button = text('button', decision === 'accept' ? 'Accept' : 'Reject', decision);
+        var button = text('button', decision === 'accept' ? 'Accepter' : 'Rejeter', decision);
         button.type = 'button';
         button.addEventListener('click', async function () {
           actions.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-          status.textContent = 'Saving decision…';
+          status.textContent = 'Enregistrement de la décision…';
           try {
             await decide(id, decision, token());
             if (activeId !== id) {
@@ -111,11 +115,15 @@
               return;
             }
             activeId = null;
-            status.className = 'success';
-            status.textContent = 'Observation ' + id + ' ' + (decision === 'accept' ? 'accepted.' : 'rejected.');
             detail.className = 'empty';
-            detail.textContent = 'Decision saved. Select another observation.';
+            detail.textContent = 'Décision enregistrée. Choisissez une autre observation.';
+            // The queue is reloaded first, then the confirmation is written:
+            // refresh() sets its own status line and would overwrite it.
             await refresh();
+            if (status.className !== 'error') {
+              status.className = 'success';
+              status.textContent = 'Observation ' + id + ' ' + (decision === 'accept' ? 'acceptée' : 'rejetée') + ' · ' + status.textContent;
+            }
           } catch (err) {
             if (activeId !== id) return;
             status.className = 'error';
