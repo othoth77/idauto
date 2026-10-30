@@ -7,6 +7,8 @@
 //   GET /api/admin/vehicles                  the registry: filtered, sorted, paged
 //   GET /api/admin/vehicles/:ref/dossier     one identity and everything recorded against it
 //   GET /api/admin/maintenance               workshop visits / service events, every organisation
+//   GET /api/admin/organisations             ateliers: identity, status, accounts, integration, activity
+//   GET /api/admin/sources                   capture sources, identification providers, parts catalogue
 //
 // ADMIN ONLY, TWICE. These routes are in no scope table (api.js ROUTE_SCOPES,
 // v12/v14 scopes), so api.js answers 403 to every organisation credential —
@@ -84,11 +86,30 @@ function createAdminRoutes(ctx) {
     sendJson(res, 200, await adminRepository.listMaintenance(filter));
   }
 
+  // IDA-ADMIN-3 — ateliers (organisations) and data sources.
+  async function getOrganisations(req, res) {
+    var filter = adminRepository.parseOrganisationQuery(query(req));
+    sendJson(res, 200, await adminRepository.listOrganisations(filter, identity.credentialSummary()));
+  }
+  async function getSources(req, res) {
+    var cred = identity.credentialSummary();
+    var supplier = catalog ? catalog.status().supplier : null;
+    sendJson(res, 200, {
+      capture_sources: await adminRepository.dataSources(),
+      vehicle_providers: [{ name: 'local', kind: 'local' }].concat(resolver ? resolver.providers() : []),
+      parts_catalogue: { local: true, supplier: supplier ? { configured: !!supplier.configured, provider: supplier.provider || null, message_fr: supplier.message_fr || null } : null },
+      service_credentials: { admin_credentials: cred.admin_credentials, organisation_credentials: cred.organisations.reduce(function (n, o) { return n + o.credentials; }, 0),
+        organisations: cred.organisations.length, invalid_entries: cred.invalid_entries }
+    });
+  }
+
   var routes = [
     { method: 'GET', pattern: /^\/api\/admin\/overview$/, handler: adminOnly(getOverview) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) },
-    { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) }
+    { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) },
+    { method: 'GET', pattern: /^\/api\/admin\/organisations$/, handler: adminOnly(getOrganisations) },
+    { method: 'GET', pattern: /^\/api\/admin\/sources$/, handler: adminOnly(getSources) }
   ];
 
   return { routes: routes };

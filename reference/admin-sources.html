@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Ateliers et sources</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-1 — same Design System files as /admin and /admin/review. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/vehicles">Véhicules</a></li>
+        <li><a href="/admin/maintenance">Entretien</a></li>
+        <li><a href="/admin/sources" aria-current="page">Ateliers</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Ateliers et sources de données</h1>
+      <p class="ida-muted ida-u-maxch-52">Les organisations connues d'IDauto et leur activité mesurée, les sources de capture
+      telles qu'elles sont configurées, et les fournisseurs externes réellement branchés. Lecture seule ; rien n'est estimé.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <section class="ida-stack" aria-labelledby="sec-orgs">
+      <h2 id="sec-orgs" class="ida-h3">Ateliers et organisations</h2>
+      <p class="ida-small" id="org-totals" aria-live="polite"></p>
+      <form id="filters" class="ida-card ida-stack" role="search">
+        <div class="ida-admin-grid">
+          <div class="ida-field"><label for="f-q">Nom ou ville</label><input class="ida-input" id="f-q" name="q" maxlength="100" autocomplete="off"></div>
+          <div class="ida-field">
+            <label for="f-status">Statut</label>
+            <select class="ida-input" id="f-status" name="status">
+              <option value="">Tous</option>
+              <option value="active">Active</option>
+              <option value="pending">En attente</option>
+              <option value="suspended">Suspendue</option>
+              <option value="cancelled">Résiliée</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-type">Type</label>
+            <select class="ida-input" id="f-type" name="org_type">
+              <option value="">Tous</option>
+              <option value="garage">Garage / atelier</option>
+              <option value="insurer">Assureur</option>
+              <option value="fleet">Flotte</option>
+              <option value="judicial">Judiciaire</option>
+              <option value="government">Administration</option>
+              <option value="other">Autre</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-sort">Trier par</label>
+            <select class="ida-input" id="f-sort" name="sort">
+              <option value="name">Nom</option>
+              <option value="activity">Dernière activité</option>
+              <option value="created">Date de création</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-dir">Ordre</label>
+            <select class="ida-input" id="f-dir" name="dir">
+              <option value="asc">Croissant</option>
+              <option value="desc">Décroissant</option>
+            </select>
+          </div>
+        </div>
+        <div class="ida-admin-actions">
+          <button type="submit" class="ida-btn ida-btn--primary">Afficher</button>
+          <button type="reset" class="ida-btn ida-btn--ghost">Effacer</button>
+        </div>
+      </form>
+      <p id="results-summary" class="ida-small" role="status" aria-live="polite"></p>
+      <div id="results" class="ida-table-wrap"></div>
+      <nav class="ida-admin-actions" aria-label="Pagination">
+        <button type="button" id="prev" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page précédente</button>
+        <button type="button" id="next" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page suivante</button>
+      </nav>
+    </section>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-sources">
+      <h2 id="sec-sources" class="ida-h3">Sources de capture</h2>
+      <p class="ida-caption">Le niveau de confiance d'une source (1 à 5) est celui de sa configuration ; il ne dit rien de
+      l'exactitude d'une donnée particulière. Une base légale « à revoir » signifie que la revue juridique n'est pas faite.</p>
+      <div id="sources" class="ida-table-wrap"></div>
+    </section>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-providers">
+      <h2 id="sec-providers" class="ida-h3">Fournisseurs externes et intégrations</h2>
+      <div id="providers" class="ida-stack"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/sources-ui.js"></script>
+</body>
+</html>

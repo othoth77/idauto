@@ -229,3 +229,13 @@
 
 /* IDA-ADMIN-2 — the operations of one visit, stacked inside a table cell. */
 .ida-admin-ops { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ida-space-2); }
+
+/* IDA-ADMIN-3 — a ROW header (an organisation, a source, a date) is read as
+ * content, not as a column label: no uppercase, no letter-spacing, body size
+ * and colour. Column headers keep the Design System's label style. */
+.ida-table tbody th {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--ida-size-14);
+  color: var(--ida-text);
+}

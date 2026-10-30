@@ -412,6 +412,10 @@ var ADMIN_ASSETS = {
   '/admin/maintenance': { file: 'admin-maintenance.html', contentType: 'text/html; charset=utf-8' },
   '/admin/maintenance/': { file: 'admin-maintenance.html', contentType: 'text/html; charset=utf-8' },
   '/admin/maintenance-ui.js': { file: 'admin-maintenance-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-ADMIN-3 — ateliers and data sources.
+  '/admin/sources': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/sources/': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/sources-ui.js': { file: 'admin-sources-ui.js', contentType: 'application/javascript; charset=utf-8' },
 
   // The Design System itself — the same files web/ serves to the citizen
   // surface, mounted under /admin/ so they are never phase-gated.

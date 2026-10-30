@@ -149,7 +149,31 @@ function principalHasScope(principal, scope) {
   return principal.scopes.indexOf(scope) !== -1;
 }
 
+/* IDA-ADMIN-3 — what the configured service credentials amount to, for the
+ * operator console: how many admin credentials, and per organisation how many
+ * credentials and which scopes. Each entry goes through resolvePrincipal(), so
+ * an entry the gate would refuse is counted as invalid, not described. The
+ * result NEVER contains a credential (the map's keys) or an actor_ref. */
+function credentialSummary() {
+  var identities = loadIdentities();
+  var out = { admin_credentials: 0, invalid_entries: 0, organisations: [] };
+  var byOrg = {};
+  Object.keys(identities).forEach(function (token) {
+    var p = resolvePrincipal(token);
+    if (!p) { out.invalid_entries++; return; }
+    if (p.kind === 'admin') { out.admin_credentials++; return; }
+    var o = byOrg[p.org_id] = byOrg[p.org_id] || { org_id: p.org_id, credentials: 0, scopes: {} };
+    o.credentials++;
+    p.scopes.forEach(function (s) { o.scopes[s] = true; });
+  });
+  out.organisations = Object.keys(byOrg).map(function (k) {
+    return { org_id: byOrg[k].org_id, credentials: byOrg[k].credentials, scopes: Object.keys(byOrg[k].scopes).sort() };
+  }).sort(function (a, b) { return a.org_id - b.org_id; });
+  return out;
+}
+
 module.exports = {
+  credentialSummary: credentialSummary,
   resolveIdentity: resolveIdentity,
   resolvePrincipal: resolvePrincipal,
   principalHasScope: principalHasScope,

@@ -108,7 +108,7 @@ and `/admin/review` (Revue)** — PR #39 is merged but not deployed.
 | 1. Dashboard | none of its own; 7 count tiles at the top of `/admin/vehicles` | `GET /api/admin/overview` | yes (SQL counts, provider/catalogue state) | admin-only, twice | `ida-admin-registry` §5 | **PARTIAL** | a dedicated page; recent activity is returned but not shown; links from each tile to its module |
 | 2. Vehicles | `/admin/vehicles` (registry), `/admin/vehicle?ref=` (dossier); in nav | `GET /api/admin/vehicles`, `…/:ref/dossier`, VIN via audited fiche | yes | admin-only, twice | `ida-admin-registry` 135/0, browser check 34/0 | **COMPLETE (read)** | edits stay in Saisie / review / merge routes; no merge/split UI |
 | 3. Maintenance History | per-vehicle section of the dossier only; no page, no nav entry | workshop routes are **per organisation** (admin must pass `org_id`); no cross-organisation list | yes (visits, operations, service events) | org-scoped for workshops | `ida-v12` (workshop API) | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/maintenance` + `GET /api/admin/maintenance` (§8) | merge + deploy |
-| 4. Ateliers & Data Sources | none | **no route lists organisations or capture sources**; `GET /api/resolution/providers` and `/api/catalog/status` exist (admin) | tables `idauto_organizations`, `idauto_capture_sources`, `idauto_user_roles`; provider/TecDoc state | — | none for a listing | **MISSING** | read routes + page: organisations (status, type, activity counts, no contact data), capture sources (trust level, legal basis, active), configured providers/catalogue |
+| 4. Ateliers & Data Sources | none on `main` | **no route lists organisations or capture sources** on `main`; `GET /api/resolution/providers` and `/api/catalog/status` exist (admin) | tables `idauto_organizations`, `idauto_capture_sources`, `idauto_auth_user` (role/org); provider/TecDoc state | — | none for a listing | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/sources` + `GET /api/admin/organisations`, `GET /api/admin/sources` (§9) | merge + deploy |
 | 5. Data Quality | `/admin/review` (Revue) — pending observations + accept/reject; **English copy**; no conflict view | `/api/review/observations`, `…/decision`, `/api/review/submissions` (unused by the page), `/api/review/facts/:id/decision`, merge/split routes | yes | admin-only (absent from scope tables) | `ida-2h` 37/0, `ida-3e` 63/0 | **PARTIAL** | cross-vehicle list of disagreeing facts, pending facts, aliases; submissions queue in the UI; French copy |
 | 6. Security & Audit | none | **no route reads `idauto_audit_log` globally** (dossier shows one vehicle's rows); `GET /api/metrics` (admin); users only via `ops/auth-users.js` CLI | `idauto_audit_log`, `idauto_auth_user`/`_session` | — | auth suites (`ida-v13`) test the mechanism, not a console | **MISSING** | read routes + page: audit log with filters (event, actor type, org, date) and masked summaries; accounts and roles (no password/hash/token), active session counts; auth denial metrics |
 
@@ -145,4 +145,28 @@ filter, removing the handler's admin check, selecting the customer reference —
 26/0. Also fixed: on both console list pages, Back to a page whose URL omits a filter kept the stale value (registry
 browser check 36/0, failing 34/2 before the fix). One navigation (Véhicules · Entretien · Revue · Saisie) on all five
 console pages.
+
+## 9. Ateliers & Data Sources (IDA-ADMIN-3, branch `ida-admin-2-maintenance`)
+
+`/admin/sources` (nav « Ateliers ») — three sections, admin only, read only.
+
+- `GET /api/admin/organisations?q=&status=&org_type=&sort=name|activity|created&dir=&page=&page_size=` →
+  `{ page, page_size, total, pages, sort, dir, by_status, results[{ id, name, org_type, status, subscription_tier, city,
+  governorate, verified_at, is_fixpert_pilot, created_at, contact_present, tax_id_present, accounts{managers,
+  technicians}, integration{credentials, scopes}|null, activity{visits, open_visits, operations, service_events,
+  documents, observations, stock_lines, last_activity_at|null} }] }`. `q` matches name or city (`%`/`_` literal).
+- `GET /api/admin/sources` → `{ capture_sources[{ code, name_fr, name_ar, source_type, trust_level, requires_consent,
+  legal_basis, active, notes, usage{observations, facts, submissions} }], vehicle_providers[{name, kind}],
+  parts_catalogue{local, supplier{configured, provider, message_fr}}, service_credentials{admin_credentials,
+  organisation_credentials, organisations, invalid_entries} }`.
+
+Never returned: an organisation's contact e-mail or tax id (presence flags only); any service credential or
+`actor_ref` — `identity.credentialSummary()` reports counts and scopes per organisation, validating each entry through
+`resolvePrincipal()` so an entry the gate refuses is counted as invalid, not described. Last activity = latest visit,
+document or service event; `null` when none — never estimated. Providers and the parts supplier are reported as
+configured or not configured, never assumed.
+
+Tests: `tests/ida-admin-sources-test.js` 61/0 (mutation-checked: contact e-mail selected as a value, `actor_ref` added
+to the credential summary, the handler's admin check removed, the type filter ignored — each turns it red). Browser
+390/1280 px 22/0. Row headers in console tables now read as content (no uppercase label style).
 

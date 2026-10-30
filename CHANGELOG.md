@@ -6,6 +6,17 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-10-30 — ida-admin-3: ateliers and data sources
+
+`/admin/sources` with `GET /api/admin/organisations` and `GET /api/admin/sources`
+(admin only, read only): organisations with their accounts, integrations and
+measured activity; capture sources with trust level, consent, legal basis and
+usage; identification providers, parts catalogue and service-credential counts as
+configured. Contact e-mail, tax id, credentials and actor references never leave
+the server. `identity.credentialSummary()`. `tests/ida-admin-sources-test.js` (61).
+
+---
+
 ## 2026-10-30 — ida-admin-2: maintenance history
 
 `/admin/maintenance` and `GET /api/admin/maintenance` (admin only, read only):

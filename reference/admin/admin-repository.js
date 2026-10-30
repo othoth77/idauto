@@ -607,6 +607,106 @@ async function listMaintenance(filter) {
     dir: filter.dir, organisations: orgs, totals: counts, mileage_recorded_on_visits: false, results: results };
 }
 
+/* =========================================================================
+ * IDA-ADMIN-3 — ATELIERS & DATA SOURCES.
+ *
+ * Organisations: identity, status and measured activity. NOT returned:
+ * contact_email and tax_id (only whether each is present) — the console
+ * needs to know a contact exists, not to read it. Activity counts come from
+ * the tables that carry org_id; nothing is estimated.
+ *
+ * Capture sources: the catalogue as configured (trust level, consent, legal
+ * basis, active) with how much data each one actually produced.
+ * ========================================================================= */
+var ORG_STATUSES = ['pending', 'active', 'suspended', 'cancelled'];
+var ORG_TYPES = ['garage', 'insurer', 'fleet', 'judicial', 'government', 'other'];
+var ORG_SORTS = { name: 'o.name', created: 'o.created_at', activity: 'last_activity_at' };
+
+function parseOrganisationQuery(q) {
+  q = q || {};
+  var out = {
+    q: oneParam(q, 'q', 100),
+    status: oneParam(q, 'status', 20),
+    org_type: oneParam(q, 'org_type', 20),
+    sort: oneParam(q, 'sort', 20) || 'name',
+    dir: (oneParam(q, 'dir', 8) || 'asc').toLowerCase(),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  if (out.status !== null && ORG_STATUSES.indexOf(out.status) === -1) throw badRequest('unknown status', { allowed: ORG_STATUSES });
+  if (out.org_type !== null && ORG_TYPES.indexOf(out.org_type) === -1) throw badRequest('unknown org_type', { allowed: ORG_TYPES });
+  if (!Object.prototype.hasOwnProperty.call(ORG_SORTS, out.sort)) throw badRequest('unknown sort', { allowed: Object.keys(ORG_SORTS) });
+  if (out.dir !== 'asc' && out.dir !== 'desc') throw badRequest('dir must be asc or desc');
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10); out.page_size = parseInt(out.page_size, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+async function listOrganisations(filter, credentials) {
+  var where = [], params = [];
+  if (filter.q) { params.push('%' + filter.q.replace(/[\\%_]/g, function (c) { return '\\' + c; }) + '%'); where.push('(o.name ILIKE $' + params.length + ' OR o.address_city ILIKE $' + params.length + ')'); }
+  if (filter.status) { params.push(filter.status); where.push('o.status = $' + params.length); }
+  if (filter.org_type) { params.push(filter.org_type); where.push('o.org_type = $' + params.length); }
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var total = (await db.query('SELECT count(*)::int AS n FROM idauto_organizations o' + whereSql, params)).rows[0].n;
+  var pageParams = params.slice();
+  pageParams.push(filter.page_size); var li = pageParams.length;
+  pageParams.push((filter.page - 1) * filter.page_size); var oi = pageParams.length;
+  var dir = filter.dir === 'asc' ? 'ASC' : 'DESC';
+  var rows = (await db.query(
+    'SELECT * FROM (SELECT o.id, o.name, o.org_type, o.status, o.subscription_tier, o.address_city, g.name_fr AS governorate, o.verified_at, ' +
+    'o.is_fixpert_pilot, o.created_at, (o.contact_email IS NOT NULL AND o.contact_email <> \'\') AS contact_present, ' +
+    '(o.tax_id IS NOT NULL AND o.tax_id <> \'\') AS tax_id_present, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user u WHERE u."org_id" = o.id AND u."role" = \'manager\') AS managers, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user u WHERE u."org_id" = o.id AND u."role" = \'technician\') AS technicians, ' +
+    '(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.org_id = o.id) AS visits, ' +
+    "(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.org_id = o.id AND w.status IN ('open','in_progress')) AS open_visits, " +
+    '(SELECT count(*)::int FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE w.org_id = o.id) AS operations, ' +
+    '(SELECT count(*)::int FROM idauto_service_events e WHERE e.org_id = o.id) AS service_events, ' +
+    '(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.org_id = o.id) AS documents, ' +
+    '(SELECT count(*)::int FROM idauto_observations ob WHERE ob.org_id = o.id) AS observations, ' +
+    '(SELECT count(*)::int FROM idauto_org_stock s WHERE s.org_id = o.id) AS stock_lines, ' +
+    'GREATEST((SELECT max(w.opened_at) FROM idauto_workshop_visits w WHERE w.org_id = o.id), (SELECT max(d.created_at) FROM idauto_vehicle_documents d WHERE d.org_id = o.id), ' +
+    '(SELECT max(e.created_at) FROM idauto_service_events e WHERE e.org_id = o.id)) AS last_activity_at ' +
+    'FROM idauto_organizations o LEFT JOIN idauto_governorates g ON g.id = o.governorate_id' + whereSql + ') o ' +
+    'ORDER BY ' + ORG_SORTS[filter.sort] + ' ' + dir + ' NULLS LAST, o.id ' + dir + ' LIMIT $' + li + ' OFFSET $' + oi, pageParams)).rows;
+  var credByOrg = {};
+  (credentials ? credentials.organisations : []).forEach(function (c) { credByOrg[c.org_id] = c; });
+  var counts = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_organizations GROUP BY 1');
+  return {
+    page: filter.page, page_size: filter.page_size, total: total, pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    sort: filter.sort, dir: filter.dir, by_status: counts,
+    results: rows.map(function (r) {
+      var c = credByOrg[r.id];
+      return { id: r.id, name: r.name, org_type: r.org_type, status: r.status, subscription_tier: r.subscription_tier,
+        city: r.address_city, governorate: r.governorate, verified_at: r.verified_at, is_fixpert_pilot: r.is_fixpert_pilot, created_at: r.created_at,
+        contact_present: r.contact_present, tax_id_present: r.tax_id_present,
+        accounts: { managers: r.managers, technicians: r.technicians },
+        integration: c ? { credentials: c.credentials, scopes: c.scopes } : null,
+        activity: { visits: r.visits, open_visits: r.open_visits, operations: r.operations, service_events: r.service_events,
+          documents: r.documents, observations: r.observations, stock_lines: r.stock_lines, last_activity_at: r.last_activity_at } };
+    })
+  };
+}
+
+async function dataSources() {
+  var sources = (await db.query(
+    'SELECT cs.code, cs.name_fr, cs.name_ar, cs.source_type, cs.trust_level, cs.requires_consent, cs.legal_basis, cs.active, cs.notes, cs.created_at, ' +
+    '(SELECT count(*)::int FROM idauto_observations ob WHERE ob.capture_source_id = cs.id) AS observations, ' +
+    '(SELECT count(*)::int FROM idauto_vehicle_facts f WHERE f.source_id = cs.id) AS facts, ' +
+    '(SELECT count(*)::int FROM idauto_submissions s WHERE s.capture_source_id = cs.id) AS submissions ' +
+    'FROM idauto_capture_sources cs ORDER BY cs.active DESC, cs.trust_level DESC, cs.code')).rows;
+  return sources.map(function (r) {
+    return { code: r.code, name_fr: r.name_fr, name_ar: r.name_ar, source_type: r.source_type, trust_level: r.trust_level,
+      requires_consent: r.requires_consent, legal_basis: r.legal_basis, active: r.active, notes: r.notes, created_at: r.created_at,
+      usage: { observations: r.observations, facts: r.facts, submissions: r.submissions } };
+  });
+}
+
 module.exports = {
   parseRegistryQuery: parseRegistryQuery,
   listVehicles: listVehicles,
@@ -619,5 +719,8 @@ module.exports = {
   parseMaintenanceQuery: parseMaintenanceQuery,
   listMaintenance: listMaintenance,
   VISIT_STATUSES: VISIT_STATUSES.slice(),
-  OPERATION_TYPES: OPERATION_TYPES.slice()
+  OPERATION_TYPES: OPERATION_TYPES.slice(),
+  parseOrganisationQuery: parseOrganisationQuery,
+  listOrganisations: listOrganisations,
+  dataSources: dataSources
 };
