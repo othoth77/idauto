@@ -90,6 +90,16 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 
 `INVALID_PLATE 400 · PLATE_AMBIGUOUS 400 · PLATE_PARTIAL 400 · INVALID_VIN 400 · VALIDATION 400 · FORBIDDEN 403 · VEHICLE_NOT_FOUND 404 · NOT_FOUND 404 · CONFLICT 409 · OCR_LOW_CONFIDENCE 409 · CATALOG_NOT_CONFIGURED 501 · PROVIDER_UNAVAILABLE 503 · CATALOG_UNAVAILABLE 503 · NETWORK_FAILURE 503 · PROVIDER_TIMEOUT 504`
 
+## Operator console (IDA-ADMIN-1) — admin only
+
+| Route | Answer |
+|---|---|
+| `GET /api/admin/overview` | dashboard counts + health |
+| `GET /api/admin/vehicles?q=&make=&model=&year=&fiche_status=&verified=&include_merged=1&sort=&dir=&page=&page_size=` | paged registry; `q` matches IVID, internal_ref, current or historical plate, make/model prefix — never a VIN |
+| `GET /api/admin/vehicles/:ref/dossier` | one canonical identity and everything recorded against it; no VIN, no restricted fact, no customer reference |
+
+In no scope table: every organisation credential gets 403. Contract and field lists: [`ADMIN_CONSOLE.md`](ADMIN_CONSOLE.md). Pages: `/admin/vehicles`, `/admin/vehicle?ref=`.
+
 ## Pre-V12 routes (unchanged)
 
 Vehicles, plates, facts, observations, media, review queue, search (`GET /api/search/vehicles`), merge/split/resolve, passport, session — documented in `ID_AUTO_INTEGRATION.md` §5.

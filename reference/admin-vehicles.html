@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Registre des véhicules</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-1 — same Design System files as /admin and /admin/review. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/vehicles" aria-current="page">Véhicules</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Registre des véhicules</h1>
+      <p class="ida-muted ida-u-maxch-52">Les identités de véhicules enregistrées, leurs plaques et leur historique. Lecture seule ;
+      chaque modification passe par les opérations auditées existantes.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <section class="ida-stack" aria-labelledby="sec-overview">
+      <h2 id="sec-overview" class="ida-h3">Vue d'ensemble</h2>
+      <div id="overview" class="ida-admin-stats" aria-live="polite"></div>
+      <p class="ida-caption" id="overview-note"></p>
+    </section>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-filters">
+      <h2 id="sec-filters" class="ida-h3">Rechercher</h2>
+      <form id="filters" class="ida-stack" role="search">
+        <div class="ida-admin-grid">
+          <div class="ida-field">
+            <label for="f-q">Plaque, Vehicle ID, référence, marque ou modèle</label>
+            <input class="ida-input" id="f-q" name="q" maxlength="64" autocomplete="off" spellcheck="false">
+            <p class="ida-hint">Plaques actuelles et anciennes, toutes graphies (230 TU 8646, 230 تونس 8646…). Le numéro de châssis ne se cherche pas ici.</p>
+          </div>
+          <div class="ida-field"><label for="f-make">Marque (exacte)</label><input class="ida-input" id="f-make" name="make" maxlength="64"></div>
+          <div class="ida-field"><label for="f-model">Modèle (exact)</label><input class="ida-input" id="f-model" name="model" maxlength="64"></div>
+          <div class="ida-field"><label for="f-year">Année</label><input class="ida-input" id="f-year" name="year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4"></div>
+          <div class="ida-field">
+            <label for="f-status">Statut de la fiche</label>
+            <select class="ida-input" id="f-status" name="fiche_status">
+              <option value="">Tous</option>
+              <option value="initial">Initiale</option>
+              <option value="pending_review">En attente de revue</option>
+              <option value="verified">Vérifiée</option>
+              <option value="conflict">Conflit</option>
+              <option value="archived">Archivée</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-verified">Identification</label>
+            <select class="ida-input" id="f-verified" name="verified">
+              <option value="">Toutes</option>
+              <option value="true">Vérifiée</option>
+              <option value="false">Non vérifiée</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-sort">Trier par</label>
+            <select class="ida-input" id="f-sort" name="sort">
+              <option value="updated">Dernière modification</option>
+              <option value="created">Date d'enregistrement</option>
+              <option value="make">Marque</option>
+              <option value="model">Modèle</option>
+              <option value="year">Année</option>
+              <option value="ivid">Vehicle ID</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-dir">Ordre</label>
+            <select class="ida-input" id="f-dir" name="dir">
+              <option value="desc">Décroissant</option>
+              <option value="asc">Croissant</option>
+            </select>
+          </div>
+          <div class="ida-field ida-admin-check">
+            <label for="f-merged"><input id="f-merged" name="include_merged" type="checkbox" value="1"> Inclure les fiches fusionnées</label>
+          </div>
+        </div>
+        <div class="ida-admin-actions">
+          <button type="submit" class="ida-btn ida-btn--primary">Rechercher</button>
+          <button type="reset" id="reset" class="ida-btn ida-btn--ghost">Effacer</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="ida-stack" aria-labelledby="sec-results">
+      <h2 id="sec-results" class="ida-h3">Résultats</h2>
+      <p id="results-summary" class="ida-small" role="status" aria-live="polite"></p>
+      <div id="results" class="ida-table-wrap"></div>
+      <nav class="ida-admin-actions" aria-label="Pagination">
+        <button type="button" id="prev" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page précédente</button>
+        <button type="button" id="next" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page suivante</button>
+      </nav>
+    </section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/vehicles-ui.js"></script>
+</body>
+</html>

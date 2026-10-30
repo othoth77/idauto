@@ -6,6 +6,21 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-10-30 — ida-admin-1: registry and vehicle dossier
+
+Three admin-only read routes (`/api/admin/overview`, `/api/admin/vehicles`,
+`/api/admin/vehicles/:ref/dossier`) and two pages (`/admin/vehicles`,
+`/admin/vehicle`). Server-side paging and sorting, search across current and
+historical plates, one dossier per canonical identity with its aliases,
+maintenance timeline, facts with their provenance, identification history,
+data quality and audit. No VIN, restricted fact or workshop customer reference
+is ever returned; the VIN stays behind the audited fiche. No migration, no new
+write path. `tests/ida-admin-registry-test.js` (135); `ida-2g` assertion fixed
+(it had failed on `main` since the console went French). Details:
+`docs/ADMIN_CONSOLE.md`.
+
+---
+
 ## 2026-09-05 — ida-v14 (home search): « Rechercher par carte grise » on the homepage
 
 The V14 scanner gains an identify mode and a shared dialog template; the

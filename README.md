@@ -106,7 +106,7 @@ Nothing in this repository pretends to be further along than it is.
 | Read + write API, atomic audit logging | **IMPLEMENTED** (reference implementation; not deployed publicly) |
 | Content-addressed media storage | **IMPLEMENTED** |
 | Community ingestion service, rate limiting, review queue | **IMPLEMENTED** (admin-only route; no public endpoint exists) |
-| Off-host backup, restore-verified | **IMPLEMENTED** — a verified off-host copy of the database exists (2026-08-14); recurring scheduling and retention automation are **PLANNED** |
+| Off-host backup, restore-verified | **IMPLEMENTED** — a verified off-host copy of the database exists (2026-08-14); since then a nightly scheduled off-host backup (database + media), remote verification and a monthly restore test run on the host (re-checked 2026-10-30) |
 | Real multi-user authentication | **BLOCKED** — see [`docs/ROADMAP.md`](docs/ROADMAP.md) IDA-2E |
 | Citizen passport, professional issuers, AI verification | **SPECIFIED**, not implemented |
 | W3C Verifiable Credentials / DID interoperability | **SPECIFIED**, not implemented |
@@ -120,6 +120,7 @@ Nothing in this repository pretends to be further along than it is.
 | Mock providers | tests only — refuse to construct in production |
 | Carte grise scanner: capture → Scanic → optimisation → face 1 / face 2 → OCR fra+ara → parser → conflicts → confirmation → passport (IDA-V14) | **IMPLEMENTED** — images in the private media store, technical fields only, retention and legal basis « à définir » (`docs/PRIVACY.md`) |
 | Homepage « Rechercher par carte grise » — same scanner in identify mode, VIN → plate → make/model, nothing stored | **IMPLEMENTED** (home search) |
+| Operator console: registry `/admin/vehicles` (paged, current + historical plates) and vehicle dossier `/admin/vehicle` (plates, maintenance, facts + provenance, identification, quality, audit), admin only, read only (IDA-ADMIN-1) | **IMPLEMENTED** on branch `ida-admin-registry-dossier`, not deployed — [`docs/ADMIN_CONSOLE.md`](docs/ADMIN_CONSOLE.md) |
 | Web authentication: `/login` (e-mail + password, Better Auth), server-side sessions, HttpOnly + Secure cookie, roles admin / manager / technician (IDA-V13) | **IMPLEMENTED** — the manual admin access token is gone from every web page; Bearer remains for server-to-server integrations |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /
