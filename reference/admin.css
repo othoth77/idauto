@@ -226,3 +226,6 @@
   .ida-admin-dl { grid-template-columns: 1fr; gap: var(--ida-space-1); }
   .ida-admin-dl dd { margin-block-end: var(--ida-space-2); }
 }
+
+/* IDA-ADMIN-2 — the operations of one visit, stacked inside a table cell. */
+.ida-admin-ops { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ida-space-2); }

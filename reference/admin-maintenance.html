@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Historique d'entretien</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-1 — same Design System files as /admin and /admin/review. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/vehicles">Véhicules</a></li>
+        <li><a href="/admin/maintenance" aria-current="page">Entretien</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Historique d'entretien</h1>
+      <p class="ida-muted ida-u-maxch-52">Les visites atelier, leurs opérations et les événements d'entretien enregistrés,
+      toutes organisations confondues. Lecture seule. Une intervention absente de cette liste n'est pas la preuve
+      qu'elle n'a pas eu lieu : seules les interventions déclarées à IDauto apparaissent ici.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+      <p class="ida-small" id="totals" aria-live="polite"></p>
+    </header>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-filters">
+      <h2 id="sec-filters" class="ida-h3">Filtrer</h2>
+      <form id="filters" class="ida-stack" role="search">
+        <div class="ida-admin-grid">
+          <div class="ida-field">
+            <label for="f-kind">Type d'enregistrement</label>
+            <select class="ida-input" id="f-kind" name="kind">
+              <option value="visits">Visites atelier et opérations</option>
+              <option value="service_events">Événements d'entretien</option>
+            </select>
+          </div>
+          <div class="ida-field">
+            <label for="f-q">Véhicule : plaque, Vehicle ID ou référence</label>
+            <input class="ida-input" id="f-q" name="q" maxlength="64" autocomplete="off" spellcheck="false">
+            <p class="ida-hint">Toutes les plaques connues du véhicule, toutes graphies ; pour une visite non identifiée, la plaque lue à l'atelier.</p>
+          </div>
+          <div class="ida-field">
+            <label for="f-org">Atelier / organisation</label>
+            <select class="ida-input" id="f-org" name="org_id"><option value="">Toutes</option></select>
+          </div>
+          <div class="ida-field" data-visits-only>
+            <label for="f-status">Statut de la visite</label>
+            <select class="ida-input" id="f-status" name="status">
+              <option value="">Tous</option>
+              <option value="open">Ouverte</option>
+              <option value="in_progress">En cours</option>
+              <option value="closed">Clôturée</option>
+              <option value="cancelled">Annulée</option>
+            </select>
+          </div>
+          <div class="ida-field" data-visits-only>
+            <label for="f-op">Type d'opération</label>
+            <select class="ida-input" id="f-op" name="operation_type">
+              <option value="">Toutes</option>
+              <option value="diagnosis">Diagnostic</option>
+              <option value="replacement">Remplacement</option>
+              <option value="service">Entretien</option>
+              <option value="repair">Réparation</option>
+              <option value="inspection">Contrôle</option>
+              <option value="other">Autre</option>
+            </select>
+          </div>
+          <div class="ida-field" data-visits-only>
+            <label for="f-identified">Identification du véhicule</label>
+            <select class="ida-input" id="f-identified" name="identified">
+              <option value="">Toutes</option>
+              <option value="true">Véhicule identifié</option>
+              <option value="false">Véhicule non identifié</option>
+            </select>
+          </div>
+          <div class="ida-field"><label for="f-from">Du</label><input class="ida-input" id="f-from" name="from" type="date"></div>
+          <div class="ida-field"><label for="f-to">Au</label><input class="ida-input" id="f-to" name="to" type="date"></div>
+          <div class="ida-field">
+            <label for="f-dir">Ordre</label>
+            <select class="ida-input" id="f-dir" name="dir">
+              <option value="desc">Plus récent d'abord</option>
+              <option value="asc">Plus ancien d'abord</option>
+            </select>
+          </div>
+        </div>
+        <div class="ida-admin-actions">
+          <button type="submit" class="ida-btn ida-btn--primary">Afficher</button>
+          <button type="reset" class="ida-btn ida-btn--ghost">Effacer</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="ida-stack" aria-labelledby="sec-results">
+      <h2 id="sec-results" class="ida-h3">Résultats</h2>
+      <p id="results-summary" class="ida-small" role="status" aria-live="polite"></p>
+      <div id="results" class="ida-table-wrap"></div>
+      <nav class="ida-admin-actions" aria-label="Pagination">
+        <button type="button" id="prev" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page précédente</button>
+        <button type="button" id="next" class="ida-btn ida-btn--secondary ida-btn--sm" disabled>Page suivante</button>
+      </nav>
+    </section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/maintenance-ui.js"></script>
+</body>
+</html>

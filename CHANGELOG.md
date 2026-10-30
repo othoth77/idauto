@@ -6,6 +6,18 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-10-30 — ida-admin-2: maintenance history
+
+`/admin/maintenance` and `GET /api/admin/maintenance` (admin only, read only):
+every workshop visit with its operations, and every service event, across all
+organisations, filtered by organisation, status, operation type, identification,
+dates and vehicle (any plate the vehicle ever carried, or the plate read at the
+workshop for an unidentified visit). One navigation on all console pages. Back
+now restores unfiltered fields on the console list pages.
+`tests/ida-admin-maintenance-test.js` (71). Details: `docs/ADMIN_CONSOLE.md` §7–§8.
+
+---
+
 ## 2026-10-30 — ida-admin-1: registry and vehicle dossier
 
 Three admin-only read routes (`/api/admin/overview`, `/api/admin/vehicles`,

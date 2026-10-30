@@ -96,3 +96,53 @@ observed; free-text workshop fields (visit reason, operation description) are sh
 personal data typed by a workshop; plates, facts and aliases lists are not row-limited; the registry's free-text OR
 and per-request `count(*)` scan the vehicle table (fine at today's size, revisit past ~10⁵ vehicles).
 
+
+## 7. The six Admin modules — status audit (2026-10-30, `main` @ `138aa5e`)
+
+Evidence = pages in `ADMIN_ASSETS`, links in each page's nav, routes in `api.js`/`v12-routes.js`/`admin-routes.js`, and
+suites. A table or an endpoint alone does not count as a module. **Production (`0b005e7`) serves only `/admin` (Saisie)
+and `/admin/review` (Revue)** — PR #39 is merged but not deployed.
+
+| Module | Frontend page / nav | Backend | Real data | Access control | Tests | Status | Missing work |
+|---|---|---|---|---|---|---|---|
+| 1. Dashboard | none of its own; 7 count tiles at the top of `/admin/vehicles` | `GET /api/admin/overview` | yes (SQL counts, provider/catalogue state) | admin-only, twice | `ida-admin-registry` §5 | **PARTIAL** | a dedicated page; recent activity is returned but not shown; links from each tile to its module |
+| 2. Vehicles | `/admin/vehicles` (registry), `/admin/vehicle?ref=` (dossier); in nav | `GET /api/admin/vehicles`, `…/:ref/dossier`, VIN via audited fiche | yes | admin-only, twice | `ida-admin-registry` 135/0, browser check 34/0 | **COMPLETE (read)** | edits stay in Saisie / review / merge routes; no merge/split UI |
+| 3. Maintenance History | per-vehicle section of the dossier only; no page, no nav entry | workshop routes are **per organisation** (admin must pass `org_id`); no cross-organisation list | yes (visits, operations, service events) | org-scoped for workshops | `ida-v12` (workshop API) | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/maintenance` + `GET /api/admin/maintenance` (§8) | merge + deploy |
+| 4. Ateliers & Data Sources | none | **no route lists organisations or capture sources**; `GET /api/resolution/providers` and `/api/catalog/status` exist (admin) | tables `idauto_organizations`, `idauto_capture_sources`, `idauto_user_roles`; provider/TecDoc state | — | none for a listing | **MISSING** | read routes + page: organisations (status, type, activity counts, no contact data), capture sources (trust level, legal basis, active), configured providers/catalogue |
+| 5. Data Quality | `/admin/review` (Revue) — pending observations + accept/reject; **English copy**; no conflict view | `/api/review/observations`, `…/decision`, `/api/review/submissions` (unused by the page), `/api/review/facts/:id/decision`, merge/split routes | yes | admin-only (absent from scope tables) | `ida-2h` 37/0, `ida-3e` 63/0 | **PARTIAL** | cross-vehicle list of disagreeing facts, pending facts, aliases; submissions queue in the UI; French copy |
+| 6. Security & Audit | none | **no route reads `idauto_audit_log` globally** (dossier shows one vehicle's rows); `GET /api/metrics` (admin); users only via `ops/auth-users.js` CLI | `idauto_audit_log`, `idauto_auth_user`/`_session` | — | auth suites (`ida-v13`) test the mechanism, not a console | **MISSING** | read routes + page: audit log with filters (event, actor type, org, date) and masked summaries; accounts and roles (no password/hash/token), active session counts; auth denial metrics |
+
+**Plan, in order of product value and dependency:**
+1. **Maintenance History** (this branch, `ida-admin-2-maintenance`) — the vehicle history the product exists for, across every organisation; plus one shared navigation for all console pages.
+2. **Ateliers & Data Sources** — read routes for organisations and capture sources; reuses the providers/catalogue status.
+3. **Data Quality** — cross-vehicle disagreement/pending/alias lists; wire the existing review queue and submissions; French copy.
+4. **Security & Audit** — global audit log (masked like the dossier), accounts/roles read-only, session counts.
+5. **Dashboard** — its own page last, because its tiles should link into modules 2–6.
+
+Each increment: admin-only routes (absent from every scope table + handler check), read-only SQL, `textContent`-only
+rendering, loading/empty/error states, 390/1280 px browser check, a DB suite mutation-checked, nothing invented — what
+is not recorded is shown as not recorded.
+
+## 8. Maintenance History (IDA-ADMIN-2, branch `ida-admin-2-maintenance`)
+
+`/admin/maintenance` — every recorded workshop visit (with its operations) and every service event, **across all
+organisations**, admin only. The per-organisation workshop routes are unchanged.
+
+`GET /api/admin/maintenance?kind=visits|service_events&q=&org_id=&status=&operation_type=&identified=&from=&to=&dir=&page=&page_size=`
+→ `{ kind, page, page_size, total, pages, dir, organisations[{id,name,status}] (only those with records), totals{visits,
+unidentified_visits, operations, service_events, service_events_with_mileage}, mileage_recorded_on_visits:false,
+results[] }`. A visit: `{ id, org_id, org_name, status, opened_at, closed_at, reason, identification_method,
+plate_read_method, plate_read (unidentified visits only), customer_ref_present, odometer_km:null, vehicle{ivid,…,plate,
+merged_into}|null, operations[] }`. A service event: `{ id, org_id, org_name, event_type, event_date, odometer_km|null,
+description, outcome, next_service_due, is_public, recorded_at, vehicle }`. `q` = IVID / internal_ref / any current or
+historical plate in any spelling, or the plate read at the workshop for an unidentified visit. Every filter is validated
+(400 + `message_fr`; impossible dates refused; visit-only filters refused for service events).
+
+Never returned: the customer reference (flag only), `plate_read` of an identified visit, the read confidence, any fact.
+
+Tests: `tests/ida-admin-maintenance-test.js` 71/0 (mutation-checked: exposing `plate_read`, ignoring the organisation
+filter, removing the handler's admin check, selecting the customer reference — each turns it red). Browser 390/1280 px
+26/0. Also fixed: on both console list pages, Back to a page whose URL omits a filter kept the stale value (registry
+browser check 36/0, failing 34/2 before the fix). One navigation (Véhicules · Entretien · Revue · Saisie) on all five
+console pages.
+

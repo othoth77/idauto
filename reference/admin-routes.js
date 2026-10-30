@@ -6,6 +6,7 @@
 //   GET /api/admin/overview                  counts for the console dashboard
 //   GET /api/admin/vehicles                  the registry: filtered, sorted, paged
 //   GET /api/admin/vehicles/:ref/dossier     one identity and everything recorded against it
+//   GET /api/admin/maintenance               workshop visits / service events, every organisation
 //
 // ADMIN ONLY, TWICE. These routes are in no scope table (api.js ROUTE_SCOPES,
 // v12/v14 scopes), so api.js answers 403 to every organisation credential —
@@ -77,10 +78,17 @@ function createAdminRoutes(ctx) {
     sendJson(res, 200, out);
   }
 
+  // IDA-ADMIN-2 — maintenance history across every organisation.
+  async function getMaintenance(req, res) {
+    var filter = adminRepository.parseMaintenanceQuery(query(req));
+    sendJson(res, 200, await adminRepository.listMaintenance(filter));
+  }
+
   var routes = [
     { method: 'GET', pattern: /^\/api\/admin\/overview$/, handler: adminOnly(getOverview) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
-    { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) }
+    { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) },
+    { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) }
   ];
 
   return { routes: routes };

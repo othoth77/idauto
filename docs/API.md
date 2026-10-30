@@ -96,6 +96,7 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 |---|---|
 | `GET /api/admin/overview` | dashboard counts + health |
 | `GET /api/admin/vehicles?q=&make=&model=&year=&fiche_status=&verified=&include_merged=1&sort=&dir=&page=&page_size=` | paged registry; `q` matches IVID, internal_ref, current or historical plate, make/model prefix — never a VIN |
+| `GET /api/admin/maintenance?kind=visits\|service_events&q=&org_id=&status=&operation_type=&identified=&from=&to=&dir=&page=&page_size=` | workshop visits (with operations) or service events across every organisation; no customer reference; visit mileage not recorded |
 | `GET /api/admin/vehicles/:ref/dossier` | one canonical identity and everything recorded against it; no VIN, no restricted fact, no customer reference |
 
 In no scope table: every organisation credential gets 403. Contract and field lists: [`ADMIN_CONSOLE.md`](ADMIN_CONSOLE.md). Pages: `/admin/vehicles`, `/admin/vehicle?ref=`.

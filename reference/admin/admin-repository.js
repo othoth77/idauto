@@ -439,6 +439,174 @@ async function overview() {
   };
 }
 
+/* =========================================================================
+ * IDA-ADMIN-2 — MAINTENANCE HISTORY across every organisation.
+ *
+ * The workshop routes (/api/workshop/*) are per organisation by design: an
+ * atelier sees its own visits, and an admin must name one org_id. The console
+ * needs the other view — every recorded intervention, whoever recorded it —
+ * so it reads the same tables here, read-only, admin-only.
+ *
+ * Two record kinds, kept apart because they are different evidence:
+ *   visits          idauto_workshop_visits + their operations (no mileage
+ *                   column exists on a visit: odometer_km is always null)
+ *   service_events  idauto_service_events (carries odometer_km when recorded)
+ *
+ * Never selected: the workshop customer reference (only whether one exists),
+ * plate_read_confidence. plate_read — the plate as typed or read at the
+ * workshop — is returned ONLY for a visit that was never identified, where it
+ * is the one handle an operator has to resolve it; an identified visit shows
+ * the vehicle's own current plate instead.
+ * ========================================================================= */
+var VISIT_STATUSES = ['open', 'in_progress', 'closed', 'cancelled'];
+var OPERATION_TYPES = ['diagnosis', 'replacement', 'service', 'repair', 'inspection', 'other'];
+
+function dateParam(q, name) {
+  var v = oneParam(q, name, 10);
+  if (v === null) return null;
+  // Round trip, so 2026-02-30 is refused here instead of failing in SQL (a 500).
+  var d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + 'T00:00:00Z') : null;
+  if (!d || isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) throw badRequest(name + ' must be a date YYYY-MM-DD');
+  return v;
+}
+
+function parseMaintenanceQuery(q) {
+  q = q || {};
+  var out = {
+    kind: oneParam(q, 'kind', 20) || 'visits',
+    q: oneParam(q, 'q'),
+    org_id: oneParam(q, 'org_id', 10),
+    status: oneParam(q, 'status', 20),
+    operation_type: oneParam(q, 'operation_type', 20),
+    identified: oneParam(q, 'identified', 5),
+    from: dateParam(q, 'from'),
+    to: dateParam(q, 'to'),
+    dir: (oneParam(q, 'dir', 8) || 'desc').toLowerCase(),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  if (out.kind !== 'visits' && out.kind !== 'service_events') throw badRequest('kind must be visits or service_events');
+  if (out.org_id !== null && !/^\d+$/.test(out.org_id)) throw badRequest('org_id must be a positive integer');
+  if (out.status !== null && VISIT_STATUSES.indexOf(out.status) === -1) throw badRequest('unknown status', { allowed: VISIT_STATUSES });
+  if (out.operation_type !== null && OPERATION_TYPES.indexOf(out.operation_type) === -1) throw badRequest('unknown operation_type', { allowed: OPERATION_TYPES });
+  if (out.identified !== null && out.identified !== 'true' && out.identified !== 'false') throw badRequest('identified must be true or false');
+  if (out.kind === 'service_events' && (out.status || out.operation_type || out.identified !== null)) throw badRequest('status, operation_type and identified apply to visits only');
+  if (out.from && out.to && out.from > out.to) throw badRequest('from is after to');
+  if (out.dir !== 'asc' && out.dir !== 'desc') throw badRequest('dir must be asc or desc');
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10);
+  out.page_size = parseInt(out.page_size, 10);
+  out.org_id = out.org_id === null ? null : parseInt(out.org_id, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+// Vehicle criterion shared by both kinds: IVID / internal_ref of the recorded
+// vehicle, or any plate it has ever carried (any accepted spelling).
+function vehicleMatchClause(alias, text, params) {
+  var parsed = plateNormalizer.parsePlate(text);
+  var plate = parsed.ok ? parsed.canonical : (plateValidator.normalizePlate(text) || text.toUpperCase());
+  params.push(text); var exact = params.length;
+  params.push(plate); var p1 = params.length;
+  params.push(plate.replace(/ /g, '')); var p2 = params.length;
+  return '(' + alias + '.ivid = $' + exact + ' OR ' + alias + '.internal_ref = $' + exact +
+    ' OR EXISTS (SELECT 1 FROM idauto_plates p WHERE p.vehicle_id = ' + alias + '.id AND (p.plate_number = $' + p1 +
+    " OR REPLACE(p.plate_number, ' ', '') = $" + p2 + ')))';
+}
+
+function vehicleSummary(r) {
+  if (!r.v_ivid) return null;
+  var parsed = r.v_plate ? plateNormalizer.parsePlate(r.v_plate) : null;
+  return { ivid: r.v_ivid, internal_ref: r.v_internal_ref, make: r.v_make, model: r.v_model, year: r.v_year,
+    plate: r.v_plate, plate_display: parsed && parsed.ok ? parsed.display : r.v_plate, merged_into: r.v_merged_into || null };
+}
+
+var VEHICLE_SUMMARY_SQL =
+  'v.ivid AS v_ivid, v.internal_ref AS v_internal_ref, v.make AS v_make, v.model AS v_model, v.year AS v_year, mv.ivid AS v_merged_into, ' +
+  "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS v_plate";
+
+async function listMaintenance(filter) {
+  var where = [], params = [];
+  var visits = filter.kind === 'visits';
+  var t = visits ? 'w' : 'e';
+  var dateCol = visits ? 'w.opened_at' : 'e.event_date';
+  if (filter.org_id !== null) { params.push(filter.org_id); where.push(t + '.org_id = $' + params.length); }
+  if (filter.from) { params.push(filter.from); where.push(dateCol + ' >= $' + params.length + '::date'); }
+  if (filter.to) { params.push(filter.to); where.push(dateCol + " < ($" + params.length + "::date + INTERVAL '1 day')"); }
+  if (visits) {
+    if (filter.status) { params.push(filter.status); where.push('w.status = $' + params.length); }
+    if (filter.operation_type) { params.push(filter.operation_type); where.push('EXISTS (SELECT 1 FROM idauto_workshop_operations o WHERE o.visit_id = w.id AND o.operation_type = $' + params.length + ')'); }
+    if (filter.identified !== null) where.push(filter.identified === 'true' ? 'w.vehicle_id IS NOT NULL' : 'w.vehicle_id IS NULL');
+  }
+  if (filter.q) {
+    var vm = vehicleMatchClause('v', filter.q, params);
+    if (visits) {
+      // An unidentified visit is found by the plate read at the workshop.
+      var parsed = plateNormalizer.parsePlate(filter.q);
+      var plate = parsed.ok ? parsed.canonical : filter.q.toUpperCase();
+      params.push(plate.replace(/ /g, ''));
+      vm = '(' + vm + " OR (w.vehicle_id IS NULL AND REPLACE(UPPER(w.plate_read), ' ', '') = $" + params.length + '))';
+    }
+    where.push(vm);
+  }
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var from = visits
+    ? ' FROM idauto_workshop_visits w LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id LEFT JOIN idauto_vehicles mv ON mv.id = v.merged_into_id LEFT JOIN idauto_organizations org ON org.id = w.org_id'
+    : ' FROM idauto_service_events e LEFT JOIN idauto_vehicles v ON v.id = e.vehicle_id LEFT JOIN idauto_vehicles mv ON mv.id = v.merged_into_id LEFT JOIN idauto_organizations org ON org.id = e.org_id';
+
+  var total = (await db.query('SELECT count(*)::int AS n' + from + whereSql, params)).rows[0].n;
+  var dir = filter.dir === 'asc' ? 'ASC' : 'DESC';
+  var pageParams = params.slice();
+  pageParams.push(filter.page_size); var li = pageParams.length;
+  pageParams.push((filter.page - 1) * filter.page_size); var oi = pageParams.length;
+  var select = visits
+    ? 'SELECT w.id, w.org_id, org.name AS org_name, w.status, w.opened_at, w.closed_at, w.reason, w.identification_method, w.plate_read_method, ' +
+      'CASE WHEN w.vehicle_id IS NULL THEN w.plate_read END AS plate_read, (w.customer_ref_id IS NOT NULL) AS customer_ref_present, ' + VEHICLE_SUMMARY_SQL
+    : 'SELECT e.id, e.org_id, org.name AS org_name, e.event_type, e.event_date, e.odometer_km, e.description, e.outcome, e.next_service_due, e.is_public, e.created_at, ' + VEHICLE_SUMMARY_SQL;
+  var rows = (await db.query(select + from + whereSql + ' ORDER BY ' + dateCol + ' ' + dir + ' NULLS LAST, ' + t + '.id ' + dir +
+    ' LIMIT $' + li + ' OFFSET $' + oi, pageParams)).rows;
+
+  var results;
+  if (visits) {
+    var ids = rows.map(function (r) { return r.id; });
+    var ops = ids.length ? (await db.query(
+      'SELECT o.id, o.visit_id, o.operation_type, o.description, o.quantity, o.status, o.created_at, p.reference AS part_reference, p.brand AS part_brand, p.name AS part_name ' +
+      'FROM idauto_workshop_operations o LEFT JOIN idauto_parts p ON p.id = o.part_id WHERE o.visit_id = ANY($1::bigint[]) ORDER BY o.created_at, o.id', [ids])).rows : [];
+    var byVisit = {};
+    ops.forEach(function (o) {
+      (byVisit[o.visit_id] = byVisit[o.visit_id] || []).push({ id: o.id, operation_type: o.operation_type, description: o.description, quantity: o.quantity,
+        status: o.status, recorded_at: o.created_at, part: o.part_reference ? { reference: o.part_reference, brand: o.part_brand, name: o.part_name } : null });
+    });
+    results = rows.map(function (r) {
+      return { id: r.id, org_id: r.org_id, org_name: r.org_name, status: r.status, opened_at: r.opened_at, closed_at: r.closed_at,
+        reason: r.reason, identification_method: r.identification_method, plate_read_method: r.plate_read_method,
+        plate_read: r.plate_read, customer_ref_present: r.customer_ref_present, odometer_km: null,
+        vehicle: vehicleSummary(r), operations: byVisit[r.id] || [] };
+    });
+  } else {
+    results = rows.map(function (r) {
+      return { id: r.id, org_id: r.org_id, org_name: r.org_name, event_type: r.event_type, event_date: r.event_date, odometer_km: r.odometer_km,
+        description: r.description, outcome: r.outcome, next_service_due: r.next_service_due, is_public: r.is_public, recorded_at: r.created_at,
+        vehicle: vehicleSummary(r) };
+    });
+  }
+
+  // Filter choices come from the data, never from a hard-coded list of ateliers.
+  var orgs = (await db.query(
+    'SELECT o.id, o.name, o.status FROM idauto_organizations o WHERE EXISTS (SELECT 1 FROM idauto_workshop_visits w WHERE w.org_id = o.id) ' +
+    'OR EXISTS (SELECT 1 FROM idauto_service_events e WHERE e.org_id = o.id) ORDER BY o.name, o.id')).rows;
+  var counts = (await db.query(
+    "SELECT (SELECT count(*)::int FROM idauto_workshop_visits) AS visits, (SELECT count(*)::int FROM idauto_workshop_visits WHERE vehicle_id IS NULL) AS unidentified_visits, " +
+    '(SELECT count(*)::int FROM idauto_workshop_operations) AS operations, (SELECT count(*)::int FROM idauto_service_events) AS service_events, ' +
+    '(SELECT count(*)::int FROM idauto_service_events WHERE odometer_km IS NOT NULL) AS service_events_with_mileage')).rows[0];
+
+  return { kind: filter.kind, page: filter.page, page_size: filter.page_size, total: total, pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    dir: filter.dir, organisations: orgs, totals: counts, mileage_recorded_on_visits: false, results: results };
+}
+
 module.exports = {
   parseRegistryQuery: parseRegistryQuery,
   listVehicles: listVehicles,
@@ -447,5 +615,9 @@ module.exports = {
   PAGE_SIZE_MAX: PAGE_SIZE_MAX,
   OFFSET_MAX: OFFSET_MAX,
   SORTS: Object.keys(SORTS),
-  FICHE_STATUSES: FICHE_STATUSES.slice()
+  FICHE_STATUSES: FICHE_STATUSES.slice(),
+  parseMaintenanceQuery: parseMaintenanceQuery,
+  listMaintenance: listMaintenance,
+  VISIT_STATUSES: VISIT_STATUSES.slice(),
+  OPERATION_TYPES: OPERATION_TYPES.slice()
 };
