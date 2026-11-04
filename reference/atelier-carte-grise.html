@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Carte grise</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <!-- IDA-CG2 — carte grise V2: capture both faces (originals), read them, review every field,
+       find the vehicle, then link or create. Same Design System and CSP as /atelier. -->
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/atelier.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/atelier" aria-label="IDauto — atelier">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation atelier">
+      <ul class="ida-nav-links">
+        <li><a href="/atelier">Atelier</a></li>
+        <li><a href="/atelier/carte-grise" aria-current="page">Carte grise</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Thème clair ou sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-stack">
+      <p class="ida-label">IDauto · Atelier</p>
+      <h1>Carte grise</h1>
+      <p class="ida-muted">Photographiez les deux faces, lisez la carte, vérifiez chaque information, puis rattachez-la au
+      bon véhicule ou créez-le. Rien n'est enregistré sur le véhicule avant votre décision. Les photos sont gardées telles
+      quelles ; les données du titulaire ne sont jamais extraites.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-list" id="list-section">
+      <h2 id="sec-list" class="ida-h3">Cartes en cours</h2>
+      <div class="ida-cgr-new">
+        <button type="button" id="new-submission" class="ida-btn ida-btn--primary">Nouvelle carte grise</button>
+        <label class="ida-small"><input type="checkbox" id="single-sided"> Carte à une seule face</label>
+        <input class="ida-input" id="single-reason" maxlength="300" placeholder="Pourquoi une seule face ?" hidden aria-label="Raison d'une carte à une seule face">
+      </div>
+      <div id="list" aria-live="polite"></div>
+    </section>
+
+    <div id="work" class="ida-stack-lg" hidden>
+      <section class="ida-card ida-stack" aria-labelledby="sec-faces">
+        <h2 id="sec-faces" class="ida-h3">1. Les deux faces</h2>
+        <p class="ida-small" id="sub-line"></p>
+        <div class="ida-cgr-faces">
+          <div class="ida-cgr-face" data-face="1">
+            <h3 class="ida-label">Face 1 — recto</h3>
+            <div class="ida-cgr-preview" data-preview="1"><span class="ida-muted">Aucune photo</span></div>
+            <p class="ida-small" data-face-status="1"></p>
+            <label class="ida-btn ida-btn--secondary ida-btn--sm">Choisir ou prendre la photo
+              <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-file="1" class="ida-sr-only"></label>
+          </div>
+          <div class="ida-cgr-face" data-face="2">
+            <h3 class="ida-label">Face 2 — verso</h3>
+            <div class="ida-cgr-preview" data-preview="2"><span class="ida-muted">Aucune photo</span></div>
+            <p class="ida-small" data-face-status="2"></p>
+            <label class="ida-btn ida-btn--secondary ida-btn--sm">Choisir ou prendre la photo
+              <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-file="2" class="ida-sr-only"></label>
+          </div>
+        </div>
+        <div id="face-messages" aria-live="polite"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-read">
+        <h2 id="sec-read" class="ida-h3">2. Lecture et vérification</h2>
+        <div class="ida-cgr-actions">
+          <button type="button" id="run-ocr" class="ida-btn ida-btn--primary">Lire la carte</button>
+          <span class="ida-small" id="ocr-status" aria-live="polite"></span>
+        </div>
+        <div id="checks" aria-live="polite"></div>
+        <div id="fields" class="ida-table-wrap"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-match">
+        <h2 id="sec-match" class="ida-h3">3. Le véhicule</h2>
+        <div class="ida-cgr-actions"><button type="button" id="run-match" class="ida-btn ida-btn--secondary">Rechercher le véhicule</button></div>
+        <div id="match" aria-live="polite"></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-decide">
+        <h2 id="sec-decide" class="ida-h3">4. Décision</h2>
+        <div id="decision" aria-live="polite"></div>
+        <div class="ida-cgr-actions">
+          <select class="ida-input" id="better-face" aria-label="Face à refaire"><option value="1">Face 1</option><option value="2">Face 2</option></select>
+          <input class="ida-input" id="better-reason" maxlength="300" placeholder="Pourquoi refaire la photo ?" aria-label="Raison">
+          <button type="button" id="request-better" class="ida-btn ida-btn--secondary ida-btn--sm">Demander une meilleure photo</button>
+        </div>
+        <div class="ida-cgr-actions">
+          <input class="ida-input" id="reject-reason" maxlength="300" placeholder="Pourquoi rejeter ?" aria-label="Raison du rejet">
+          <button type="button" id="reject" class="ida-btn ida-btn--ghost ida-btn--sm">Rejeter le document</button>
+        </div>
+      </section>
+    </div>
+    <div id="status" role="status" aria-live="polite"></div>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — atelier. Chaque étape est enregistrée au journal d'audit ; le numéro de châssis n'est jamais réaffiché.</p>
+  </div>
+</footer>
+
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/carte-grise-ui.js"></script>
+</body>
+</html>

@@ -150,6 +150,41 @@
         ' · ' + doc.width + '×' + doc.height + ' px · ' + Math.round(doc.byte_size / 1024) + ' Ko · OCR : ' + doc.ocr_status +
         ' · déposée par ' + (doc.org_name || 'l\'administration') + ' le ' + C.date(doc.recorded_at, true));
     })) : null, 'Aucun document enregistré. Les images restent dans le stockage privé ; elles s\'ouvrent depuis le passeport, connecté.');
+    renderCartesGrises(d.registration_submissions || []);
+  }
+
+  // IDA-CG2 — reviewed cartes grises linked to this vehicle: both ORIGINAL faces, through the
+  // authenticated route (blob: URLs, never a public path). Metadata only from the dossier.
+  function renderCartesGrises(subs) {
+    var host = document.getElementById('documents');
+    if (!host || !subs.length) return;
+    var DEC = { create_vehicle: 'a créé ce véhicule', link_existing: 'rattachée à ce véhicule' };
+    var box = el('div', { class: 'ida-stack' }, [el('h3', { class: 'ida-label' }, 'Cartes grises vérifiées (' + subs.length + ')')]);
+    subs.forEach(function (sub) {
+      var faces = el('div', { class: 'ida-admin-stats' });
+      sub.faces.forEach(function (f) {
+        var fig = el('figure', { class: 'ida-card ida-stack' }, [el('p', { class: 'ida-caption' }, 'Face ' + f.face + ' · version ' + f.version + ' · ' + f.width + '×' + f.height + ' px · ' + Math.round(f.byte_size / 1024) + ' Ko (originale)')]);
+        faces.appendChild(fig);
+        var base = '/api/registration-submissions/' + encodeURIComponent(sub.ref) + '/faces/' + f.face + '/image';
+        fetch(base + (f.has_thumbnail ? '?variant=thumb' : ''), { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } })
+          .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.blob(); })
+          .then(function (b) { var img = el('img', { src: URL.createObjectURL(b), alt: 'Carte grise — face ' + f.face, class: 'ida-admin-cg-image' }); fig.insertBefore(img, fig.firstChild); })
+          .catch(function () { fig.appendChild(el('p', { class: 'ida-muted' }, 'Image indisponible.')); });
+        var open = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm' }, 'Ouvrir l\'originale');
+        open.addEventListener('click', function () {
+          fetch(base, { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } }).then(function (r) { return r.blob(); }).then(function (b) { window.open(URL.createObjectURL(b), '_blank', 'noopener'); });
+        });
+        fig.appendChild(open);
+      });
+      var ch = Object.keys(sub.applied_changes || {}), di = Object.keys(sub.discrepancies || {});
+      box.appendChild(el('div', { class: 'ida-stack' }, [
+        el('p', null, [C.id(sub.ref), ' · ' + (DEC[sub.decision] || sub.decision) + ' le ' + C.date(sub.decided_at, true)]),
+        faces,
+        ch.length ? el('p', { class: 'ida-caption' }, 'Complété : ' + ch.join(', ')) : null,
+        di.length ? el('p', { class: 'ida-caption' }, 'Différences non appliquées : ' + di.join(', ')) : null
+      ]));
+    });
+    host.appendChild(box);
   }
 
   function renderIdentification(d) {

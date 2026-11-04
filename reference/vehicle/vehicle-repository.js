@@ -223,24 +223,35 @@ async function createIdentifiedVehicle(input, actor, prov, verified) {
     { principal: actor.principal, event_type: 'vehicle.identify.create', target_type: 'idauto_vehicles', change_summary: 'Vehicle created from identification (' + (prov.method || 'unknown') + ', ' + (prov.source || 'unknown') + ')' },
     actor.identity,
     async function (client) {
-      var internalRef = 'IDA2D-' + Date.now().toString(36) + '-' + require('crypto').randomBytes(4).toString('hex');
-      var cols = ['internal_ref', 'fiche_status'], vals = [internalRef, verified ? 'verified' : 'pending_review'];
-      Object.keys(fields).forEach(function (k) { cols.push(k); vals.push(fields[k]); });
-      var p = provenanceSql(prov, verified, actor, vals.length + 1);
-      var placeholders = vals.map(function (_, idx) { return '$' + (idx + 1); });
-      var sql = 'INSERT INTO idauto_vehicles (' + cols.join(', ') + ', ' +
-        p.sets.map(function (s) { return s.split(' = ')[0]; }).join(', ') + ') VALUES (' + placeholders.join(', ') + ', ' +
-        p.sets.map(function (s) { return s.split(' = ')[1]; }).join(', ') + ') RETURNING id';
-      var ins = await client.query(sql, vals.concat(p.params));
-      var id = ins.rows[0].id;
-      await ividIssuance.issueForVehicle(client, id, { skipAudit: true });
-      if (input.plate && input.plate.ok) await attachPlate(client, id, input.plate);
-      if (input.vin) await attachVin(client, id, input.vin, verified);
-      var row = await canonicalById(id, client);
-      await insertHistory(client, id, actor, verified ? 'confirmed' : 'resolved', prov, null, identSnapshot(row));
-      return { record: { internal_ref: row.internal_ref, ivid: row.ivid, id: id }, auditTargetRef: row.internal_ref };
+      var row = await insertIdentifiedVehicle(client, input, actor, prov, verified);
+      return { record: { internal_ref: row.internal_ref, ivid: row.ivid, id: row.id }, auditTargetRef: row.internal_ref };
     }
   ).then(function (r) { return canonicalById(r.id); });
+}
+
+// The body of createIdentifiedVehicle on a caller's transaction client, so a
+// caller that must create the vehicle AND link something to it atomically
+// (IDA-CG2 registration submissions) runs both in ONE transaction. The IVID
+// is issued here, inside that transaction.
+async function insertIdentifiedVehicle(client, input, actor, prov, verified) {
+  var fields = cleanIdentFields(input);
+  if (!fields.make && !input.vin && !(input.plate && input.plate.ok)) throw errors.IdautoError('VALIDATION', { reason: 'nothing_to_identify' });
+  var internalRef = 'IDA2D-' + Date.now().toString(36) + '-' + require('crypto').randomBytes(4).toString('hex');
+  var cols = ['internal_ref', 'fiche_status'], vals = [internalRef, verified ? 'verified' : 'pending_review'];
+  Object.keys(fields).forEach(function (k) { cols.push(k); vals.push(fields[k]); });
+  var p = provenanceSql(prov, verified, actor, vals.length + 1);
+  var placeholders = vals.map(function (_, idx) { return '$' + (idx + 1); });
+  var sql = 'INSERT INTO idauto_vehicles (' + cols.join(', ') + ', ' +
+    p.sets.map(function (s) { return s.split(' = ')[0]; }).join(', ') + ') VALUES (' + placeholders.join(', ') + ', ' +
+    p.sets.map(function (s) { return s.split(' = ')[1]; }).join(', ') + ') RETURNING id';
+  var ins = await client.query(sql, vals.concat(p.params));
+  var id = ins.rows[0].id;
+  await ividIssuance.issueForVehicle(client, id, { skipAudit: true });
+  if (input.plate && input.plate.ok) await attachPlate(client, id, input.plate);
+  if (input.vin) await attachVin(client, id, input.vin, verified);
+  var row = await canonicalById(id, client);
+  await insertHistory(client, id, actor, verified ? 'confirmed' : 'resolved', prov, null, identSnapshot(row));
+  return row;
 }
 
 // Updates the identification of an existing vehicle (confirm / edit /
@@ -281,5 +292,7 @@ module.exports = {
   findByAttributes: findByAttributes, platesOf: platesOf, vinOf: vinOf, record: record,
   createIdentifiedVehicle: createIdentifiedVehicle, saveIdentification: saveIdentification, history: history,
   cleanIdentFields: cleanIdentFields, identSnapshot: identSnapshot,
-  canonicalById: canonicalById   // IDA-CG2 — the matcher follows merges the same way
+  canonicalById: canonicalById,   // IDA-CG2 — the matcher follows merges the same way
+  // IDA-CG2 — transaction-client building blocks for registration submissions.
+  insertIdentifiedVehicle: insertIdentifiedVehicle, attachPlate: attachPlate, insertHistory: insertHistory, vinOfWith: vinOf
 };

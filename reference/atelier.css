@@ -31,3 +31,14 @@
 [data-panel="identify"][data-state="resolving"] .ida-search-actions { opacity: .6; pointer-events: none; }
 
 /* IDA-V14 — the carte grise dialog and the fiche list styles live in web/citizen/document.css (shared with the homepage and the passport). */
+
+/* IDA-CG2 — carte grise review page (/atelier/carte-grise). Tokens only. */
+.ida-cgr-new, .ida-cgr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ida-space-2) var(--ida-space-3); }
+.ida-cgr-faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--ida-space-4); }
+.ida-cgr-face { display: flex; flex-direction: column; gap: var(--ida-space-2); }
+.ida-cgr-preview { display: flex; align-items: center; justify-content: center; min-height: 10rem; border: 1px dashed var(--ida-border-strong); border-radius: var(--ida-radius-card); background: var(--ida-surface-sunken); overflow: hidden; }
+.ida-cgr-preview img { display: block; max-width: 100%; height: auto; }
+.ida-cgr-list, .ida-cgr-checks { margin: 0; padding-inline-start: var(--ida-space-5); display: flex; flex-direction: column; gap: var(--ida-space-1); }
+.ida-cgr-controls { display: flex; flex-wrap: wrap; gap: var(--ida-space-1); align-items: center; }
+.ida-cgr-correct { max-width: 12rem; }
+.ida-cgr-candidate { display: flex; flex-direction: column; gap: var(--ida-space-1); }

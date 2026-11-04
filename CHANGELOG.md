@@ -6,6 +6,24 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-11-04 — ida-cg2 stages 2–5: carte grise V2 (not deployed)
+
+A carte grise becomes a **submission** before it belongs to a vehicle: versioned
+original faces (never replaced by a compressed copy), OCR text parsed in memory
+and dropped, technical fields with raw/normalised value, source face/version/
+label/line and confidence, append-only review (confirm / correct / unreadable /
+not present), then ONE locked transaction that links the card to the matched
+vehicle (filling only what is missing; differences recorded) or creates the
+vehicle with its IVID — never while the match is ambiguous unless an admin says
+so. `/atelier/carte-grise` (review page) and the cards' original faces in the
+admin vehicle file. Migration `ida-cg2-registration-submissions.sql` (three new
+tables). Parser: a VIN character substitution is flagged, not silent; a piece
+of a VIN is no longer read as a plate. Production use waits for D6 (backup of
+the images) and D7 (real redacted cards). Tests: `ida-cg2-registration-
+submissions` (68), `ida-cg2-carte-grise-browser` (36, real OCR on synthetic cards).
+
+---
+
 ## 2026-11-04 — ida-cg2 stage 1: is this vehicle already in IDauto?
 
 `POST /api/registration-documents/match` and `reference/documents/vehicle-matcher.js`

@@ -82,7 +82,7 @@
     var t = text.replace(/[^A-Z0-9؀-ۿ]+/g, " ");
     while ((m = re.exec(t)) !== null) {
       var raw = m[0], fixed = raw.replace(/O/g, "0").replace(/I/g, "1").replace(/Q/g, "0");
-      if (/^[A-HJ-NPR-Z0-9]{17}$/.test(fixed)) out.push({ value: fixed, corrected: fixed !== raw });
+      if (/^[A-HJ-NPR-Z0-9]{17}$/.test(fixed)) out.push({ value: fixed, raw: raw, corrected: fixed !== raw });
     }
     return out;
   }
@@ -112,7 +112,11 @@
       lines.push(l);
     });
     var joined = lines.join("\n");
-    function add(key, value, conf, label) { if (value === null || value === undefined || value === "") return; fields.push({ key: key, value: value, confidence: Math.round(Math.max(0.05, Math.min(1, conf)) * 100) / 100, source: source, label: label || null }); }
+    // IDA-CG2: each field also carries what was read (`raw`), whether a
+    // character substitution produced `value` (`corrected` — the reviewer
+    // sees it, nothing is fixed silently) and the line it came from.
+    var at = { line: null, raw: null };
+    function add(key, value, conf, label, extra) { if (value === null || value === undefined || value === "") return; fields.push(Object.assign({ key: key, value: value, confidence: Math.round(Math.max(0.05, Math.min(1, conf)) * 100) / 100, source: source, label: label || null, line: at.line, raw: at.raw, corrected: false }, extra || {})); }
 
     // 1. Labelled fields.
     for (var i = 0; i < lines.length; i++) {
@@ -121,7 +125,8 @@
       var got = valueAfter(lines, i, hit.end);
       if (!got) continue;
       var v = got.value;
-      if (hit.key === "vin") { var vc = vinCandidates(v); if (vc.length) add("vin", vc[0].value, base + (vc[0].corrected ? 0.05 : 0.2), hit.label); }
+      at = { line: i, raw: v.slice(0, 120) };
+      if (hit.key === "vin") { var vc = vinCandidates(v); if (vc.length) add("vin", vc[0].value, base + (vc[0].corrected ? 0.05 : 0.2), hit.label, { raw: vc[0].raw, corrected: vc[0].corrected }); }
       else if (hit.key === "registration") add("registration", v, base + 0.1, hit.label);
       else if (hit.key === "manufacturer") add("manufacturer", v.replace(/[^A-Z0-9 \-]/g, "").trim().slice(0, 80), base + 0.1, hit.label);
       else if (hit.key === "type") add("type", v.replace(/[^A-Z0-9 \-\/.]/g, "").trim().slice(0, 80), base, hit.label);
@@ -137,10 +142,13 @@
     }
 
     // 2. Unlabelled detectors over the whole face (labels are often lost by OCR).
-    if (!fields.some(function (f) { return f.key === "vin"; })) { var vc2 = vinCandidates(joined); if (vc2.length) add("vin", vc2[0].value, base + (vc2[0].corrected ? 0 : 0.15), null); if (vc2.length > 1) warnings.push("several_vin_candidates"); }
+    at = { line: null, raw: null };
+    if (!fields.some(function (f) { return f.key === "vin"; })) { var vc2 = vinCandidates(joined); if (vc2.length) add("vin", vc2[0].value, base + (vc2[0].corrected ? 0 : 0.15), null, { raw: vc2[0].raw, corrected: vc2[0].corrected }); if (vc2.length > 1) warnings.push("several_vin_candidates"); }
     if (!fields.some(function (f) { return f.key === "registration"; })) {
-      var pm = /(\d{1,4})\s*(TUN|TU|تونس|RS)\s*(\d{1,4})/.exec(joined) || /(\d{1,4})\s+(\d{3,4})\s*(تونس)/.exec(joined);
-      if (pm) add("registration", pm[0].replace(/\s+/g, " "), base, null);
+      // The plate must stand alone: no letter or digit glued to either end, so a piece of a VIN
+      // (« …4TU7… ») is never read as a registration number (IDA-CG2, found by a randomised test).
+      var pm = /(?<![A-Z0-9])(\d{1,4})\s*(TUN|TU|تونس|RS)\s*(\d{1,4})(?![A-Z0-9])/.exec(joined) || /(?<![A-Z0-9])(\d{1,4})\s+(\d{3,4})\s*(تونس)/.exec(joined);
+      if (pm) add("registration", pm[0].replace(/\s+/g, " "), base, null, { raw: pm[0] });
     }
     if (!fields.some(function (f) { return f.key === "year"; })) { var anyDate = /(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/.exec(joined); if (anyDate) { var d2 = parseDate(anyDate[0]); if (d2) { add("first_registration_date", d2.date, base - 0.15, null); add("year", d2.year, base - 0.15, null); } } }
     if (!fields.some(function (f) { return f.key === "fuel"; })) { FUEL.forEach(function (x) { if (!fields.some(function (f) { return f.key === "fuel"; }) && new RegExp("\\b" + x[0].source.split("|")[0] + "\\b").test(joined)) add("fuel", x[1], base - 0.25, null); }); }

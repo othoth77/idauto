@@ -69,3 +69,60 @@ the model reports `capabilities: ["completion"]` (no image input). Therefore:
 | 3 | Locked decision path: link to the matched vehicle (proposals only, verified values never overwritten) or create (transaction + advisory lock on plate/VIN, IVID issued inside, faces linked atomically) | D3 |
 | 4 | Review UI (atelier + admin) and both images in the dossier | 2, 3 |
 | 5 | Browser end-to-end on synthetic cards; backup coverage | D6, D7 |
+
+## 6. Owner decisions recorded (2026-11-04)
+
+| # | Decision |
+|---|---|
+| D1 | The raw OCR text is **not stored**. It is parsed in memory on the server and dropped; only per-field technical readings are kept. |
+| D2 | Both faces are required when the card has two (`two_sided`, default true; a single-sided card needs a stated reason). |
+| D3 | The vehicle identifier stays the **IVID** — no second ID system. |
+| D4 | The stored bytes are the **original upload**, never replaced by a compressed copy. Storage report below; no capacity change adopted. |
+| D5 | **No holder data** is extracted (field allow-list in code and in the table's CHECK; holder lines dropped by the parser). |
+| D6 | The off-host backup of document images is a **precondition for production use**. |
+| D7 | Accuracy is **not claimed** until tested on real, holder-redacted Tunisian cards. |
+
+### D4 — storage and backup report (measured 2026-11-04, read only)
+
+| Item | Value |
+|---|---|
+| Production disk | 91 % (7.0 GB free) after the approved cleanup |
+| IDauto media root today | 153 KB, 130 files (1 observation image + test leftovers) |
+| Carte grise images in production | **0** (V14 table empty); V2 tables not created in production |
+| Expected size | originals ≈ 2–6 MB per face → ≈ 4–12 MB per card; 100 cards ≈ 0.4–1.2 GB, plus thumbnails (≤ 512 KB) |
+| Off-host backup | `mythos-backup.service` (nightly, verified). Its media capture (`mythos-prod/ops/backup/mythos-backup-capture.sh`) selects keys from `idauto_observation_media` **only** → **neither V14 nor V2 document images are backed up today** |
+
+Needed before production (owner, other repository): extend the capture's key query to
+`idauto_registration_submission_faces.storage_key`, `thumb_storage_key` (and V14's `idauto_vehicle_documents`), then
+watch one nightly run and one restore test. Capacity: at 91 % disk, a real roll-out needs either more disk or an
+off-host object store for originals — a decision, not made here.
+
+## 7. Stage status (branch `feature/carte-grise-v2-stages-2-5`)
+
+| Stage | Status | Evidence |
+|---|---|---|
+| 1 matcher | built (also PR #42) | `ida-cg2-vehicle-matcher-test` 33/0, 8 mutations |
+| 2 submissions, versioned originals, fields with provenance | **built** | `ida-cg2-registration-submissions-test` §1–§4 |
+| 3 locked link / create | **built** | same suite §5–§9 (incl. two concurrent races), 11 mutations caught |
+| 4 review page + images in the dossier | **built** | `/atelier/carte-grise`, admin dossier « Cartes grises vérifiées » |
+| 5 end-to-end | **built on synthetic cards** | `ida-cg2-carte-grise-browser-test` (real Tesseract OCR) |
+| Accuracy on real cards (D7) | **not done** | needs authorised redacted samples |
+| Backup of the images (D6) | **not done** | change in `mythos-prod` backup capture |
+
+### Found and fixed while building
+- The parser **silently corrected** VIN characters (O→0, I→1, Q→0) and kept only the corrected value: it now also returns
+  what was read (`raw`) and `corrected: true`, shown to the reviewer.
+- The parser's unlabelled plate detector read **a piece of a VIN** (« …4TU7… ») as a registration number, producing a
+  false conflict between the faces: the plate must now stand alone (found by a randomised test, pinned by a fixed one).
+- `saveIdentification` / `attachVin` overwrite existing values and replace the VIN: the V2 link path does not use
+  them — it fills only missing columns and records every difference as a discrepancy.
+
+### Known limits
+- The server checks format by magic bytes and dimensions; it does not fully decode the image (no image library). The
+  browser decodes it (`createImageBitmap`) before upload and refuses what it cannot decode.
+- Sharpness is measured in the browser (Laplacian variance) and reported; it warns, it does not block — a person decides.
+- Rotation / orientation is not corrected or detected on the server.
+- An interrupted upload can leave an unreferenced, content-addressed file in the media store (no row points to it).
+- A VIN is never shown back: the operator reads it on the photo and confirms or types it.
+- No database constraint makes a VIN unique (existing data and tests rely on that); duplicates are prevented by the
+  matcher plus an advisory lock per plate/VIN during the decision.

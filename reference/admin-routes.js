@@ -82,6 +82,10 @@ function createAdminRoutes(ctx) {
     var record = await vehicleRepository.record(row, { includeVin: false });
     var out = await adminRepository.dossier(row, record);
     if (ref !== row.ivid && ref !== row.internal_ref) out.requested_alias = ref;
+    // IDA-CG2 — the reviewed cartes grises linked to this vehicle (metadata; images through their authenticated route).
+    // Before the IDA-CG2 migration is applied the table does not exist (42P01): the dossier still answers, with none.
+    try { out.registration_submissions = await require('./documents/registration-submissions.js').forVehicle(row.id, { identity: req.mythosIdentity, principal: req.principal }); }
+    catch (e) { if (e && e.code === '42P01') out.registration_submissions = []; else throw e; }
     sendJson(res, 200, out);
   }
 

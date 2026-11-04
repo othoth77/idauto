@@ -58,6 +58,26 @@ Do **not** deploy without the validation in `docs/AI_HANDOVER.md` (V13 record) �
 
 Rollback: previous `main` + restart; the table is inert for the old code.
 
+## 6. Rolling out IDA-CG2 (carte grise V2) — **NOT AUTHORISED YET**
+
+Gates before any production use (owner decisions, `docs/CARTE_GRISE_V2.md`): **D6** the off-host backup must capture
+the submission images (`idauto_registration_submission_faces.storage_key`, `thumb_storage_key`) — today the capture
+script (`mythos-prod/ops/backup/mythos-backup-capture.sh`) reads `idauto_observation_media` keys only; **D7** OCR
+accuracy measured on real, holder-redacted Tunisian cards; **D4** storage capacity reviewed (originals ≈ 2–6 MB per face).
+
+When authorised:
+1. Backup `idauto_production`.
+2. Merge; pull. No new npm dependency.
+3. Apply `database/migrations/ida-cg2-registration-submissions.sql` (additive: three new tables; idempotent, applied
+   twice on scratch; DOWN block inside). No existing table changes. Until it is applied the admin dossier still answers
+   (`registration_submissions: []`); the `/api/registration-submissions` routes would fail — apply it before use.
+4. Optional environment: `IDAUTO_CG_ORIGINAL_MAX_BYTES` (default 15 MB; `readBinaryBody` caps at 20 MB).
+5. Restart `idauto-api`.
+6. Smoke: `/atelier/carte-grise` → 302 to `/login` when signed out; signed in, a submission opens, a face uploads, its
+   image comes back byte-identical.
+
+Rollback: previous `main` + restart; the three tables are inert for the old code.
+
 ## 6. Logging and monitoring
 
 Structured JSON events on stdout → journald (`SyslogIdentifier=idauto-api`). `GET /api/metrics` (admin token) exposes the resolution metrics; scrape it or read it by hand. No log line carries a token, a captcha value, an IP or a full VIN (asserted by `tests/ida-v12` §12).

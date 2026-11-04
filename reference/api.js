@@ -65,6 +65,7 @@ var v12Routes = require('./v12-routes.js');
 var plateNormalizer = require('./vehicle/plate-normalizer.js');
 var sessionAuth = require('./auth/principal.js');
 var v14Routes = require('./v14-routes.js');
+var cg2Routes = require('./cg2-routes.js');
 var adminRoutes = require('./admin-routes.js');
 var observability = require('./observability.js');
 
@@ -2089,7 +2090,8 @@ var v14 = v14Routes.createV14({ sendJson: sendJson, readJsonBody: readJsonBody, 
 // ALL_ROUTE_SCOPES: absent from the table means admin-only (see the gate in
 // createServer()), and admin-routes.js checks the admin scope again.
 var adminConsole = adminRoutes.createAdminRoutes({ sendJson: sendJson, decodePathSegment: decodePathSegment, resolver: v12.resolver, catalog: v12.catalog });
-var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes, v14.scopes);
+var cg2 = cg2Routes.createCg2({ sendJson: sendJson, readJsonBody: readJsonBody, readBinaryBody: readBinaryBody, decodePathSegment: decodePathSegment });
+var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes, v14.scopes, cg2.scopes);
 
 function scopeForRoute(method, pathname) {
   for (var i = 0; i < ALL_ROUTE_SCOPES.length; i++) {
@@ -2125,7 +2127,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/facts\/([^/]+)\/evidence$/, handler: function (req, res, m) { return getEvidenceForFact(res, decodePathSegment(m[1])); } }
 ];
 
-var ALL_ROUTES = ROUTES.concat(v14.routes, v12.routes, adminConsole.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
+var ALL_ROUTES = ROUTES.concat(v14.routes, cg2.routes, v12.routes, adminConsole.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
 
 function createServer() {
   return http.createServer(function (req, res) {
@@ -2138,10 +2140,10 @@ function createServer() {
       // IDA-V13 — /atelier is a signed-in surface: no session → /login. The
       // page's assets stay static (they carry no data), and every data call
       // the page makes is authenticated below.
-      if (pathname === '/atelier' || pathname === '/atelier/') {
+      if (pathname === '/atelier' || pathname === '/atelier/' || pathname === '/atelier/carte-grise' || pathname === '/atelier/carte-grise/') {
         var pageSession = await sessionAuth.resolveUserSession(req);
         if (!pageSession || !pageSession.user) {
-          res.writeHead(302, { 'Location': '/login?next=' + encodeURIComponent('/atelier'), 'Cache-Control': 'no-store' });
+          res.writeHead(302, { 'Location': '/login?next=' + encodeURIComponent(pathname.replace(/\/$/, '')), 'Cache-Control': 'no-store' });
           return res.end();
         }
       }
