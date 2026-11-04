@@ -126,13 +126,18 @@ async function main() {
   ok(!/localStorage|sessionStorage|Authorization|Bearer/.test(ui), 'no browser storage, no token');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-maintenance.html'), 'utf8');
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html), 'the page has no inline script/style and is French');
-  var NAV = ['/admin/dashboard', '/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/security', '/admin/review', '/admin'];
-  ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'].forEach(function (f) {
-    var page = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8');
-    var links = (page.match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [''])[0].match(/href="[^"]+"/g) || [];
-    ok(JSON.stringify(links.map(function (l) { return l.slice(6, -1); })) === JSON.stringify(NAV) && (page.match(/aria-current="page"/g) || []).length === 1,
-      f + ' carries the one console navigation, with exactly one current page');
-  });
+  // IDA-ADMIN-7 — one navigation, defined once in the shared shell.
+  var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
+  var NAV = [['/admin/dashboard', 'Tableau de bord'], ['/admin/vehicles', 'Véhicules'], ['/admin/maintenance', 'Historique d\u2019entretien'],
+    ['/admin/sources', 'Ateliers & Sources'], ['/admin/quality', 'Qualité des données'], ['/admin/security', 'Sécurité & Audit']];
+  ok(JSON.stringify(shellNav.NAV.map(function (m) { return [m.href, m.label]; })) === JSON.stringify(NAV), 'the shared navigation lists the six modules in order, with their French labels');
+  var kept = { '/admin': '/admin/vehicles', '/admin/vehicle': '/admin/vehicles', '/admin/review': '/admin/quality' };
+  ok(Object.keys(kept).every(function (p) { var l = shellNav.locate(p); return l.module && l.module.href === kept[p]; }), 'every kept page (manual entry, dossier, review queue) belongs to a module');
+  ok(shellNav.locate('/admin/maintenance').page.href === '/admin/maintenance' && shellNav.locate('/admin/maintenance/').module.href === '/admin/maintenance', 'maintenance: current module and page, with or without a trailing slash');
+  ok(shellNav.locate('/admin/nope').module === null && shellNav.locate('/').module === null, 'a path outside the console marks no module');
+  var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];
+  ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1 && (h.match(/<script src="\/admin\/shell\.js"><\/script>/g) || []).length === 1 && !/ida-nav-links|aria-current=/.test(h); }),
+    'all ' + pages.length + ' console pages carry the one shared sidebar slot and load the shell once, with no menu of their own');
 
   /* ===================================================================== */
   say('\n1. ACCESS');

@@ -124,7 +124,9 @@ async function main() {
   var ui = fs.readFileSync(path.join(BASE, 'reference', 'admin-sources-ui.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/.test(ui) && !/localStorage|sessionStorage|Authorization|Bearer/.test(ui), 'the page script renders no markup from strings, stores nothing, sends no token');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-sources.html'), 'utf8');
-  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /href="\/admin\/sources" aria-current="page"/.test(html), 'the page: no inline code, French, « Ateliers » current in the nav');
+  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
+  var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
+  ok(shellNav.locate('/admin/sources').module.href === '/admin/sources' && shellNav.locate('/admin/sources').page.href === '/admin/sources', 'the shared sidebar marks /admin/sources as the current module and page');
 
   /* ===================================================================== */
   say('\n1. ACCESS');

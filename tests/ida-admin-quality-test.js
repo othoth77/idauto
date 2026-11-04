@@ -118,10 +118,13 @@ async function main() {
   ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/.test(ui) && !/localStorage|sessionStorage|Authorization|Bearer/.test(ui), 'the page script renders no markup from strings, stores nothing, sends no token');
   ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/i.test(ui) && !/\/api\/review\//.test(ui), 'the page script sends no write and calls no decision route');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-quality.html'), 'utf8');
-  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /href="\/admin\/quality" aria-current="page"/.test(html), 'the page: no inline code, French, « Qualité » current in the nav');
-  var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html'];
-  ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<li><a href="\/admin\/quality"/g) || []).length === 1 && (h.match(/aria-current="page"/g) || []).length === 1; }),
-    'all ' + pages.length + ' console pages carry « Qualité » once and one current entry');
+  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
+  var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
+  ok(shellNav.locate('/admin/quality').module.href === '/admin/quality' && shellNav.locate('/admin/quality').page.href === '/admin/quality', 'the shared sidebar marks /admin/quality as the current module and page');
+  var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];
+  ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1 && (h.match(/<script src="\/admin\/shell\.js"><\/script>/g) || []).length === 1 && !/ida-nav-links|aria-current=/.test(h); }),
+    'all ' + pages.length + ' console pages carry the one shared sidebar slot and load the shell once, with no menu of their own');
+  ok(shellNav.locate('/admin/review').module.href === '/admin/quality' && shellNav.locate('/admin/review').page.href === '/admin/review', 'the review queue is reached from « Qualité des données »');
   var review = fs.readFileSync(path.join(BASE, 'reference', 'review.html'), 'utf8');
   var reviewUi = strip(fs.readFileSync(path.join(BASE, 'reference', 'review-ui.js'), 'utf8'));
   ok(/lang="fr"/.test(review) && review.indexOf('File de revue') !== -1 && !/Review queue|Load queue|Pending observations|Select an observation|Skip to content/.test(review), 'the review page is French');

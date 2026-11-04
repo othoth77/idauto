@@ -365,7 +365,9 @@ async function main() {
   ok((await request('GET', '/admin/vehicle?ref=' + encodeURIComponent(IVID))).status === 200, 'the dossier page is reached with its query string');
   ok((await request('POST', '/admin/vehicles')).status !== 200, 'a page path does not answer POST');
   var adminHtml = await request('GET', '/admin');
-  ok(adminHtml.status === 200 && /href="\/admin\/vehicles"/.test(adminHtml.raw), '/admin still serves, and links to the registry');
+  // IDA-ADMIN-7 — the link is the shared sidebar's: /admin loads the shell, whose navigation opens the registry.
+  ok(adminHtml.status === 200 && adminHtml.raw.indexOf('<script src="/admin/shell.js"></script>') !== -1 &&
+    require(path.join(BASE, 'reference', 'admin-shell.js')).NAV.some(function (m) { return m.href === '/admin/vehicles'; }), '/admin still serves, and links to the registry (through the shared sidebar)');
   ok((await request('GET', '/admin/review')).status === 200, '/admin/review still serves');
   ok((await request('GET', '/login')).status === 200, '/login still serves');
   var atelier = await request('GET', '/atelier');

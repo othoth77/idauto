@@ -202,7 +202,8 @@
     var logoutButton = document.getElementById('logout-button');
     var ROLE_FR = { admin: 'administrateur', manager: 'gestionnaire', technician: 'technicien' };
     var me = null;
-    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); me = r.ok ? await r.json() : null; } catch (e) { me = null; }
+    // The shell's shared session read when present (one /api/auth request per page).
+    try { me = (window.IdAutoAdminShell ? await window.IdAutoAdminShell.session() : await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (x) { return x.ok ? x.json() : null; })); } catch (e) { me = null; }
     if (!me || !me.user) {
       if (line) line.textContent = 'Vous n\'êtes pas connecté.';
       if (loginLink) loginLink.hidden = false;

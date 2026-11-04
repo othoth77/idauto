@@ -259,3 +259,162 @@
   justify-content: space-between;
   gap: var(--ida-space-2);
 }
+
+/* =========================================================================
+ * IDA-ADMIN-7 — the console shell: one sidebar for every console page,
+ * built by /admin/shell.js into <aside data-admin-sidebar>.
+ *
+ *   ≥ 64rem  persistent sidebar beside the content; collapses to an icon
+ *            rail (data-sidebar="collapsed"), labels kept for screen readers.
+ *   < 64rem  a top bar with a menu button; the sidebar becomes a drawer over
+ *            a scrim (data-mode="drawer", data-drawer="open|closed").
+ * Logical properties throughout, so a right-to-left page mirrors itself.
+ * ========================================================================= */
+.ida-admin-shell {
+  --ida-admin-sidebar-w: 16rem;
+  --ida-admin-rail-w: 4.25rem;
+  display: grid;
+  grid-template-columns: var(--ida-admin-sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+}
+.ida-admin-shell[data-sidebar="collapsed"] { grid-template-columns: var(--ida-admin-rail-w) minmax(0, 1fr); }
+.ida-admin-main { min-width: 0; display: flex; flex-direction: column; }
+.ida-admin-main > main { flex: 1 0 auto; }
+
+.ida-admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ida-space-4);
+  padding: var(--ida-space-4) var(--ida-space-3);
+  background: var(--ida-surface-raised);
+  border-inline-end: 1px solid var(--ida-border);
+}
+.ida-admin-brand { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ida-space-1) var(--ida-space-2); padding-inline: var(--ida-space-2); }
+.ida-admin-brand-sub { flex-basis: 100%; font-size: var(--ida-size-12); color: var(--ida-text-muted); letter-spacing: 0.02em; }
+
+.ida-admin-nav { flex: 1 0 auto; }
+.ida-admin-nav-list, .ida-admin-nav-sub { list-style: none; margin: 0; padding: 0; }
+.ida-admin-nav-list { display: flex; flex-direction: column; gap: var(--ida-space-1); }
+.ida-admin-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--ida-space-3);
+  min-height: 2.5rem;
+  padding: var(--ida-space-2) var(--ida-space-3);
+  border-radius: var(--ida-radius-control);
+  color: var(--ida-text-muted);
+  font-size: var(--ida-size-14);
+  font-weight: var(--ida-weight-medium);
+  text-decoration: none;
+  border-inline-start: 3px solid transparent;
+}
+.ida-admin-nav-link:hover { background: var(--ida-surface-sunken); color: var(--ida-text); }
+.ida-admin-nav-link.is-active {
+  background: var(--ida-verify-tint);
+  color: var(--ida-text);
+  border-inline-start-color: var(--ida-verify);
+  font-weight: var(--ida-weight-semibold);
+}
+.ida-admin-nav-link.is-active .ida-admin-icon { color: var(--ida-verify-strong); }
+.ida-admin-icon { flex: 0 0 auto; }
+.ida-admin-nav-sub { margin-block: var(--ida-space-1); margin-inline-start: calc(var(--ida-space-3) + 20px + var(--ida-space-3)); }
+.ida-admin-nav-sublink {
+  display: block;
+  padding: var(--ida-space-1) var(--ida-space-2);
+  border-radius: var(--ida-radius-control);
+  color: var(--ida-text-muted);
+  font-size: var(--ida-size-14);
+  text-decoration: none;
+}
+.ida-admin-nav-sublink:hover { background: var(--ida-surface-sunken); color: var(--ida-text); }
+.ida-admin-nav-sublink.is-active { color: var(--ida-text); font-weight: var(--ida-weight-semibold); background: var(--ida-surface-sunken); }
+.ida-admin-nav-link:focus-visible, .ida-admin-nav-sublink:focus-visible,
+.ida-admin-tool:focus-visible, .ida-admin-sidebar-collapse:focus-visible,
+.ida-admin-menu-btn:focus-visible, .ida-admin-drawer-close:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+
+.ida-admin-sidebar-foot { display: flex; flex-direction: column; gap: var(--ida-space-3); border-block-start: 1px solid var(--ida-border); padding-block-start: var(--ida-space-3); }
+.ida-admin-identity { display: flex; align-items: center; gap: var(--ida-space-3); padding-inline: var(--ida-space-2); min-width: 0; }
+.ida-admin-avatar {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  inline-size: 2rem; block-size: 2rem;
+  border-radius: var(--ida-radius-seal);
+  background: var(--ida-primary);
+  color: var(--ida-primary-contrast);
+  font-size: var(--ida-size-14);
+  font-weight: var(--ida-weight-semibold);
+}
+.ida-admin-identity-text { display: flex; flex-direction: column; min-width: 0; }
+.ida-admin-identity-name { font-size: var(--ida-size-14); font-weight: var(--ida-weight-semibold); color: var(--ida-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ida-admin-identity-role { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+.ida-admin-tools { display: flex; flex-wrap: wrap; gap: var(--ida-space-1); }
+.ida-admin-tool, .ida-admin-sidebar-collapse, .ida-admin-menu-btn, .ida-admin-drawer-close {
+  display: inline-flex; align-items: center; gap: var(--ida-space-2);
+  min-height: 2.25rem;
+  padding: var(--ida-space-1) var(--ida-space-2);
+  border: 1px solid var(--ida-border);
+  border-radius: var(--ida-radius-control);
+  background: var(--ida-surface);
+  color: var(--ida-text-muted);
+  font: inherit;
+  font-size: var(--ida-size-14);
+  cursor: pointer;
+}
+.ida-admin-tool:hover, .ida-admin-sidebar-collapse:hover, .ida-admin-menu-btn:hover, .ida-admin-drawer-close:hover { color: var(--ida-text); border-color: var(--ida-border-strong); }
+.ida-admin-sidebar-collapse { margin-inline-start: auto; }
+.ida-admin-drawer-close { display: none; margin-inline-start: auto; }
+
+/* Collapsed rail: icons only; every label stays in the accessibility tree. */
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-nav-label,
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-identity-text {
+  position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-nav-sub { display: none; }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-nav-link { justify-content: center; padding-inline: var(--ida-space-2); }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-tools { flex-direction: column; align-items: center; }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-sidebar-collapse { margin-inline-start: 0; }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-sidebar-collapse .ida-admin-icon { transform: scaleX(-1); }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-identity { justify-content: center; padding-inline: 0; }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-brand { justify-content: center; padding-inline: 0; }
+[dir="rtl"] .ida-admin-sidebar-collapse .ida-admin-icon { transform: scaleX(-1); }
+[dir="rtl"] .ida-admin-shell[data-sidebar="collapsed"] .ida-admin-sidebar-collapse .ida-admin-icon { transform: none; }
+
+.ida-admin-topbar { display: none; }
+.ida-admin-backdrop { position: fixed; inset: 0; z-index: 40; background: var(--ida-scrim); }
+.ida-admin-backdrop[hidden] { display: none; }
+
+@media (max-width: 63.99rem) {
+  .ida-admin-shell, .ida-admin-shell[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
+  .ida-admin-topbar {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: var(--ida-space-3);
+    padding: var(--ida-space-2) var(--ida-space-4);
+    background: var(--ida-surface-raised);
+    border-block-end: 1px solid var(--ida-border);
+  }
+  .ida-admin-topbar-title { margin-inline-start: auto; font-size: var(--ida-size-14); color: var(--ida-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .ida-admin-sidebar {
+    position: fixed; z-index: 50;
+    inset-block: 0; inset-inline-start: 0;
+    inline-size: min(18rem, 85vw);
+    height: auto;
+    box-shadow: var(--ida-shadow-2);
+    transform: translateX(-100%);
+    visibility: hidden;
+  }
+  [dir="rtl"] .ida-admin-sidebar { transform: translateX(100%); }
+  .ida-admin-shell[data-drawer="open"] .ida-admin-sidebar { transform: none; visibility: visible; }
+  .ida-admin-sidebar-collapse { display: none; }
+  .ida-admin-drawer-close { display: inline-flex; }
+}
+@media (prefers-reduced-motion: no-preference) and (max-width: 63.99rem) {
+  /* Opening: visible at once (so focus can move in), then slide. Closing:
+   * slide out, and only then hidden. */
+  .ida-admin-sidebar { transition: transform var(--ida-duration-base) var(--ida-easing-standard), visibility 0s linear var(--ida-duration-base); }
+  .ida-admin-shell[data-drawer="open"] .ida-admin-sidebar { transition: transform var(--ida-duration-base) var(--ida-easing-standard), visibility 0s linear 0s; }
+}
