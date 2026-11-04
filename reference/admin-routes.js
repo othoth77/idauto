@@ -3,7 +3,8 @@
 // IDauto — IDA-ADMIN-1 — operator console read routes
 // reference/admin-routes.js
 //
-//   GET /api/admin/overview                  counts for the console dashboard
+//   GET /api/admin/overview                  counts for the registry page's tiles
+//   GET /api/admin/dashboard                 every module's headline counts, for /admin/dashboard
 //   GET /api/admin/vehicles                  the registry: filtered, sorted, paged
 //   GET /api/admin/vehicles/:ref/dossier     one identity and everything recorded against it
 //   GET /api/admin/maintenance               workshop visits / service events, every organisation
@@ -128,15 +129,33 @@ function createAdminRoutes(ctx) {
       organisations: cred.organisations };
     // In-process counters (api.js logAuthDecision): since this process started,
     // lost on restart — reported with the start time, never as a history.
+    out.auth_decisions = authDecisions();
+    sendJson(res, 200, out);
+  }
+  function authDecisions() {
     var counters = observability.shared().snapshot().counters;
     var auth = {};
     Object.keys(counters).forEach(function (k) { if (/^auth_/.test(k)) auth[k] = counters[k]; });
-    out.auth_decisions = { since: new Date(Date.now() - process.uptime() * 1000).toISOString(), counters: auth };
+    return { since: new Date(Date.now() - process.uptime() * 1000).toISOString(), counters: auth };
+  }
+
+  // IDA-ADMIN-6 — dashboard: the modules' own counts, composed once.
+  async function getDashboard(req, res) {
+    var out = await adminRepository.dashboard();
+    var cred = identity.credentialSummary();
+    var providers = resolver ? resolver.providers() : [];
+    var supplier = catalog ? catalog.status().supplier : null;
+    out.security.service_credentials = { admin_credentials: cred.admin_credentials, invalid_entries: cred.invalid_entries,
+      organisation_credentials: cred.organisations.reduce(function (n, o) { return n + o.credentials; }, 0), organisations: cred.organisations.length };
+    out.security.auth_decisions = authDecisions();
+    out.health = { database: 'ok', vehicle_providers_configured: providers.length, parts_supplier_configured: !!(supplier && supplier.configured) };
+    out.generated_at = new Date().toISOString();
     sendJson(res, 200, out);
   }
 
   var routes = [
     { method: 'GET', pattern: /^\/api\/admin\/overview$/, handler: adminOnly(getOverview) },
+    { method: 'GET', pattern: /^\/api\/admin\/dashboard$/, handler: adminOnly(getDashboard) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) },
     { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) },

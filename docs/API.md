@@ -94,7 +94,8 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 
 | Route | Answer |
 |---|---|
-| `GET /api/admin/overview` | dashboard counts + health |
+| `GET /api/admin/overview` | registry page counts + health |
+| `GET /api/admin/dashboard` | every module's headline counts for `/admin/dashboard`, recent writes (no actor/target; capture rows by day) |
 | `GET /api/admin/vehicles?q=&make=&model=&year=&fiche_status=&verified=&include_merged=1&sort=&dir=&page=&page_size=` | paged registry; `q` matches IVID, internal_ref, current or historical plate, make/model prefix — never a VIN |
 | `GET /api/admin/maintenance?kind=visits\|service_events&q=&org_id=&status=&operation_type=&identified=&from=&to=&dir=&page=&page_size=` | workshop visits (with operations) or service events across every organisation; no customer reference; visit mileage not recorded |
 | `GET /api/admin/organisations?q=&status=&org_type=&sort=&dir=&page=&page_size=` | organisations with accounts per role, integration (credential count + scopes), measured activity; contact e-mail and tax id as presence flags only |

@@ -425,8 +425,13 @@ async function overview() {
   var orgStatus = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_organizations GROUP BY 1');
   var documents = (await db.query('SELECT count(*)::int AS n FROM idauto_vehicle_documents')).rows[0].n;
   var serviceEvents = (await db.query('SELECT count(*)::int AS n FROM idauto_service_events')).rows[0].n;
+  // Same rule as the audit list (IDA-ADMIN-5): a capture row keeps its day only.
   var recent = (await db.query(
-    'SELECT event_time, event_type, actor_type, org_id, target_type FROM idauto_audit_log ORDER BY event_time DESC, id DESC LIMIT 15')).rows;
+    "SELECT CASE WHEN COALESCE(target_type IN ('" + CAPTURE_TARGETS.join("','") + "'), FALSE) THEN date_trunc('day', event_time) ELSE event_time END AS at, " +
+    "COALESCE(target_type IN ('" + CAPTURE_TARGETS.join("','") + "'), FALSE) AS masked, " +
+    // Ordered by the stored time: the output column is named `at`, so the cut
+    // value never decides the order (it would push capture rows to the day's end).
+    'event_type, actor_type, org_id, target_type FROM idauto_audit_log ORDER BY idauto_audit_log.event_time DESC, id DESC LIMIT 15')).rows;
   return {
     vehicles: vehicles,
     plates: plates,
@@ -435,7 +440,7 @@ async function overview() {
     workshop: { visits_by_status: visitStatus, operations_by_type: opType, service_events: serviceEvents },
     organisations_by_status: orgStatus,
     documents: documents,
-    recent_activity: recent.map(function (r) { return { at: r.event_time, event_type: r.event_type, actor_type: r.actor_type, org_id: r.org_id, target_type: r.target_type }; })
+    recent_activity: recent.map(function (r) { return { at: r.at, masked: r.masked, event_type: r.event_type, actor_type: r.actor_type, org_id: r.org_id, target_type: r.target_type }; })
   };
 }
 
@@ -784,11 +789,15 @@ var ISSUE_PREDICATE = {
   no_plate: 'i.no_plate > 0'
 };
 
-async function qualityReport(filter) {
-  var totals = (await db.query(CANON_CTE +
+async function qualityTotals() {
+  return (await db.query(CANON_CTE +
     'SELECT count(*)::int AS identities, ' +
     Object.keys(ISSUE_PREDICATE).map(function (k) { return 'count(*) FILTER (WHERE ' + ISSUE_PREDICATE[k] + ')::int AS ' + k; }).join(', ') +
     ' FROM issues i')).rows[0];
+}
+
+async function qualityReport(filter) {
+  var totals = await qualityTotals();
   var where = ISSUE_PREDICATE[filter.issue], params = [];
   if (filter.q) {
     params.push(filter.q, likePrefix(filter.q));
@@ -970,6 +979,16 @@ function parseAccountQuery(q) {
   return out;
 }
 
+async function accountTotals() {
+  var t = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_auth_user) AS accounts, ' +
+    '(SELECT count(*)::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS active_sessions, ' +
+    '(SELECT count(DISTINCT "userId")::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS accounts_signed_in, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user WHERE "role" <> \'admin\' AND "org_id" IS NULL) AS without_organisation')).rows[0];
+  return { accounts: t.accounts, active_sessions: t.active_sessions, accounts_signed_in: t.accounts_signed_in,
+    without_organisation: t.without_organisation, by_role: await countBy('SELECT "role" AS k, count(*)::int AS n FROM idauto_auth_user GROUP BY 1') };
+}
+
 async function listAccounts(filter) {
   var where = [], params = [];
   if (filter.role) { params.push(filter.role); where.push('u."role" = $' + params.length); }
@@ -981,15 +1000,8 @@ async function listAccounts(filter) {
     '(SELECT max(s."updatedAt") FROM idauto_auth_session s WHERE s."userId" = u."id") AS last_seen_at ' +
     'FROM idauto_auth_user u LEFT JOIN idauto_organizations o ON o.id = u."org_id"' + whereSql +
     ' ORDER BY CASE u."role" WHEN \'admin\' THEN 0 WHEN \'manager\' THEN 1 ELSE 2 END, u."name", u."id" LIMIT 500', params)).rows;
-  var totals = (await db.query(
-    'SELECT (SELECT count(*)::int FROM idauto_auth_user) AS accounts, ' +
-    '(SELECT count(*)::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS active_sessions, ' +
-    '(SELECT count(DISTINCT "userId")::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS accounts_signed_in, ' +
-    '(SELECT count(*)::int FROM idauto_auth_user WHERE "role" <> \'admin\' AND "org_id" IS NULL) AS without_organisation')).rows[0];
-  var byRole = await countBy('SELECT "role" AS k, count(*)::int AS n FROM idauto_auth_user GROUP BY 1');
   return {
-    totals: { accounts: totals.accounts, active_sessions: totals.active_sessions, accounts_signed_in: totals.accounts_signed_in,
-      without_organisation: totals.without_organisation, by_role: byRole },
+    totals: await accountTotals(),
     truncated: rows.length === 500,
     results: rows.map(function (r) {
       return { id: r.id, name: r.name, email: r.email, email_verified: r.email_verified, role: r.role,
@@ -1001,7 +1013,45 @@ async function listAccounts(filter) {
   };
 }
 
+/* =========================================================================
+ * IDA-ADMIN-6 — DASHBOARD.
+ *
+ * One read of the counts each module reports, so every tile on
+ * /admin/dashboard is the same number the module behind it shows. Nothing
+ * here is new data: it composes overview(), qualityTotals() and
+ * accountTotals(), plus the workshop activity of the last 30 days and the
+ * audit events of the last 30 days by type.
+ * ========================================================================= */
+async function dashboard() {
+  var o = await overview();
+  var quality = await qualityTotals();
+  var accounts = await accountTotals();
+  var workshop = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_workshop_visits WHERE vehicle_id IS NULL) AS unidentified_visits, ' +
+    "(SELECT count(*)::int FROM idauto_workshop_visits WHERE opened_at > NOW() - INTERVAL '30 days') AS visits_30d, " +
+    "(SELECT count(DISTINCT org_id)::int FROM idauto_workshop_visits WHERE opened_at > NOW() - INTERVAL '30 days') AS active_orgs_30d, " +
+    "(SELECT count(*)::int FROM idauto_service_events WHERE created_at > NOW() - INTERVAL '30 days') AS service_events_30d")).rows[0];
+  var fiche = await countBy('SELECT fiche_status AS k, count(*)::int AS n FROM idauto_vehicles WHERE merged_into_id IS NULL GROUP BY 1');
+  var review = (await db.query(
+    "SELECT (SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_review') AS pending_review, " +
+    "(SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_confirmation') AS pending_confirmation")).rows[0];
+  var auditByType = await countBy("SELECT event_type AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1");
+  var audit30 = Object.keys(auditByType).reduce(function (n, k) { return n + auditByType[k]; }, 0);
+  return {
+    vehicles: { canonical: o.vehicles.canonical, verified: o.vehicles.verified, merged: o.vehicles.merged, created_30d: o.vehicles.created_30d,
+      plates_active: o.plates.active, fiche_by_status: fiche, documents: o.documents },
+    maintenance: { visits_by_status: o.workshop.visits_by_status, unidentified_visits: workshop.unidentified_visits, visits_30d: workshop.visits_30d,
+      operations_by_type: o.workshop.operations_by_type, service_events: o.workshop.service_events, service_events_30d: workshop.service_events_30d },
+    workshops: { organisations_by_status: o.organisations_by_status, active_30d: workshop.active_orgs_30d },
+    quality: quality,
+    review: { pending_review: review.pending_review, pending_confirmation: review.pending_confirmation, pending_submissions: o.review.pending_submissions },
+    security: { accounts: accounts, audit_30d: { total: audit30, by_type: auditByType } },
+    recent_activity: o.recent_activity
+  };
+}
+
 module.exports = {
+  dashboard: dashboard,
   parseAuditQuery: parseAuditQuery,
   listAudit: listAudit,
   parseAccountQuery: parseAccountQuery,

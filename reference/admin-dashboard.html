@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Tableau de bord</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- IDA-ADMIN-1 — same Design System files as /admin and /admin/review. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<header class="ida-nav">
+  <div class="ida-container ida-nav-inner">
+    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
+      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
+    </a>
+    <nav aria-label="Navigation administrateur">
+      <ul class="ida-nav-links">
+        <li><a href="/admin/dashboard" aria-current="page">Tableau de bord</a></li>
+        <li><a href="/admin/vehicles">Véhicules</a></li>
+        <li><a href="/admin/maintenance">Entretien</a></li>
+        <li><a href="/admin/sources">Ateliers</a></li>
+        <li><a href="/admin/quality">Qualité</a></li>
+        <li><a href="/admin/security">Sécurité</a></li>
+        <li><a href="/admin/review">Revue</a></li>
+        <li><a href="/admin">Saisie</a></li>
+        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Tableau de bord</h1>
+      <p class="ida-muted ida-u-maxch-52">L'activité d'IDauto en un coup d'œil. Chaque indicateur est compté dans la base au
+      moment du chargement et ouvre le module qui le détaille, déjà filtré. Rien n'est estimé : ce qui n'est pas enregistré
+      est affiché comme tel.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+      <p class="ida-caption" id="generated" aria-live="polite"></p>
+    </header>
+
+    <div id="dashboard" class="ida-stack-lg" aria-live="polite"></div>
+
+    <section class="ida-card ida-stack" aria-labelledby="sec-recent">
+      <h2 id="sec-recent" class="ida-h3">Dernières écritures</h2>
+      <div id="recent" class="ida-stack"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
+  </div>
+</footer>
+
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/dashboard-ui.js"></script>
+</body>
+</html>

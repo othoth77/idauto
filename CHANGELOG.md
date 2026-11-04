@@ -6,6 +6,17 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-11-04 — ida-admin-6: dashboard
+
+`/admin/dashboard` and `GET /api/admin/dashboard` (admin only, read only): 25
+tiles across vehicles, maintenance, ateliers, quality/review and security, each
+the number its module reports and each a link into that module with the filter
+that reproduces it; recent writes without actor or target. « Tableau de bord »
+opens the console navigation on every page. The overview's recent activity now
+sorts capture rows by their stored time. `tests/ida-admin-dashboard-test.js` (62).
+
+---
+
 ## 2026-10-30 — ida-admin-5: security and audit
 
 `/admin/security` with `GET /api/admin/audit` and `GET /api/admin/accounts` (admin

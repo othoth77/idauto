@@ -105,7 +105,7 @@ and `/admin/review` (Revue)** — PR #39 is merged but not deployed.
 
 | Module | Frontend page / nav | Backend | Real data | Access control | Tests | Status | Missing work |
 |---|---|---|---|---|---|---|---|
-| 1. Dashboard | none of its own; 7 count tiles at the top of `/admin/vehicles` | `GET /api/admin/overview` | yes (SQL counts, provider/catalogue state) | admin-only, twice | `ida-admin-registry` §5 | **PARTIAL** | a dedicated page; recent activity is returned but not shown; links from each tile to its module |
+| 1. Dashboard | none of its own; 7 count tiles at the top of `/admin/vehicles` | `GET /api/admin/overview` | yes (SQL counts, provider/catalogue state) | admin-only, twice | `ida-admin-registry` §5 | **PARTIAL** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/dashboard` + `GET /api/admin/dashboard` (§12) | — |
 | 2. Vehicles | `/admin/vehicles` (registry), `/admin/vehicle?ref=` (dossier); in nav | `GET /api/admin/vehicles`, `…/:ref/dossier`, VIN via audited fiche | yes | admin-only, twice | `ida-admin-registry` 135/0, browser check 34/0 | **COMPLETE (read)** | edits stay in Saisie / review / merge routes; no merge/split UI |
 | 3. Maintenance History | per-vehicle section of the dossier only; no page, no nav entry | workshop routes are **per organisation** (admin must pass `org_id`); no cross-organisation list | yes (visits, operations, service events) | org-scoped for workshops | `ida-v12` (workshop API) | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/maintenance` + `GET /api/admin/maintenance` (§8) | merge + deploy |
 | 4. Ateliers & Data Sources | none on `main` | **no route lists organisations or capture sources** on `main`; `GET /api/resolution/providers` and `/api/catalog/status` exist (admin) | tables `idauto_organizations`, `idauto_capture_sources`, `idauto_auth_user` (role/org); provider/TecDoc state | — | none for a listing | **MISSING** on `main` → **IMPLEMENTED on branch `ida-admin-2-maintenance`**: `/admin/sources` + `GET /api/admin/organisations`, `GET /api/admin/sources` (§9) | merge + deploy |
@@ -229,3 +229,31 @@ by status, not listed.
 Tests: `tests/ida-admin-security-test.js` 75/0 (mutation-checked: new_value_json returned, capture masking off, the actor
 filter reaching capture rows, vin_digest unmasked, a session user agent selected, counters keyed by actor, the handler's
 admin check removed — each turns it red). Browser 390/1280 px 23/0.
+
+## 12. Dashboard (IDA-ADMIN-6, branch `ida-admin-2-maintenance`)
+
+`/admin/dashboard` (nav « Tableau de bord », first entry on every console page) — read only, admin only.
+
+`GET /api/admin/dashboard` → `{ vehicles{canonical, verified, merged, created_30d, plates_active, fiche_by_status, documents},
+maintenance{visits_by_status, unidentified_visits, visits_30d, operations_by_type, service_events, service_events_30d},
+workshops{organisations_by_status, active_30d}, quality{identities, all, disagreement, pending_facts, conflict_facts,
+pending_observations, incomplete, no_plate}, review{pending_review, pending_confirmation, pending_submissions},
+security{accounts{…}, audit_30d{total, by_type}, service_credentials{admin_credentials, organisation_credentials,
+organisations, invalid_entries}, auth_decisions{since, counters}}, health{database, vehicle_providers_configured,
+parts_supplier_configured}, recent_activity[{at, masked, event_type, actor_type, org_id, target_type}], generated_at }`.
+
+- It composes the modules' own read functions (`overview()`, `qualityTotals()`, `accountTotals()`), so a tile is the
+  number its module shows; the suite checks each against the module route.
+- 25 tiles in five groups; each tile is a link into its module **with the filter that reproduces the number**
+  (`/admin/maintenance?identified=false`, `/admin/quality?issue=disagreement`, `/admin/vehicles?verified=true`, …); the
+  suite calls every link's API and requires 200. A count that needs attention is marked on the tile edge only when
+  above zero, and its label says what it is.
+- Recent writes: the 15 latest audit rows, no actor and no target; a capture row keeps its day only (same rule as §11).
+  Found while building it: the overview sorted those rows by their cut-to-the-day time, which pushed them out of
+  the list; it now sorts by the stored time.
+
+Tests: `tests/ida-admin-dashboard-test.js` 62/0 (mutation-checked: a quality tile off by one, recent activity
+unmasked, the handler's admin check removed, a tile linking to a refused filter, active ateliers counted as visits —
+each turns it red; the last one survived the first fixture, which was then given two visits for one atelier).
+Browser 390/1280 px 27/0: the 25 tiles, three tile→module filter round trips, all eight navigation entries from page to
+page with one current entry and no overflow, the error state on a failing API, and a manager refused by page and API.

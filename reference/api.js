@@ -428,6 +428,9 @@ var ADMIN_ASSETS = {
   '/admin/security': { file: 'admin-security.html', contentType: 'text/html; charset=utf-8' },
   '/admin/security/': { file: 'admin-security.html', contentType: 'text/html; charset=utf-8' },
   '/admin/security-ui.js': { file: 'admin-security-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/dashboard': { file: 'admin-dashboard.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/dashboard/': { file: 'admin-dashboard.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/dashboard-ui.js': { file: 'admin-dashboard-ui.js', contentType: 'application/javascript; charset=utf-8' },
 
   // The Design System itself — the same files web/ serves to the citizen
   // surface, mounted under /admin/ so they are never phase-gated.

@@ -239,3 +239,23 @@
   font-size: var(--ida-size-14);
   color: var(--ida-text);
 }
+
+/* IDA-ADMIN-6 — dashboard. A tile is a link into the module that details its
+ * number: the whole card is the target, with the same focus ring as every
+ * other control. A count that needs attention (above zero) gets the pending
+ * tone on its edge only — never as the only signal: the label says it too. */
+.ida-admin-stat--link {
+  display: block;
+  color: var(--ida-text);
+  text-decoration: none;
+}
+.ida-admin-stat--link:hover { border-color: var(--ida-border-strong); background: var(--ida-surface-sunken); }
+.ida-admin-stat--link:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+.ida-admin-stat--attention { border-inline-start: 4px solid var(--ida-pending); }
+.ida-admin-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ida-space-2);
+}
