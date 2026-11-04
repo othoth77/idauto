@@ -106,10 +106,13 @@ async function main() {
   ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/i.test(ui) && (ui.match(/C\.api\(/g) || []).length === 1 && ui.indexOf("C.api('/api/admin/dashboard')") !== -1, 'the page script makes one read, GET /api/admin/dashboard, and no write');
   ok(!/tile\([^)]*,\s*\d+\s*,/.test(ui), 'no tile is given a literal number');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-dashboard.html'), 'utf8');
-  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /href="\/admin\/dashboard" aria-current="page"/.test(html), 'the page: no inline code, French, « Tableau de bord » current in the nav');
+  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
+  var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
+  ok(shellNav.locate('/admin/dashboard').module.href === '/admin/dashboard' && shellNav.locate('/admin/dashboard').page.href === '/admin/dashboard', 'the shared sidebar marks /admin/dashboard as the current module and page');
   var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];
-  ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); var nav = (h.match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [''])[0]; return /^<ul class="ida-nav-links">\s*<li><a href="\/admin\/dashboard"/.test(nav); }),
-    'all ' + pages.length + ' console pages open their navigation with the dashboard');
+ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1 && (h.match(/<script src="\/admin\/shell\.js"><\/script>/g) || []).length === 1 && !/ida-nav-links|aria-current=/.test(h); }),
+    'all ' + pages.length + ' console pages carry the one shared sidebar slot and load the shell once, with no menu of their own');
+  ok(shellNav.NAV[0].href === '/admin/dashboard' && shellNav.NAV[0].label === 'Tableau de bord', 'the shared navigation opens with the dashboard');
 
   /* ===================================================================== */
   say('\n1. ACCESS');

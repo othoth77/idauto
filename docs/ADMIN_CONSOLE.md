@@ -257,3 +257,46 @@ unmasked, the handler's admin check removed, a tile linking to a refused filter,
 each turns it red; the last one survived the first fixture, which was then given two visits for one atelier).
 Browser 390/1280 px 27/0: the 25 tiles, three tile→module filter round trips, all eight navigation entries from page to
 page with one current entry and no overflow, the error state on a failing API, and a manager refused by page and API.
+
+## 13. Shared sidebar (IDA-ADMIN-7)
+
+One navigation for every console page, defined once in `reference/admin-shell.js` (served at `/admin/shell.js`). Each
+page carries an empty `<aside class="ida-admin-sidebar" data-admin-sidebar>` and loads the shell right after the Design
+System `ui.js`; no page keeps a menu of its own.
+
+| # | Module | Route | Pages reached from it |
+|---|---|---|---|
+| 1 | Tableau de bord | `/admin/dashboard` | — |
+| 2 | Véhicules | `/admin/vehicles` | Saisie manuelle `/admin`; vehicle dossier `/admin/vehicle?ref=` |
+| 3 | Historique d’entretien | `/admin/maintenance` | — |
+| 4 | Ateliers & Sources | `/admin/sources` | — |
+| 5 | Qualité des données | `/admin/quality` | File de revue `/admin/review` |
+| 6 | Sécurité & Audit | `/admin/security` | — |
+
+- **Active state** comes from `location.pathname` (a trailing slash is the same page): the module gets `.is-active`;
+  the link to the page itself gets `aria-current="page"` (the module link gets `aria-current="true"` on a page reached
+  from it, such as the review queue or a dossier). Filters live in the query string, so Back/Forward and direct links keep
+  both the filter and the active module.
+- **≥ 64rem:** persistent sidebar beside the content; the collapse control turns it into a 68 px icon rail (labels stay
+  as accessible names; sub-pages hidden). **< 64rem (tablet, mobile):** a top bar with a menu button and the current
+  module; the sidebar is a drawer over a scrim, `inert` while closed, focus moved in on open and kept inside, closed by
+  Escape, the scrim or a link, focus back on the menu button.
+- **Identity area:** name and role only, never the e-mail; theme toggle (the Design System's); « Déconnexion » through
+  the existing `POST /api/auth/sign-out`.
+- **Security:** navigation only. Every `/api/admin/*` route still checks the admin scope on the server and every page
+  refuses a non-admin session; a manager sees the sidebar and gets a refusal and a 403 on every module.
+- **One session read per page.** Better Auth allows 60 `/api/auth/*` requests a minute per client (`auth.js`). The shell
+  reads the session once and shares the promise (`IdAutoAdminShell.session()`); `admin-console.js`, `admin-ui.js` and
+  `review-ui.js` reuse it. Found while testing: with a second read per page, a fast click-through hit 429 and bounced
+  the admin to `/login`.
+- **Nothing stored in the browser** (the rule every authenticated page follows, `ida-v13`): the collapsed state lasts
+  for the page; each page opens expanded.
+
+Tests: `tests/ida-admin-sidebar-browser-test.js` (in `test:db`; headless Chrome over CDP, no dependency) 38/0 at 1440,
+820 and 390 px — direct access to ten pages, click-through, Back/Forward, a filtered view kept through navigation,
+collapse/expand, the drawer (inert, focus, Tab, Escape, scrim), identity without e-mail, logout → 401, a manager refused
+everywhere, and one session read per page (mutation-checked: a page reading the session again turns it red). The menu
+structure checks moved from each page's HTML to the shell's single definition (`ida-admin-ds`, `ida-admin-maintenance`,
+`ida-admin-dashboard`, `ida-admin-quality`, `ida-admin-security`, `ida-admin-sources`, `ida-admin-registry`): each page
+must carry the slot and load the shell exactly once, with no menu of its own (mutation-checked: a page without the
+shell, two modules swapped).

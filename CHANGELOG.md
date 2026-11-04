@@ -6,6 +6,20 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-11-04 — ida-admin-7: one shared sidebar for the console
+
+`/admin/shell.js` builds one sidebar for all nine console pages from a single
+definition: the six modules in order (Tableau de bord, Véhicules, Historique
+d’entretien, Ateliers & Sources, Qualité des données, Sécurité & Audit), with
+Saisie manuelle under Véhicules and File de revue under Qualité. Persistent and
+collapsible on desktop, a drawer on tablet and mobile; identity (name and role),
+theme and logout at the bottom. One session read per page, shared with the
+page scripts (Better Auth's 60-a-minute limit). Navigation only — every admin
+route still enforces the admin scope on the server.
+`tests/ida-admin-sidebar-browser-test.js` (38).
+
+---
+
 ## 2026-11-04 — ida-admin-6: dashboard
 
 `/admin/dashboard` and `GET /api/admin/dashboard` (admin only, read only): 25

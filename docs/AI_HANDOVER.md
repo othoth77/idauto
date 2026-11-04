@@ -4,7 +4,7 @@
 
 Maintenance History (`/admin/maintenance`), Ateliers & Data Sources (`/admin/sources`), Data Quality
 (`/admin/quality`, French `/admin/review`) Security & Audit (`/admin/security`) and the Dashboard (`/admin/dashboard`) on top of `main` @ `138aa5e`.
-Contracts, tests and residual work: `docs/ADMIN_CONSOLE.md` §7–§12. All six modules implemented.
+Contracts, tests and residual work: `docs/ADMIN_CONSOLE.md` §7–§12. All six modules implemented; one shared sidebar (`reference/admin-shell.js`, §13).
 
 ## Previous record — 2026-10-30 IDA-ADMIN-1 REGISTRY + VEHICLE DOSSIER (branch `ida-admin-registry-dossier`)
 

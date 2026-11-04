@@ -115,13 +115,16 @@ async function main() {
   say('\n3. THE MARKUP USES DESIGN SYSTEM COMPONENTS, NOT LOOKALIKES');
   [['admin.html', adminHtml], ['review.html', reviewHtml]].forEach(function (pair) {
     var name = pair[0], html = pair[1];
-    ok(/class="ida-nav"/.test(html), name + ' uses the shared .ida-nav header');
-    ok(/class="ida-container ida-nav-inner"/.test(html), name + ' uses the same nav inner as the homepage');
-    ok(/ida-wordmark/.test(html), name + ' carries the IDauto wordmark');
+    // IDA-ADMIN-7 — the console navigation is the one shared shell: the page
+    // carries its empty sidebar slot and loads /admin/shell.js after ui.js;
+    // the wordmark and the theme toggle are built by the shell (checked below).
+    ok((html.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1, name + ' carries the one shared sidebar slot');
+    ok(html.indexOf('<script src="/admin/assets/ui.js"></script>\n<script src="/admin/shell.js"></script>') !== -1, name + ' loads the shared shell right after the Design System ui.js');
+    ok(!/ida-nav-links|class="ida-nav"/.test(html), name + ' keeps no menu of its own');
     ok(/class="ida-footer"/.test(html), name + ' uses the shared .ida-footer');
     ok(/ida-card/.test(html), name + ' builds its sections from .ida-card');
     ok(/ida-btn ida-btn--/.test(html), name + ' uses .ida-btn with a Design System variant');
-    ok(/data-theme-toggle/.test(html), name + ' carries the same theme toggle as the citizen surface');
+
     ok(/ida-skip-link/.test(html), name + ' keeps the accessibility skip link');
     ok(/name="viewport"/.test(html), name + ' declares the viewport (responsive)');
   });
@@ -142,6 +145,18 @@ async function main() {
   var undefinedClasses = Object.keys(used).filter(function (c) { return ds.indexOf('.' + c) === -1; });
   ok(undefinedClasses.length === 0,
     'every ida-* class in the markup is defined (' + Object.keys(used).length + ' used; undefined: ' + (undefinedClasses.join(', ') || 'none') + ')');
+
+  // The shell builds the console chrome: the same rule holds for the classes it
+  // writes, and it must carry the wordmark and the citizen theme toggle.
+  var shellSrc = fs.readFileSync(path.join(BASE, 'reference', 'admin-shell.js'), 'utf8');
+  var shellUsed = {};
+  shellSrc.replace(/class: '([^']+)'/g, function (_, list) { list.split(/\s+/).forEach(function (c) { if (c.indexOf('ida-') === 0) shellUsed[c] = true; }); return ''; });
+  var shellUndefined = Object.keys(shellUsed).filter(function (c) { return ds.indexOf('.' + c) === -1; });
+  ok(Object.keys(shellUsed).length > 10 && shellUndefined.length === 0,
+    'every ida-* class the shell writes is defined (' + Object.keys(shellUsed).length + ' used; undefined: ' + (shellUndefined.join(', ') || 'none') + ')');
+  ok(/class: 'ida-wordmark'/.test(shellSrc) && /'data-theme-toggle': ''/.test(shellSrc), 'the shell carries the IDauto wordmark and the same theme toggle as the citizen surface');
+  ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|localStorage|sessionStorage|document\.cookie|Authorization|Bearer/.test(shellSrc.replace(/\/\*[\s\S]*?\*\//g, '')),
+    'the shell writes no markup from strings, stores nothing in the browser, sends no token');
 
   say('\n4. THE SAME FILES AS THE CITIZEN SURFACE — one source, not a copy');
   var pairs = [

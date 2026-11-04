@@ -116,7 +116,9 @@ async function main() {
   ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function/.test(ui) && !/localStorage|sessionStorage|Authorization|Bearer/.test(ui), 'the page script renders no markup from strings, stores nothing, sends no token');
   ok(!/method:\s*'(POST|PUT|PATCH|DELETE)'/i.test(ui), 'the page script sends no write');
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-security.html'), 'utf8');
-  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /href="\/admin\/security" aria-current="page"/.test(html), 'the page: no inline code, French, « Sécurité » current in the nav');
+  ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
+  var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
+  ok(shellNav.locate('/admin/security').module.href === '/admin/security' && shellNav.locate('/admin/security').page.href === '/admin/security', 'the shared sidebar marks /admin/security as the current module and page');
   var apiSrc = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
   var logFn = (apiSrc.split('function logAuthDecision(req, fields) {')[1] || '').split('\n}\n')[0];
   ok(/counters\.inc\('auth_denied:' \+ String\(fields\.reason \|\| 'unknown'\)\.split\(':'\)\[0\]\)/.test(logFn) && !/inc\([^)]*actor/.test(logFn), 'auth decisions are counted by reason class, never by actor');

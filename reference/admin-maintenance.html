@@ -14,26 +14,9 @@
 <body>
 <a class="ida-skip-link" href="#main">Aller au contenu</a>
 
-<header class="ida-nav">
-  <div class="ida-container ida-nav-inner">
-    <a class="ida-wordmark" href="/" aria-label="IDauto — accueil">
-      <span class="ida-wordmark-id" aria-hidden="true">ID</span><span>auto</span>
-    </a>
-    <nav aria-label="Navigation administrateur">
-      <ul class="ida-nav-links">
-        <li><a href="/admin/dashboard">Tableau de bord</a></li>
-        <li><a href="/admin/vehicles">Véhicules</a></li>
-        <li><a href="/admin/maintenance" aria-current="page">Entretien</a></li>
-        <li><a href="/admin/sources">Ateliers</a></li>
-        <li><a href="/admin/quality">Qualité</a></li>
-        <li><a href="/admin/security">Sécurité</a></li>
-        <li><a href="/admin/review">Revue</a></li>
-        <li><a href="/admin">Saisie</a></li>
-        <li><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-theme-toggle aria-label="Basculer entre le thème clair et le thème sombre">◐</button></li>
-      </ul>
-    </nav>
-  </div>
-</header>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Console d'administration"></aside>
+<div class="ida-admin-main">
 
 <main id="main" class="ida-container ida-u-pad-section">
   <div class="ida-stack-lg">
@@ -132,8 +115,11 @@
     <p>IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.</p>
   </div>
 </footer>
+</div>
+</div>
 
 <script src="/admin/assets/ui.js"></script>
+<script src="/admin/shell.js"></script>
 <script src="/admin/console.js"></script>
 <script src="/admin/maintenance-ui.js"></script>
 </body>
