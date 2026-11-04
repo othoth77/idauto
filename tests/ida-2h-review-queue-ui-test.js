@@ -75,7 +75,7 @@ async function auditCount(targetRef, eventType) {
 
   console.log('\n1. REVIEW PAGE — protected same-origin client shell');
   var page = await request('GET', '/admin/review');
-  ok(page.status === 200 && page.raw.indexOf('Review queue') !== -1, 'GET /admin/review serves the review-queue page');
+  ok(page.status === 200 && page.raw.indexOf('File de revue') !== -1, 'GET /admin/review serves the review-queue page');
   ok((page.headers['content-security-policy'] || '').indexOf("default-src 'self'") !== -1, 'Review page preserves restrictive same-origin CSP');
   ok(page.headers['cache-control'] === 'no-store' && page.headers['x-content-type-options'] === 'nosniff', 'Review page preserves no-store and nosniff protections');
   var uiAsset = await request('GET', '/admin/review-ui.js');

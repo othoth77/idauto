@@ -94,8 +94,15 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 
 | Route | Answer |
 |---|---|
-| `GET /api/admin/overview` | dashboard counts + health |
+| `GET /api/admin/overview` | registry page counts + health |
+| `GET /api/admin/dashboard` | every module's headline counts for `/admin/dashboard`, recent writes (no actor/target; capture rows by day) |
 | `GET /api/admin/vehicles?q=&make=&model=&year=&fiche_status=&verified=&include_merged=1&sort=&dir=&page=&page_size=` | paged registry; `q` matches IVID, internal_ref, current or historical plate, make/model prefix — never a VIN |
+| `GET /api/admin/maintenance?kind=visits\|service_events&q=&org_id=&status=&operation_type=&identified=&from=&to=&dir=&page=&page_size=` | workshop visits (with operations) or service events across every organisation; no customer reference; visit mileage not recorded |
+| `GET /api/admin/organisations?q=&status=&org_type=&sort=&dir=&page=&page_size=` | organisations with accounts per role, integration (credential count + scopes), measured activity; contact e-mail and tax id as presence flags only |
+| `GET /api/admin/sources` | capture sources with usage, identification providers, parts catalogue state, service-credential counts (never a credential) |
+| `GET /api/admin/quality?issue=&q=&page=&page_size=` | canonical identities with an open data-quality issue (disagreement, pending/conflict facts, pending observations, incomplete, no active plate) and the review backlog; no VIN, no restricted fact |
+| `GET /api/admin/audit?event=&actor_type=&actor=&org_id=&target_type=&target=&from=&to=&page=&page_size=` | the audit trail; no old/new value, client hash or request id; capture rows keep event, actor type and day only |
+| `GET /api/admin/accounts?role=&q=` | web accounts with role, organisation and session counts (no hash, token, address or user agent); service-credential counts; auth decision counters since process start |
 | `GET /api/admin/vehicles/:ref/dossier` | one canonical identity and everything recorded against it; no VIN, no restricted fact, no customer reference |
 
 In no scope table: every organisation credential gets 403. Contract and field lists: [`ADMIN_CONSOLE.md`](ADMIN_CONSOLE.md). Pages: `/admin/vehicles`, `/admin/vehicle?ref=`.

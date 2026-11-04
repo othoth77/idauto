@@ -3,9 +3,16 @@
 // IDauto — IDA-ADMIN-1 — operator console read routes
 // reference/admin-routes.js
 //
-//   GET /api/admin/overview                  counts for the console dashboard
+//   GET /api/admin/overview                  counts for the registry page's tiles
+//   GET /api/admin/dashboard                 every module's headline counts, for /admin/dashboard
 //   GET /api/admin/vehicles                  the registry: filtered, sorted, paged
 //   GET /api/admin/vehicles/:ref/dossier     one identity and everything recorded against it
+//   GET /api/admin/maintenance               workshop visits / service events, every organisation
+//   GET /api/admin/organisations             ateliers: identity, status, accounts, integration, activity
+//   GET /api/admin/sources                   capture sources, identification providers, parts catalogue
+//   GET /api/admin/quality                   data quality: identities with an open issue, review backlog
+//   GET /api/admin/audit                     the audit trail, filtered and paged (capture rows withheld in part)
+//   GET /api/admin/accounts                  web accounts and sessions, service-credential counts, auth decisions
 //
 // ADMIN ONLY, TWICE. These routes are in no scope table (api.js ROUTE_SCOPES,
 // v12/v14 scopes), so api.js answers 403 to every organisation credential —
@@ -23,6 +30,7 @@
 var identity = require('./identity.js');
 var vehicleRepository = require('./vehicle/vehicle-repository.js');
 var adminRepository = require('./admin/admin-repository.js');
+var observability = require('./observability.js');
 
 function createAdminRoutes(ctx) {
   var sendJson = ctx.sendJson, decode = ctx.decodePathSegment;
@@ -77,10 +85,85 @@ function createAdminRoutes(ctx) {
     sendJson(res, 200, out);
   }
 
+  // IDA-ADMIN-2 — maintenance history across every organisation.
+  async function getMaintenance(req, res) {
+    var filter = adminRepository.parseMaintenanceQuery(query(req));
+    sendJson(res, 200, await adminRepository.listMaintenance(filter));
+  }
+
+  // IDA-ADMIN-3 — ateliers (organisations) and data sources.
+  async function getOrganisations(req, res) {
+    var filter = adminRepository.parseOrganisationQuery(query(req));
+    sendJson(res, 200, await adminRepository.listOrganisations(filter, identity.credentialSummary()));
+  }
+  async function getSources(req, res) {
+    var cred = identity.credentialSummary();
+    var supplier = catalog ? catalog.status().supplier : null;
+    sendJson(res, 200, {
+      capture_sources: await adminRepository.dataSources(),
+      vehicle_providers: [{ name: 'local', kind: 'local' }].concat(resolver ? resolver.providers() : []),
+      parts_catalogue: { local: true, supplier: supplier ? { configured: !!supplier.configured, provider: supplier.provider || null, message_fr: supplier.message_fr || null } : null },
+      service_credentials: { admin_credentials: cred.admin_credentials, organisation_credentials: cred.organisations.reduce(function (n, o) { return n + o.credentials; }, 0),
+        organisations: cred.organisations.length, invalid_entries: cred.invalid_entries }
+    });
+  }
+
+  // IDA-ADMIN-4 — data quality. Decisions stay on the existing audited review
+  // routes (/api/review/*); this route only reports.
+  async function getQuality(req, res) {
+    var filter = adminRepository.parseQualityQuery(query(req));
+    sendJson(res, 200, await adminRepository.qualityReport(filter));
+  }
+
+  // IDA-ADMIN-5 — security and audit. Read only: revoking a session or
+  // changing a role stays with ops/auth-users.js until an audited route exists.
+  async function getAudit(req, res) {
+    var filter = adminRepository.parseAuditQuery(query(req));
+    sendJson(res, 200, await adminRepository.listAudit(filter));
+  }
+  async function getAccounts(req, res) {
+    var filter = adminRepository.parseAccountQuery(query(req));
+    var out = await adminRepository.listAccounts(filter);
+    var cred = identity.credentialSummary();
+    out.service_credentials = { admin_credentials: cred.admin_credentials, invalid_entries: cred.invalid_entries,
+      organisations: cred.organisations };
+    // In-process counters (api.js logAuthDecision): since this process started,
+    // lost on restart — reported with the start time, never as a history.
+    out.auth_decisions = authDecisions();
+    sendJson(res, 200, out);
+  }
+  function authDecisions() {
+    var counters = observability.shared().snapshot().counters;
+    var auth = {};
+    Object.keys(counters).forEach(function (k) { if (/^auth_/.test(k)) auth[k] = counters[k]; });
+    return { since: new Date(Date.now() - process.uptime() * 1000).toISOString(), counters: auth };
+  }
+
+  // IDA-ADMIN-6 — dashboard: the modules' own counts, composed once.
+  async function getDashboard(req, res) {
+    var out = await adminRepository.dashboard();
+    var cred = identity.credentialSummary();
+    var providers = resolver ? resolver.providers() : [];
+    var supplier = catalog ? catalog.status().supplier : null;
+    out.security.service_credentials = { admin_credentials: cred.admin_credentials, invalid_entries: cred.invalid_entries,
+      organisation_credentials: cred.organisations.reduce(function (n, o) { return n + o.credentials; }, 0), organisations: cred.organisations.length };
+    out.security.auth_decisions = authDecisions();
+    out.health = { database: 'ok', vehicle_providers_configured: providers.length, parts_supplier_configured: !!(supplier && supplier.configured) };
+    out.generated_at = new Date().toISOString();
+    sendJson(res, 200, out);
+  }
+
   var routes = [
     { method: 'GET', pattern: /^\/api\/admin\/overview$/, handler: adminOnly(getOverview) },
+    { method: 'GET', pattern: /^\/api\/admin\/dashboard$/, handler: adminOnly(getDashboard) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
-    { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) }
+    { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) },
+    { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) },
+    { method: 'GET', pattern: /^\/api\/admin\/organisations$/, handler: adminOnly(getOrganisations) },
+    { method: 'GET', pattern: /^\/api\/admin\/sources$/, handler: adminOnly(getSources) },
+    { method: 'GET', pattern: /^\/api\/admin\/quality$/, handler: adminOnly(getQuality) },
+    { method: 'GET', pattern: /^\/api\/admin\/audit$/, handler: adminOnly(getAudit) },
+    { method: 'GET', pattern: /^\/api\/admin\/accounts$/, handler: adminOnly(getAccounts) }
   ];
 
   return { routes: routes };

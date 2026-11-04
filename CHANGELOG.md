@@ -6,6 +6,63 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-11-04 — ida-admin-6: dashboard
+
+`/admin/dashboard` and `GET /api/admin/dashboard` (admin only, read only): 25
+tiles across vehicles, maintenance, ateliers, quality/review and security, each
+the number its module reports and each a link into that module with the filter
+that reproduces it; recent writes without actor or target. « Tableau de bord »
+opens the console navigation on every page. The overview's recent activity now
+sorts capture rows by their stored time. `tests/ida-admin-dashboard-test.js` (62).
+
+---
+
+## 2026-10-30 — ida-admin-5: security and audit
+
+`/admin/security` with `GET /api/admin/audit` and `GET /api/admin/accounts` (admin
+only, read only): the audit trail with filters, values written and client hashes
+withheld, capture rows reduced to event, actor type and day; web accounts with
+roles, organisations and session counts, never a hash, token, address or user
+agent; service-credential counts; auth decisions counted by reason class since
+the process started. `tests/ida-admin-security-test.js` (75).
+
+---
+
+## 2026-10-30 — ida-admin-4: data quality
+
+`/admin/quality` and `GET /api/admin/quality` (admin only, read only): every
+canonical identity with an open issue — disagreeing values (aliases included),
+pending or conflict facts, pending observations, missing make/model/year, no
+active plate — with register totals and the review backlog. `/admin/review` in
+French; its decision confirmation is no longer overwritten. The review detail no
+longer returns a VIN fact written with a public scope.
+`tests/ida-admin-quality-test.js` (65).
+
+---
+
+## 2026-10-30 — ida-admin-3: ateliers and data sources
+
+`/admin/sources` with `GET /api/admin/organisations` and `GET /api/admin/sources`
+(admin only, read only): organisations with their accounts, integrations and
+measured activity; capture sources with trust level, consent, legal basis and
+usage; identification providers, parts catalogue and service-credential counts as
+configured. Contact e-mail, tax id, credentials and actor references never leave
+the server. `identity.credentialSummary()`. `tests/ida-admin-sources-test.js` (61).
+
+---
+
+## 2026-10-30 — ida-admin-2: maintenance history
+
+`/admin/maintenance` and `GET /api/admin/maintenance` (admin only, read only):
+every workshop visit with its operations, and every service event, across all
+organisations, filtered by organisation, status, operation type, identification,
+dates and vehicle (any plate the vehicle ever carried, or the plate read at the
+workshop for an unidentified visit). One navigation on all console pages. Back
+now restores unfiltered fields on the console list pages.
+`tests/ida-admin-maintenance-test.js` (71). Details: `docs/ADMIN_CONSOLE.md` §7–§8.
+
+---
+
 ## 2026-10-30 — ida-admin-1: registry and vehicle dossier
 
 Three admin-only read routes (`/api/admin/overview`, `/api/admin/vehicles`,

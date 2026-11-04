@@ -20,7 +20,8 @@
 
   function readUrl() {
     var p = new URLSearchParams(window.location.search);
-    FIELDS.forEach(function (f) { if (p.has(f) && form.elements[f]) form.elements[f].value = p.get(f); });
+    // Absent from the URL = back to the default (see admin-maintenance-ui.js).
+    FIELDS.forEach(function (f) { var e = form.elements[f]; if (e) e.value = p.has(f) ? p.get(f) : (e.tagName === 'SELECT' ? e.options[0].value : ''); });
     form.elements.include_merged.checked = p.get('include_merged') === '1';
     var page = parseInt(p.get('page') || '1', 10);
     current.page = isFinite(page) && page > 0 ? page : 1;

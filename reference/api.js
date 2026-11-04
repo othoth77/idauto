@@ -66,6 +66,7 @@ var plateNormalizer = require('./vehicle/plate-normalizer.js');
 var sessionAuth = require('./auth/principal.js');
 var v14Routes = require('./v14-routes.js');
 var adminRoutes = require('./admin-routes.js');
+var observability = require('./observability.js');
 
 //
 // IDA-V1B, 2026-08-27 — OWNER SESSION.
@@ -179,6 +180,11 @@ function logAuthDecision(req, fields) {
   if (fields.org !== undefined && fields.org !== null) entry.org = fields.org;
   if (typeof fields.credentialLength === 'number') entry.credential_length = fields.credentialLength;
   console.log(JSON.stringify(entry));
+  // IDA-ADMIN-5 — counted for /admin/security: the decision and the reason's
+  // class only (missing_scope:x counts as missing_scope), never the actor.
+  var counters = observability.shared();
+  counters.inc(fields.result === 'granted' ? 'auth_granted' : 'auth_denied');
+  if (fields.result !== 'granted') counters.inc('auth_denied:' + String(fields.reason || 'unknown').split(':')[0]);
 }
 
 // IDA-V13 — three credentials, one order, one gate.
@@ -408,6 +414,23 @@ var ADMIN_ASSETS = {
   '/admin/vehicle/': { file: 'admin-vehicle.html', contentType: 'text/html; charset=utf-8' },
   '/admin/vehicle-ui.js': { file: 'admin-vehicle-ui.js', contentType: 'application/javascript; charset=utf-8' },
   '/admin/console.js': { file: 'admin-console.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-ADMIN-2 — maintenance history (static shell; data from /api/admin/maintenance).
+  '/admin/maintenance': { file: 'admin-maintenance.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/maintenance/': { file: 'admin-maintenance.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/maintenance-ui.js': { file: 'admin-maintenance-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-ADMIN-3 — ateliers and data sources.
+  '/admin/sources': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/sources/': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/sources-ui.js': { file: 'admin-sources-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/quality': { file: 'admin-quality.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/quality/': { file: 'admin-quality.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/quality-ui.js': { file: 'admin-quality-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/security': { file: 'admin-security.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/security/': { file: 'admin-security.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/security-ui.js': { file: 'admin-security-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/dashboard': { file: 'admin-dashboard.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/dashboard/': { file: 'admin-dashboard.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/dashboard-ui.js': { file: 'admin-dashboard-ui.js', contentType: 'application/javascript; charset=utf-8' },
 
   // The Design System itself — the same files web/ serves to the citizen
   // surface, mounted under /admin/ so they are never phase-gated.
@@ -1695,7 +1718,10 @@ async function getReviewObservation(res, id) {
   var item = observation.rows[0];
   var facts = item.vehicle_internal_ref ? await db.query(
     'SELECT fact_key, fact_value, confidence_score, verification_status, access_scope FROM idauto_vehicle_facts f ' +
-    'JOIN idauto_vehicles v ON v.id = f.vehicle_id WHERE v.internal_ref = $1 AND f.access_scope != $2 ORDER BY fact_key',
+    // IDA-ADMIN-4: never the VIN, whatever scope it was written with (a VIN
+    // is disclosed only by the fiche route, which audits the read), and
+    // matched by key in any case, as createFact() stores the key as sent.
+    "JOIN idauto_vehicles v ON v.id = f.vehicle_id WHERE v.internal_ref = $1 AND f.access_scope != $2 AND LOWER(TRIM(f.fact_key)) <> 'vin' ORDER BY fact_key",
     [item.vehicle_internal_ref, 'mythos_private']
   ) : { rows: [] };
   var media = await db.query(

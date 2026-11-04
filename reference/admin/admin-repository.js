@@ -425,8 +425,13 @@ async function overview() {
   var orgStatus = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_organizations GROUP BY 1');
   var documents = (await db.query('SELECT count(*)::int AS n FROM idauto_vehicle_documents')).rows[0].n;
   var serviceEvents = (await db.query('SELECT count(*)::int AS n FROM idauto_service_events')).rows[0].n;
+  // Same rule as the audit list (IDA-ADMIN-5): a capture row keeps its day only.
   var recent = (await db.query(
-    'SELECT event_time, event_type, actor_type, org_id, target_type FROM idauto_audit_log ORDER BY event_time DESC, id DESC LIMIT 15')).rows;
+    "SELECT CASE WHEN COALESCE(target_type IN ('" + CAPTURE_TARGETS.join("','") + "'), FALSE) THEN date_trunc('day', event_time) ELSE event_time END AS at, " +
+    "COALESCE(target_type IN ('" + CAPTURE_TARGETS.join("','") + "'), FALSE) AS masked, " +
+    // Ordered by the stored time: the output column is named `at`, so the cut
+    // value never decides the order (it would push capture rows to the day's end).
+    'event_type, actor_type, org_id, target_type FROM idauto_audit_log ORDER BY idauto_audit_log.event_time DESC, id DESC LIMIT 15')).rows;
   return {
     vehicles: vehicles,
     plates: plates,
@@ -435,11 +440,626 @@ async function overview() {
     workshop: { visits_by_status: visitStatus, operations_by_type: opType, service_events: serviceEvents },
     organisations_by_status: orgStatus,
     documents: documents,
-    recent_activity: recent.map(function (r) { return { at: r.event_time, event_type: r.event_type, actor_type: r.actor_type, org_id: r.org_id, target_type: r.target_type }; })
+    recent_activity: recent.map(function (r) { return { at: r.at, masked: r.masked, event_type: r.event_type, actor_type: r.actor_type, org_id: r.org_id, target_type: r.target_type }; })
+  };
+}
+
+/* =========================================================================
+ * IDA-ADMIN-2 — MAINTENANCE HISTORY across every organisation.
+ *
+ * The workshop routes (/api/workshop/*) are per organisation by design: an
+ * atelier sees its own visits, and an admin must name one org_id. The console
+ * needs the other view — every recorded intervention, whoever recorded it —
+ * so it reads the same tables here, read-only, admin-only.
+ *
+ * Two record kinds, kept apart because they are different evidence:
+ *   visits          idauto_workshop_visits + their operations (no mileage
+ *                   column exists on a visit: odometer_km is always null)
+ *   service_events  idauto_service_events (carries odometer_km when recorded)
+ *
+ * Never selected: the workshop customer reference (only whether one exists),
+ * plate_read_confidence. plate_read — the plate as typed or read at the
+ * workshop — is returned ONLY for a visit that was never identified, where it
+ * is the one handle an operator has to resolve it; an identified visit shows
+ * the vehicle's own current plate instead.
+ * ========================================================================= */
+var VISIT_STATUSES = ['open', 'in_progress', 'closed', 'cancelled'];
+var OPERATION_TYPES = ['diagnosis', 'replacement', 'service', 'repair', 'inspection', 'other'];
+
+function dateParam(q, name) {
+  var v = oneParam(q, name, 10);
+  if (v === null) return null;
+  // Round trip, so 2026-02-30 is refused here instead of failing in SQL (a 500).
+  var d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + 'T00:00:00Z') : null;
+  if (!d || isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== v) throw badRequest(name + ' must be a date YYYY-MM-DD');
+  return v;
+}
+
+function parseMaintenanceQuery(q) {
+  q = q || {};
+  var out = {
+    kind: oneParam(q, 'kind', 20) || 'visits',
+    q: oneParam(q, 'q'),
+    org_id: oneParam(q, 'org_id', 10),
+    status: oneParam(q, 'status', 20),
+    operation_type: oneParam(q, 'operation_type', 20),
+    identified: oneParam(q, 'identified', 5),
+    from: dateParam(q, 'from'),
+    to: dateParam(q, 'to'),
+    dir: (oneParam(q, 'dir', 8) || 'desc').toLowerCase(),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  if (out.kind !== 'visits' && out.kind !== 'service_events') throw badRequest('kind must be visits or service_events');
+  if (out.org_id !== null && !/^\d+$/.test(out.org_id)) throw badRequest('org_id must be a positive integer');
+  if (out.status !== null && VISIT_STATUSES.indexOf(out.status) === -1) throw badRequest('unknown status', { allowed: VISIT_STATUSES });
+  if (out.operation_type !== null && OPERATION_TYPES.indexOf(out.operation_type) === -1) throw badRequest('unknown operation_type', { allowed: OPERATION_TYPES });
+  if (out.identified !== null && out.identified !== 'true' && out.identified !== 'false') throw badRequest('identified must be true or false');
+  if (out.kind === 'service_events' && (out.status || out.operation_type || out.identified !== null)) throw badRequest('status, operation_type and identified apply to visits only');
+  if (out.from && out.to && out.from > out.to) throw badRequest('from is after to');
+  if (out.dir !== 'asc' && out.dir !== 'desc') throw badRequest('dir must be asc or desc');
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10);
+  out.page_size = parseInt(out.page_size, 10);
+  out.org_id = out.org_id === null ? null : parseInt(out.org_id, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+// Vehicle criterion shared by both kinds: IVID / internal_ref of the recorded
+// vehicle, or any plate it has ever carried (any accepted spelling).
+function vehicleMatchClause(alias, text, params) {
+  var parsed = plateNormalizer.parsePlate(text);
+  var plate = parsed.ok ? parsed.canonical : (plateValidator.normalizePlate(text) || text.toUpperCase());
+  params.push(text); var exact = params.length;
+  params.push(plate); var p1 = params.length;
+  params.push(plate.replace(/ /g, '')); var p2 = params.length;
+  return '(' + alias + '.ivid = $' + exact + ' OR ' + alias + '.internal_ref = $' + exact +
+    ' OR EXISTS (SELECT 1 FROM idauto_plates p WHERE p.vehicle_id = ' + alias + '.id AND (p.plate_number = $' + p1 +
+    " OR REPLACE(p.plate_number, ' ', '') = $" + p2 + ')))';
+}
+
+function vehicleSummary(r) {
+  if (!r.v_ivid) return null;
+  var parsed = r.v_plate ? plateNormalizer.parsePlate(r.v_plate) : null;
+  return { ivid: r.v_ivid, internal_ref: r.v_internal_ref, make: r.v_make, model: r.v_model, year: r.v_year,
+    plate: r.v_plate, plate_display: parsed && parsed.ok ? parsed.display : r.v_plate, merged_into: r.v_merged_into || null };
+}
+
+var VEHICLE_SUMMARY_SQL =
+  'v.ivid AS v_ivid, v.internal_ref AS v_internal_ref, v.make AS v_make, v.model AS v_model, v.year AS v_year, mv.ivid AS v_merged_into, ' +
+  "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS v_plate";
+
+async function listMaintenance(filter) {
+  var where = [], params = [];
+  var visits = filter.kind === 'visits';
+  var t = visits ? 'w' : 'e';
+  var dateCol = visits ? 'w.opened_at' : 'e.event_date';
+  if (filter.org_id !== null) { params.push(filter.org_id); where.push(t + '.org_id = $' + params.length); }
+  if (filter.from) { params.push(filter.from); where.push(dateCol + ' >= $' + params.length + '::date'); }
+  if (filter.to) { params.push(filter.to); where.push(dateCol + " < ($" + params.length + "::date + INTERVAL '1 day')"); }
+  if (visits) {
+    if (filter.status) { params.push(filter.status); where.push('w.status = $' + params.length); }
+    if (filter.operation_type) { params.push(filter.operation_type); where.push('EXISTS (SELECT 1 FROM idauto_workshop_operations o WHERE o.visit_id = w.id AND o.operation_type = $' + params.length + ')'); }
+    if (filter.identified !== null) where.push(filter.identified === 'true' ? 'w.vehicle_id IS NOT NULL' : 'w.vehicle_id IS NULL');
+  }
+  if (filter.q) {
+    var vm = vehicleMatchClause('v', filter.q, params);
+    if (visits) {
+      // An unidentified visit is found by the plate read at the workshop.
+      var parsed = plateNormalizer.parsePlate(filter.q);
+      var plate = parsed.ok ? parsed.canonical : filter.q.toUpperCase();
+      params.push(plate.replace(/ /g, ''));
+      vm = '(' + vm + " OR (w.vehicle_id IS NULL AND REPLACE(UPPER(w.plate_read), ' ', '') = $" + params.length + '))';
+    }
+    where.push(vm);
+  }
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var from = visits
+    ? ' FROM idauto_workshop_visits w LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id LEFT JOIN idauto_vehicles mv ON mv.id = v.merged_into_id LEFT JOIN idauto_organizations org ON org.id = w.org_id'
+    : ' FROM idauto_service_events e LEFT JOIN idauto_vehicles v ON v.id = e.vehicle_id LEFT JOIN idauto_vehicles mv ON mv.id = v.merged_into_id LEFT JOIN idauto_organizations org ON org.id = e.org_id';
+
+  var total = (await db.query('SELECT count(*)::int AS n' + from + whereSql, params)).rows[0].n;
+  var dir = filter.dir === 'asc' ? 'ASC' : 'DESC';
+  var pageParams = params.slice();
+  pageParams.push(filter.page_size); var li = pageParams.length;
+  pageParams.push((filter.page - 1) * filter.page_size); var oi = pageParams.length;
+  var select = visits
+    ? 'SELECT w.id, w.org_id, org.name AS org_name, w.status, w.opened_at, w.closed_at, w.reason, w.identification_method, w.plate_read_method, ' +
+      'CASE WHEN w.vehicle_id IS NULL THEN w.plate_read END AS plate_read, (w.customer_ref_id IS NOT NULL) AS customer_ref_present, ' + VEHICLE_SUMMARY_SQL
+    : 'SELECT e.id, e.org_id, org.name AS org_name, e.event_type, e.event_date, e.odometer_km, e.description, e.outcome, e.next_service_due, e.is_public, e.created_at, ' + VEHICLE_SUMMARY_SQL;
+  var rows = (await db.query(select + from + whereSql + ' ORDER BY ' + dateCol + ' ' + dir + ' NULLS LAST, ' + t + '.id ' + dir +
+    ' LIMIT $' + li + ' OFFSET $' + oi, pageParams)).rows;
+
+  var results;
+  if (visits) {
+    var ids = rows.map(function (r) { return r.id; });
+    var ops = ids.length ? (await db.query(
+      'SELECT o.id, o.visit_id, o.operation_type, o.description, o.quantity, o.status, o.created_at, p.reference AS part_reference, p.brand AS part_brand, p.name AS part_name ' +
+      'FROM idauto_workshop_operations o LEFT JOIN idauto_parts p ON p.id = o.part_id WHERE o.visit_id = ANY($1::bigint[]) ORDER BY o.created_at, o.id', [ids])).rows : [];
+    var byVisit = {};
+    ops.forEach(function (o) {
+      (byVisit[o.visit_id] = byVisit[o.visit_id] || []).push({ id: o.id, operation_type: o.operation_type, description: o.description, quantity: o.quantity,
+        status: o.status, recorded_at: o.created_at, part: o.part_reference ? { reference: o.part_reference, brand: o.part_brand, name: o.part_name } : null });
+    });
+    results = rows.map(function (r) {
+      return { id: r.id, org_id: r.org_id, org_name: r.org_name, status: r.status, opened_at: r.opened_at, closed_at: r.closed_at,
+        reason: r.reason, identification_method: r.identification_method, plate_read_method: r.plate_read_method,
+        plate_read: r.plate_read, customer_ref_present: r.customer_ref_present, odometer_km: null,
+        vehicle: vehicleSummary(r), operations: byVisit[r.id] || [] };
+    });
+  } else {
+    results = rows.map(function (r) {
+      return { id: r.id, org_id: r.org_id, org_name: r.org_name, event_type: r.event_type, event_date: r.event_date, odometer_km: r.odometer_km,
+        description: r.description, outcome: r.outcome, next_service_due: r.next_service_due, is_public: r.is_public, recorded_at: r.created_at,
+        vehicle: vehicleSummary(r) };
+    });
+  }
+
+  // Filter choices come from the data, never from a hard-coded list of ateliers.
+  var orgs = (await db.query(
+    'SELECT o.id, o.name, o.status FROM idauto_organizations o WHERE EXISTS (SELECT 1 FROM idauto_workshop_visits w WHERE w.org_id = o.id) ' +
+    'OR EXISTS (SELECT 1 FROM idauto_service_events e WHERE e.org_id = o.id) ORDER BY o.name, o.id')).rows;
+  var counts = (await db.query(
+    "SELECT (SELECT count(*)::int FROM idauto_workshop_visits) AS visits, (SELECT count(*)::int FROM idauto_workshop_visits WHERE vehicle_id IS NULL) AS unidentified_visits, " +
+    '(SELECT count(*)::int FROM idauto_workshop_operations) AS operations, (SELECT count(*)::int FROM idauto_service_events) AS service_events, ' +
+    '(SELECT count(*)::int FROM idauto_service_events WHERE odometer_km IS NOT NULL) AS service_events_with_mileage')).rows[0];
+
+  return { kind: filter.kind, page: filter.page, page_size: filter.page_size, total: total, pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    dir: filter.dir, organisations: orgs, totals: counts, mileage_recorded_on_visits: false, results: results };
+}
+
+/* =========================================================================
+ * IDA-ADMIN-3 — ATELIERS & DATA SOURCES.
+ *
+ * Organisations: identity, status and measured activity. NOT returned:
+ * contact_email and tax_id (only whether each is present) — the console
+ * needs to know a contact exists, not to read it. Activity counts come from
+ * the tables that carry org_id; nothing is estimated.
+ *
+ * Capture sources: the catalogue as configured (trust level, consent, legal
+ * basis, active) with how much data each one actually produced.
+ * ========================================================================= */
+var ORG_STATUSES = ['pending', 'active', 'suspended', 'cancelled'];
+var ORG_TYPES = ['garage', 'insurer', 'fleet', 'judicial', 'government', 'other'];
+var ORG_SORTS = { name: 'o.name', created: 'o.created_at', activity: 'last_activity_at' };
+
+function parseOrganisationQuery(q) {
+  q = q || {};
+  var out = {
+    q: oneParam(q, 'q', 100),
+    status: oneParam(q, 'status', 20),
+    org_type: oneParam(q, 'org_type', 20),
+    sort: oneParam(q, 'sort', 20) || 'name',
+    dir: (oneParam(q, 'dir', 8) || 'asc').toLowerCase(),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  if (out.status !== null && ORG_STATUSES.indexOf(out.status) === -1) throw badRequest('unknown status', { allowed: ORG_STATUSES });
+  if (out.org_type !== null && ORG_TYPES.indexOf(out.org_type) === -1) throw badRequest('unknown org_type', { allowed: ORG_TYPES });
+  if (!Object.prototype.hasOwnProperty.call(ORG_SORTS, out.sort)) throw badRequest('unknown sort', { allowed: Object.keys(ORG_SORTS) });
+  if (out.dir !== 'asc' && out.dir !== 'desc') throw badRequest('dir must be asc or desc');
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10); out.page_size = parseInt(out.page_size, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+async function listOrganisations(filter, credentials) {
+  var where = [], params = [];
+  if (filter.q) { params.push('%' + filter.q.replace(/[\\%_]/g, function (c) { return '\\' + c; }) + '%'); where.push('(o.name ILIKE $' + params.length + ' OR o.address_city ILIKE $' + params.length + ')'); }
+  if (filter.status) { params.push(filter.status); where.push('o.status = $' + params.length); }
+  if (filter.org_type) { params.push(filter.org_type); where.push('o.org_type = $' + params.length); }
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var total = (await db.query('SELECT count(*)::int AS n FROM idauto_organizations o' + whereSql, params)).rows[0].n;
+  var pageParams = params.slice();
+  pageParams.push(filter.page_size); var li = pageParams.length;
+  pageParams.push((filter.page - 1) * filter.page_size); var oi = pageParams.length;
+  var dir = filter.dir === 'asc' ? 'ASC' : 'DESC';
+  var rows = (await db.query(
+    'SELECT * FROM (SELECT o.id, o.name, o.org_type, o.status, o.subscription_tier, o.address_city, g.name_fr AS governorate, o.verified_at, ' +
+    'o.is_fixpert_pilot, o.created_at, (o.contact_email IS NOT NULL AND o.contact_email <> \'\') AS contact_present, ' +
+    '(o.tax_id IS NOT NULL AND o.tax_id <> \'\') AS tax_id_present, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user u WHERE u."org_id" = o.id AND u."role" = \'manager\') AS managers, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user u WHERE u."org_id" = o.id AND u."role" = \'technician\') AS technicians, ' +
+    '(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.org_id = o.id) AS visits, ' +
+    "(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.org_id = o.id AND w.status IN ('open','in_progress')) AS open_visits, " +
+    '(SELECT count(*)::int FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE w.org_id = o.id) AS operations, ' +
+    '(SELECT count(*)::int FROM idauto_service_events e WHERE e.org_id = o.id) AS service_events, ' +
+    '(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.org_id = o.id) AS documents, ' +
+    '(SELECT count(*)::int FROM idauto_observations ob WHERE ob.org_id = o.id) AS observations, ' +
+    '(SELECT count(*)::int FROM idauto_org_stock s WHERE s.org_id = o.id) AS stock_lines, ' +
+    'GREATEST((SELECT max(w.opened_at) FROM idauto_workshop_visits w WHERE w.org_id = o.id), (SELECT max(d.created_at) FROM idauto_vehicle_documents d WHERE d.org_id = o.id), ' +
+    '(SELECT max(e.created_at) FROM idauto_service_events e WHERE e.org_id = o.id)) AS last_activity_at ' +
+    'FROM idauto_organizations o LEFT JOIN idauto_governorates g ON g.id = o.governorate_id' + whereSql + ') o ' +
+    'ORDER BY ' + ORG_SORTS[filter.sort] + ' ' + dir + ' NULLS LAST, o.id ' + dir + ' LIMIT $' + li + ' OFFSET $' + oi, pageParams)).rows;
+  var credByOrg = {};
+  (credentials ? credentials.organisations : []).forEach(function (c) { credByOrg[c.org_id] = c; });
+  var counts = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_organizations GROUP BY 1');
+  return {
+    page: filter.page, page_size: filter.page_size, total: total, pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    sort: filter.sort, dir: filter.dir, by_status: counts,
+    results: rows.map(function (r) {
+      var c = credByOrg[r.id];
+      return { id: r.id, name: r.name, org_type: r.org_type, status: r.status, subscription_tier: r.subscription_tier,
+        city: r.address_city, governorate: r.governorate, verified_at: r.verified_at, is_fixpert_pilot: r.is_fixpert_pilot, created_at: r.created_at,
+        contact_present: r.contact_present, tax_id_present: r.tax_id_present,
+        accounts: { managers: r.managers, technicians: r.technicians },
+        integration: c ? { credentials: c.credentials, scopes: c.scopes } : null,
+        activity: { visits: r.visits, open_visits: r.open_visits, operations: r.operations, service_events: r.service_events,
+          documents: r.documents, observations: r.observations, stock_lines: r.stock_lines, last_activity_at: r.last_activity_at } };
+    })
+  };
+}
+
+async function dataSources() {
+  var sources = (await db.query(
+    'SELECT cs.code, cs.name_fr, cs.name_ar, cs.source_type, cs.trust_level, cs.requires_consent, cs.legal_basis, cs.active, cs.notes, cs.created_at, ' +
+    '(SELECT count(*)::int FROM idauto_observations ob WHERE ob.capture_source_id = cs.id) AS observations, ' +
+    '(SELECT count(*)::int FROM idauto_vehicle_facts f WHERE f.source_id = cs.id) AS facts, ' +
+    '(SELECT count(*)::int FROM idauto_submissions s WHERE s.capture_source_id = cs.id) AS submissions ' +
+    'FROM idauto_capture_sources cs ORDER BY cs.active DESC, cs.trust_level DESC, cs.code')).rows;
+  return sources.map(function (r) {
+    return { code: r.code, name_fr: r.name_fr, name_ar: r.name_ar, source_type: r.source_type, trust_level: r.trust_level,
+      requires_consent: r.requires_consent, legal_basis: r.legal_basis, active: r.active, notes: r.notes, created_at: r.created_at,
+      usage: { observations: r.observations, facts: r.facts, submissions: r.submissions } };
+  });
+}
+
+/* =========================================================================
+ * IDA-ADMIN-4 — DATA QUALITY across the register.
+ *
+ * One row per CANONICAL identity: what is recorded on it and on every record
+ * merged into it (the same set the dossier reads), so a disagreement left on
+ * an alias is not lost behind the merge. Each issue is a fact of the data,
+ * computed in SQL — nothing here is a score or an estimate:
+ *   disagreement          a fact key holding more than one distinct active value
+ *   pending_facts         facts recorded as verification_status 'pending_review'
+ *   conflict_facts        facts recorded as 'conflict' — only when an operator
+ *                         enters one so (createFact keeps the status sent); no
+ *                         automatic detection sets it, hence 'disagreement'
+ *   pending_observations  observations in 'pending_review' / 'pending_confirmation'
+ *   incomplete            make, model or year missing on the identity
+ *   no_plate              no active plate on the identity or its aliases
+ * Same exclusions as the dossier: no mythos_private fact and no chassis number (NOT_VIN), by key
+ * in any case. A disagreement lists at most five distinct values per key,
+ * compared and shown trimmed and upper-cased. The totals describe the whole
+ * register; q (an IVID, an internal reference, or a make/model prefix) only
+ * narrows the list.
+ * ========================================================================= */
+var QUALITY_ISSUES = ['all', 'disagreement', 'pending_facts', 'conflict_facts', 'pending_observations', 'incomplete', 'no_plate'];
+var QUALITY_VALUE_MAX = 80;
+
+function parseQualityQuery(q) {
+  q = q || {};
+  var out = {
+    issue: oneParam(q, 'issue', 24) || 'all',
+    q: oneParam(q, 'q', 64),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  if (QUALITY_ISSUES.indexOf(out.issue) === -1) throw badRequest('unknown issue', { allowed: QUALITY_ISSUES });
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10); out.page_size = parseInt(out.page_size, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+// Every record mapped to the canonical identity it resolves to (depth bounded
+// like the dossier's alias walk), then one grouped pass per source table —
+// joins, not a subquery per identity, so the cost grows with the register,
+// not with its square.
+var FACT_GUARD = "f.access_scope <> 'mythos_private' AND " + NOT_VIN;
+var CANON_CTE =
+  'WITH RECURSIVE canon(id, root, depth) AS (' +
+  'SELECT v.id, v.id, 0 FROM idauto_vehicles v WHERE v.merged_into_id IS NULL ' +
+  'UNION ALL SELECT v.id, c.root, c.depth + 1 FROM idauto_vehicles v JOIN canon c ON v.merged_into_id = c.id WHERE c.depth < 16), ' +
+  'dis AS (SELECT d.root, count(*)::int AS n FROM (SELECT c.root, f.fact_key FROM idauto_vehicle_facts f JOIN canon c ON c.id = f.vehicle_id ' +
+  'WHERE f.is_active AND ' + FACT_GUARD + ' GROUP BY c.root, f.fact_key HAVING count(DISTINCT UPPER(TRIM(f.fact_value))) > 1) d GROUP BY d.root), ' +
+  "fst AS (SELECT c.root, count(*) FILTER (WHERE f.verification_status = 'pending_review')::int AS pending, " +
+  "count(*) FILTER (WHERE f.verification_status = 'conflict')::int AS conflict FROM idauto_vehicle_facts f JOIN canon c ON c.id = f.vehicle_id " +
+  'WHERE ' + FACT_GUARD + ' GROUP BY c.root), ' +
+  'obs AS (SELECT c.root, count(*)::int AS n FROM idauto_observations o JOIN canon c ON c.id = o.vehicle_id ' +
+  "WHERE o.status IN ('pending_review','pending_confirmation') GROUP BY c.root), " +
+  "pl AS (SELECT DISTINCT c.root FROM idauto_plates p JOIN canon c ON c.id = p.vehicle_id WHERE p.status = 'active'), " +
+  'al AS (SELECT c.root, count(*)::int - 1 AS n FROM canon c GROUP BY c.root), ' +
+  'issues AS (SELECT r.id AS root, COALESCE(dis.n, 0) AS disagreement, COALESCE(fst.pending, 0) AS pending_facts, ' +
+  'COALESCE(fst.conflict, 0) AS conflict_facts, COALESCE(obs.n, 0) AS pending_observations, ' +
+  '((r.make IS NULL OR TRIM(r.make) = \'\')::int + (r.model IS NULL OR TRIM(r.model) = \'\')::int + (r.year IS NULL)::int) AS incomplete, ' +
+  '(pl.root IS NULL)::int AS no_plate, COALESCE(al.n, 0) AS aliases ' +
+  'FROM idauto_vehicles r LEFT JOIN dis ON dis.root = r.id LEFT JOIN fst ON fst.root = r.id LEFT JOIN obs ON obs.root = r.id ' +
+  'LEFT JOIN pl ON pl.root = r.id LEFT JOIN al ON al.root = r.id WHERE r.merged_into_id IS NULL) ';
+
+var ISSUE_PREDICATE = {
+  all: '(i.disagreement > 0 OR i.pending_facts > 0 OR i.conflict_facts > 0 OR i.pending_observations > 0 OR i.incomplete > 0 OR i.no_plate > 0)',
+  disagreement: 'i.disagreement > 0',
+  pending_facts: 'i.pending_facts > 0',
+  conflict_facts: 'i.conflict_facts > 0',
+  pending_observations: 'i.pending_observations > 0',
+  incomplete: 'i.incomplete > 0',
+  no_plate: 'i.no_plate > 0'
+};
+
+async function qualityTotals() {
+  return (await db.query(CANON_CTE +
+    'SELECT count(*)::int AS identities, ' +
+    Object.keys(ISSUE_PREDICATE).map(function (k) { return 'count(*) FILTER (WHERE ' + ISSUE_PREDICATE[k] + ')::int AS ' + k; }).join(', ') +
+    ' FROM issues i')).rows[0];
+}
+
+async function qualityReport(filter) {
+  var totals = await qualityTotals();
+  var where = ISSUE_PREDICATE[filter.issue], params = [];
+  if (filter.q) {
+    params.push(filter.q, likePrefix(filter.q));
+    where += ' AND (v.ivid = $1 OR v.internal_ref = $1 OR v.make ILIKE $2 OR v.model ILIKE $2)';
+  }
+  var total = filter.q
+    ? (await db.query(CANON_CTE + 'SELECT count(*)::int AS n FROM issues i JOIN idauto_vehicles v ON v.id = i.root WHERE ' + where, params)).rows[0].n
+    : totals[filter.issue];
+
+  var li = params.length + 1, oi = params.length + 2;
+  var rows = (await db.query(CANON_CTE +
+    'SELECT v.id, v.ivid, v.internal_ref, v.make, v.model, v.year, v.fiche_status, v.updated_at, ' +
+    "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate, " +
+    'i.disagreement, i.pending_facts, i.conflict_facts, i.pending_observations, i.incomplete, i.no_plate, i.aliases ' +
+    'FROM issues i JOIN idauto_vehicles v ON v.id = i.root WHERE ' + where +
+    ' ORDER BY (i.disagreement + i.conflict_facts) DESC, (i.pending_facts + i.pending_observations) DESC, v.updated_at DESC, v.id DESC LIMIT $' + li + ' OFFSET $' + oi,
+    params.concat([filter.page_size, (filter.page - 1) * filter.page_size]))).rows;
+
+  // The disagreeing values, for the identities on this page only.
+  var detail = {};
+  var roots = rows.filter(function (r) { return r.disagreement > 0; }).map(function (r) { return r.id; });
+  if (roots.length) {
+    (await db.query(
+      'WITH RECURSIVE canon(id, root, depth) AS (SELECT v.id, v.id, 0 FROM idauto_vehicles v WHERE v.id = ANY($1::int[]) ' +
+      'UNION ALL SELECT v.id, c.root, c.depth + 1 FROM idauto_vehicles v JOIN canon c ON v.merged_into_id = c.id WHERE c.depth < 16) ' +
+      'SELECT c.root, f.fact_key, array_agg(DISTINCT UPPER(TRIM(f.fact_value)) ORDER BY UPPER(TRIM(f.fact_value))) AS vals ' +
+      'FROM idauto_vehicle_facts f JOIN canon c ON c.id = f.vehicle_id WHERE f.is_active AND ' + FACT_GUARD + ' GROUP BY c.root, f.fact_key ' +
+      'HAVING count(DISTINCT UPPER(TRIM(f.fact_value))) > 1 ORDER BY c.root, f.fact_key', [roots])).rows.forEach(function (r) {
+      (detail[r.root] = detail[r.root] || []).push({
+        fact_key: r.fact_key,
+        distinct_values: r.vals.length,
+        values: r.vals.slice(0, 5).map(function (v) { return v.length > QUALITY_VALUE_MAX ? v.slice(0, QUALITY_VALUE_MAX) + '…' : v; })
+      });
+    });
+  }
+
+  var review = (await db.query(
+    "SELECT (SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_review') AS pending_review, " +
+    "(SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_confirmation') AS pending_confirmation, " +
+    "(SELECT count(*)::int FROM idauto_observations WHERE status IN ('pending_review','pending_confirmation') AND vehicle_id IS NULL) AS pending_unlinked")).rows[0];
+  var pendingBySource = (await db.query(
+    'SELECT cs.code, cs.name_fr, count(*)::int AS n FROM idauto_observations o JOIN idauto_capture_sources cs ON cs.id = o.capture_source_id ' +
+    "WHERE o.status IN ('pending_review','pending_confirmation') GROUP BY cs.code, cs.name_fr ORDER BY n DESC, cs.code")).rows;
+  var submissions = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_submissions GROUP BY 1');
+  var facts = await countBy('SELECT verification_status AS k, count(*)::int AS n FROM idauto_vehicle_facts f WHERE f.is_active AND ' + FACT_GUARD + ' GROUP BY 1');
+  var fiche = await countBy('SELECT fiche_status AS k, count(*)::int AS n FROM idauto_vehicles WHERE merged_into_id IS NULL GROUP BY 1');
+  var records = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_vehicles WHERE merged_into_id IS NOT NULL) AS merged_records, ' +
+    '(SELECT count(*)::int FROM idauto_workshop_visits WHERE vehicle_id IS NULL) AS unidentified_visits')).rows[0];
+
+  return {
+    issue: filter.issue, q: filter.q, page: filter.page, page_size: filter.page_size, total: total,
+    pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    totals: totals,
+    results: rows.map(function (r) {
+      var parsed = r.plate ? plateNormalizer.parsePlate(r.plate) : null;
+      return { ivid: r.ivid, internal_ref: r.internal_ref, make: r.make, model: r.model, year: r.year, fiche_status: r.fiche_status,
+        plate: r.plate, plate_display: parsed && parsed.ok ? parsed.display : r.plate, updated_at: r.updated_at, aliases: r.aliases,
+        issues: { disagreement: r.disagreement, pending_facts: r.pending_facts, conflict_facts: r.conflict_facts,
+          pending_observations: r.pending_observations, incomplete: r.incomplete, no_plate: r.no_plate === 1 },
+        disagreements: detail[r.id] || [] };
+    }),
+    review: { pending_review: review.pending_review, pending_confirmation: review.pending_confirmation,
+      pending_unlinked: review.pending_unlinked, pending_by_source: pendingBySource,
+      submissions_by_status: submissions },
+    facts_by_status: facts,
+    fiche_by_status: fiche,
+    merged_records: records.merged_records,
+    unidentified_visits: records.unidentified_visits
+  };
+}
+
+/* =========================================================================
+ * IDA-ADMIN-5 — SECURITY & AUDIT.
+ *
+ * The audit trail across the register, and the web accounts.
+ *
+ * AUDIT. Every column but three: old_value_json / new_value_json (they can
+ * carry the values written), the client hash and the request id are never
+ * selected. The summary is masked like the dossier's (vin_digest). Rows whose target is a
+ * capture — an observation, its media, a submission, a rate-limit bucket —
+ * are listed with their event and actor TYPE only: the actor reference and
+ * the target are withheld and the time is cut to the day, because together
+ * they would rebuild a per-contributor sighting timeline (the dossier omits
+ * those rows for the same reason). Filtering by actor or target never matches
+ * such a row, so a filter cannot be used to recover what the list withholds.
+ *
+ * ACCOUNTS. Name, e-mail, role, organisation, creation, whether the e-mail is
+ * verified, and per account the number of unexpired sessions and the last
+ * session activity. Never: the password hash (idauto_auth_account is not
+ * read), a session token, a session's address or user agent.
+ * ========================================================================= */
+var CAPTURE_TARGETS = ['idauto_observations', 'idauto_observation_media', 'idauto_submissions', 'idauto_rate_limit_counters'];
+var ACTOR_TYPES = ['system', 'contributor', 'professional_user', 'admin', 'anonymous'];
+var ACCOUNT_ROLES = ['admin', 'manager', 'technician'];
+
+function parseAuditQuery(q) {
+  q = q || {};
+  var out = {
+    event: oneParam(q, 'event', 60),
+    actor_type: oneParam(q, 'actor_type', 20),
+    actor: oneParam(q, 'actor', 64),
+    org_id: oneParam(q, 'org_id', 10),
+    target_type: oneParam(q, 'target_type', 40),
+    target: oneParam(q, 'target', 64),
+    from: dateParam(q, 'from'),
+    to: dateParam(q, 'to'),
+    page: oneParam(q, 'page', 8) || '1',
+    page_size: oneParam(q, 'page_size', 8) || String(PAGE_SIZE_DEFAULT)
+  };
+  // An event filter is an exact type ('vehicle.merge') or a family ending in
+  // a dot ('workshop.'): letters, digits, '_' and '.' only.
+  if (out.event !== null && !/^[a-z0-9_]+(\.[a-z0-9_]+)*\.?$/.test(out.event)) throw badRequest('event must be an event type or a family ending in "."');
+  if (out.actor_type !== null && ACTOR_TYPES.indexOf(out.actor_type) === -1) throw badRequest('unknown actor_type', { allowed: ACTOR_TYPES });
+  if (out.target_type !== null && !/^[a-z_]+$/.test(out.target_type)) throw badRequest('target_type must be a table name');
+  if (out.org_id !== null && !/^\d+$/.test(out.org_id)) throw badRequest('org_id must be a positive integer');
+  if (out.from && out.to && out.from > out.to) throw badRequest('from is after to');
+  if (!/^\d+$/.test(out.page)) throw badRequest('page must be a positive integer');
+  if (!/^\d+$/.test(out.page_size)) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  out.page = parseInt(out.page, 10); out.page_size = parseInt(out.page_size, 10);
+  if (out.org_id !== null) out.org_id = parseInt(out.org_id, 10);
+  if (out.page < 1) throw badRequest('page must be a positive integer');
+  if (out.page_size < 1 || out.page_size > PAGE_SIZE_MAX) throw badRequest('page_size must be between 1 and ' + PAGE_SIZE_MAX);
+  if ((out.page - 1) * out.page_size > OFFSET_MAX) throw badRequest('page is beyond the browsable range — narrow the filters', { offset_max: OFFSET_MAX });
+  return out;
+}
+
+async function listAudit(filter) {
+  var where = [], params = [];
+  function add(sql, value) { params.push(value); where.push(sql.replace('?', '$' + params.length)); }
+  if (filter.event) {
+    if (/\.$/.test(filter.event)) add("a.event_type LIKE ? ESCAPE '\\'", likePrefix(filter.event));
+    else add('a.event_type = ?', filter.event);
+  }
+  if (filter.actor_type) add('a.actor_type = ?', filter.actor_type);
+  if (filter.org_id !== null) add('a.org_id = ?', filter.org_id);
+  if (filter.target_type) add('a.target_type = ?', filter.target_type);
+  if (filter.from) add('a.event_time >= ?::date', filter.from);
+  if (filter.to) add("a.event_time < (?::date + INTERVAL '1 day')", filter.to);
+  // A constant list from this file, never from the request.
+  var capture = "COALESCE(a.target_type IN ('" + CAPTURE_TARGETS.join("','") + "'), FALSE)";
+  if (filter.actor) add('a.actor_ref = ? AND NOT ' + capture, filter.actor);
+  if (filter.target) add('a.target_ref = ? AND NOT ' + capture, filter.target);
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var total = (await db.query('SELECT count(*)::int AS n FROM idauto_audit_log a' + whereSql, params)).rows[0].n;
+  var li = params.length + 1, oi = params.length + 2;
+  var rows = (await db.query(
+    'SELECT a.id, ' + capture + ' AS masked, ' +
+    "CASE WHEN " + capture + " THEN date_trunc('day', a.event_time) ELSE a.event_time END AS at, " +
+    'a.event_type, a.actor_type, CASE WHEN ' + capture + ' THEN NULL ELSE a.actor_ref END AS actor_ref, ' +
+    "CASE WHEN " + capture + " THEN NULL ELSE u.\"name\" END AS actor_name, " +
+    'a.org_id, o.name AS org_name, a.target_type, CASE WHEN ' + capture + ' THEN NULL ELSE a.target_ref END AS target_ref, a.change_summary ' +
+    'FROM idauto_audit_log a LEFT JOIN idauto_organizations o ON o.id = a.org_id ' +
+    "LEFT JOIN idauto_auth_user u ON a.actor_ref = 'user:' || u.\"id\"" + whereSql +
+    ' ORDER BY a.event_time DESC, a.id DESC LIMIT $' + li + ' OFFSET $' + oi,
+    params.concat([filter.page_size, (filter.page - 1) * filter.page_size]))).rows;
+  var families = (await db.query(
+    "SELECT split_part(event_type, '.', 1) AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1 ORDER BY 2 DESC, 1")).rows;
+  var actors = await countBy("SELECT actor_type AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1");
+  var types = (await db.query('SELECT DISTINCT event_type AS t FROM idauto_audit_log ORDER BY 1 LIMIT 500')).rows.map(function (r) { return r.t; });
+  var targets = (await db.query('SELECT DISTINCT target_type AS t FROM idauto_audit_log WHERE target_type IS NOT NULL ORDER BY 1 LIMIT 100')).rows.map(function (r) { return r.t; });
+  var byType = await countBy("SELECT event_type AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1");
+  return {
+    page: filter.page, page_size: filter.page_size, total: total, pages: Math.max(1, Math.ceil(total / filter.page_size)),
+    filters: { event_types: types, target_types: targets, actor_types: ACTOR_TYPES.slice() },
+    last_30_days: { by_family: families, by_actor_type: actors, by_type: byType },
+    results: rows.map(function (r) {
+      return { id: r.id, at: r.at, masked: r.masked, event_type: r.event_type, actor_type: r.actor_type, actor_ref: r.actor_ref,
+        actor_name: r.actor_name, org_id: r.org_id, org_name: r.org_name, target_type: r.target_type, target_ref: r.target_ref,
+        summary: r.change_summary === null ? null : String(r.change_summary).replace(/vin_digest=[0-9a-f]+/gi, 'vin_digest=[masqué]') };
+    })
+  };
+}
+
+function parseAccountQuery(q) {
+  q = q || {};
+  var out = { role: oneParam(q, 'role', 20), q: oneParam(q, 'q', 100) };
+  if (out.role !== null && ACCOUNT_ROLES.indexOf(out.role) === -1) throw badRequest('unknown role', { allowed: ACCOUNT_ROLES });
+  return out;
+}
+
+async function accountTotals() {
+  var t = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_auth_user) AS accounts, ' +
+    '(SELECT count(*)::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS active_sessions, ' +
+    '(SELECT count(DISTINCT "userId")::int FROM idauto_auth_session WHERE "expiresAt" > NOW()) AS accounts_signed_in, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user WHERE "role" <> \'admin\' AND "org_id" IS NULL) AS without_organisation')).rows[0];
+  return { accounts: t.accounts, active_sessions: t.active_sessions, accounts_signed_in: t.accounts_signed_in,
+    without_organisation: t.without_organisation, by_role: await countBy('SELECT "role" AS k, count(*)::int AS n FROM idauto_auth_user GROUP BY 1') };
+}
+
+async function listAccounts(filter) {
+  var where = [], params = [];
+  if (filter.role) { params.push(filter.role); where.push('u."role" = $' + params.length); }
+  if (filter.q) { params.push('%' + filter.q.replace(/[\\%_]/g, function (c) { return '\\' + c; }) + '%'); where.push('(u."name" ILIKE $' + params.length + ' OR u."email" ILIKE $' + params.length + ')'); }
+  var whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+  var rows = (await db.query(
+    'SELECT u."id", u."name", u."email", u."emailVerified" AS email_verified, u."role", u."org_id", o.name AS org_name, o.status AS org_status, u."createdAt" AS created_at, ' +
+    '(SELECT count(*)::int FROM idauto_auth_session s WHERE s."userId" = u."id" AND s."expiresAt" > NOW()) AS active_sessions, ' +
+    '(SELECT max(s."updatedAt") FROM idauto_auth_session s WHERE s."userId" = u."id") AS last_seen_at ' +
+    'FROM idauto_auth_user u LEFT JOIN idauto_organizations o ON o.id = u."org_id"' + whereSql +
+    ' ORDER BY CASE u."role" WHEN \'admin\' THEN 0 WHEN \'manager\' THEN 1 ELSE 2 END, u."name", u."id" LIMIT 500', params)).rows;
+  return {
+    totals: await accountTotals(),
+    truncated: rows.length === 500,
+    results: rows.map(function (r) {
+      return { id: r.id, name: r.name, email: r.email, email_verified: r.email_verified, role: r.role,
+        org_id: r.org_id, org_name: r.org_name, org_status: r.org_status, created_at: r.created_at,
+        // A manager or technician without an organisation is refused at sign-in (principal.js).
+        can_sign_in: r.role === 'admin' || r.org_id !== null,
+        active_sessions: r.active_sessions, last_seen_at: r.last_seen_at };
+    })
+  };
+}
+
+/* =========================================================================
+ * IDA-ADMIN-6 — DASHBOARD.
+ *
+ * One read of the counts each module reports, so every tile on
+ * /admin/dashboard is the same number the module behind it shows. Nothing
+ * here is new data: it composes overview(), qualityTotals() and
+ * accountTotals(), plus the workshop activity of the last 30 days and the
+ * audit events of the last 30 days by type.
+ * ========================================================================= */
+async function dashboard() {
+  var o = await overview();
+  var quality = await qualityTotals();
+  var accounts = await accountTotals();
+  var workshop = (await db.query(
+    'SELECT (SELECT count(*)::int FROM idauto_workshop_visits WHERE vehicle_id IS NULL) AS unidentified_visits, ' +
+    "(SELECT count(*)::int FROM idauto_workshop_visits WHERE opened_at > NOW() - INTERVAL '30 days') AS visits_30d, " +
+    "(SELECT count(DISTINCT org_id)::int FROM idauto_workshop_visits WHERE opened_at > NOW() - INTERVAL '30 days') AS active_orgs_30d, " +
+    "(SELECT count(*)::int FROM idauto_service_events WHERE created_at > NOW() - INTERVAL '30 days') AS service_events_30d")).rows[0];
+  var fiche = await countBy('SELECT fiche_status AS k, count(*)::int AS n FROM idauto_vehicles WHERE merged_into_id IS NULL GROUP BY 1');
+  var review = (await db.query(
+    "SELECT (SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_review') AS pending_review, " +
+    "(SELECT count(*)::int FROM idauto_observations WHERE status = 'pending_confirmation') AS pending_confirmation")).rows[0];
+  var auditByType = await countBy("SELECT event_type AS k, count(*)::int AS n FROM idauto_audit_log WHERE event_time > NOW() - INTERVAL '30 days' GROUP BY 1");
+  var audit30 = Object.keys(auditByType).reduce(function (n, k) { return n + auditByType[k]; }, 0);
+  return {
+    vehicles: { canonical: o.vehicles.canonical, verified: o.vehicles.verified, merged: o.vehicles.merged, created_30d: o.vehicles.created_30d,
+      plates_active: o.plates.active, fiche_by_status: fiche, documents: o.documents },
+    maintenance: { visits_by_status: o.workshop.visits_by_status, unidentified_visits: workshop.unidentified_visits, visits_30d: workshop.visits_30d,
+      operations_by_type: o.workshop.operations_by_type, service_events: o.workshop.service_events, service_events_30d: workshop.service_events_30d },
+    workshops: { organisations_by_status: o.organisations_by_status, active_30d: workshop.active_orgs_30d },
+    quality: quality,
+    review: { pending_review: review.pending_review, pending_confirmation: review.pending_confirmation, pending_submissions: o.review.pending_submissions },
+    security: { accounts: accounts, audit_30d: { total: audit30, by_type: auditByType } },
+    recent_activity: o.recent_activity
   };
 }
 
 module.exports = {
+  dashboard: dashboard,
+  parseAuditQuery: parseAuditQuery,
+  listAudit: listAudit,
+  parseAccountQuery: parseAccountQuery,
+  listAccounts: listAccounts,
+  CAPTURE_TARGETS: CAPTURE_TARGETS.slice(),
+  parseQualityQuery: parseQualityQuery,
+  qualityReport: qualityReport,
+  QUALITY_ISSUES: QUALITY_ISSUES.slice(),
   parseRegistryQuery: parseRegistryQuery,
   listVehicles: listVehicles,
   dossier: dossier,
@@ -447,5 +1067,12 @@ module.exports = {
   PAGE_SIZE_MAX: PAGE_SIZE_MAX,
   OFFSET_MAX: OFFSET_MAX,
   SORTS: Object.keys(SORTS),
-  FICHE_STATUSES: FICHE_STATUSES.slice()
+  FICHE_STATUSES: FICHE_STATUSES.slice(),
+  parseMaintenanceQuery: parseMaintenanceQuery,
+  listMaintenance: listMaintenance,
+  VISIT_STATUSES: VISIT_STATUSES.slice(),
+  OPERATION_TYPES: OPERATION_TYPES.slice(),
+  parseOrganisationQuery: parseOrganisationQuery,
+  listOrganisations: listOrganisations,
+  dataSources: dataSources
 };
