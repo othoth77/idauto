@@ -280,5 +280,6 @@ module.exports = {
   findByRef: findByRef, findByPlate: findByPlate, findByVin: findByVin, findByTecDocCarId: findByTecDocCarId,
   findByAttributes: findByAttributes, platesOf: platesOf, vinOf: vinOf, record: record,
   createIdentifiedVehicle: createIdentifiedVehicle, saveIdentification: saveIdentification, history: history,
-  cleanIdentFields: cleanIdentFields, identSnapshot: identSnapshot
+  cleanIdentFields: cleanIdentFields, identSnapshot: identSnapshot,
+  canonicalById: canonicalById   // IDA-CG2 — the matcher follows merges the same way
 };

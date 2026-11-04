@@ -6,6 +6,20 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-11-04 — ida-cg2 stage 1: is this vehicle already in IDauto?
+
+`POST /api/registration-documents/match` and `reference/documents/vehicle-matcher.js`
+(read only, deterministic): the identifiers on a carte grise — current plate,
+previous plates, VIN — against every plate a vehicle has carried, its VIN (any
+key case, with `vin:search` only, audited) and merged records. `existing` only
+on a strong identifier with nothing contradicting it; two vehicles, a past
+plate alone, a VIN that differs from the one on record, or the plate active on
+another vehicle → `ambiguous`, for a person to decide. Make and model never
+identify. Audit, gaps and owner decisions: `docs/CARTE_GRISE_V2.md`.
+`tests/ida-cg2-vehicle-matcher-test.js` (33).
+
+---
+
 ## 2026-11-04 — ida-admin-7: one shared sidebar for the console
 
 `/admin/shell.js` builds one sidebar for all nine console pages from a single

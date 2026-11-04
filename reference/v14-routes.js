@@ -16,6 +16,7 @@
 //   POST   /api/vehicles/:ref/registration-document/ocr              document:write  (raw OCR text → technical fields, comparison)
 //   POST   /api/vehicles/:ref/registration-document/confirm          vehicle:write   (→ resolver.confirm(), the single write path)
 //   POST   /api/identify/registration-document                        vehicle:resolve (homepage search: OCR reads → VIN | plate | make+model; writes nothing)
+//   POST   /api/registration-documents/match                          vehicle:resolve (IDA-CG2: card identifiers → existing | ambiguous | none, with evidence; writes nothing)
 //
 // Anti-abuse: 60 uploads and 60 OCR runs per actor per 10 minutes, on the
 // same database-backed counter the public limiter uses; 6 MB per image,
@@ -26,6 +27,7 @@ var errors = require('./vehicle/errors.js');
 var service = require('./documents/document-service.js');
 var rateLimit = require('./rate-limit.js');
 var db = require('./db.js');
+var matcher = require('./documents/vehicle-matcher.js');
 
 var UPLOAD_LIMIT = { limit: parseInt(process.env.IDAUTO_DOCUMENT_UPLOADS_PER_10MIN || '60', 10), window_seconds: 600 };
 
@@ -106,6 +108,23 @@ function createV14(ctx) {
     sendJson(res, 200, out);
   }
 
+  // IDA-CG2 stage 1 — is the vehicle on this card already in IDauto? Read only.
+  // Plates (current + previous) always; the VIN only with vin:search, and a
+  // VIN that was searched is audited BEFORE the answer leaves (fails closed).
+  async function postMatch(req, res) {
+    if (!(await throttle(req, res, 'ocr'))) return;
+    var body = await readJsonBody(req);
+    if (!body || typeof body !== 'object') return sendJson(res, 400, { error: 'VALIDATION', message_fr: 'Demande invalide.' });
+    var allowVin = require('./identity.js').principalHasScope(req.principal, 'vin:search');
+    var out = await matcher.match({ plate: body.plate, previous_plates: body.previous_plates, vin: body.vin }, { allowVin: allowVin });
+    var searched = out.identifiers.some(function (i) { return i.kind === 'vin' && i.usable; });
+    if (searched) {
+      var hit = out.candidates.filter(function (c) { return c.vin_check === 'match'; });
+      await require('./writes.js').recordVinSearchAudit(req.principal, req.mythosIdentity, String(body.vin), hit.length === 1 ? hit[0].ivid : null);
+    }
+    sendJson(res, 200, out);
+  }
+
   var scopes = [
     { method: 'GET',    pattern: /^\/api\/vehicles\/[^/]+\/registration-document$/,                 scope: 'document:read' },
     { method: 'GET',    pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/[^/]+\/image$/,   scope: 'document:read' },
@@ -114,10 +133,12 @@ function createV14(ctx) {
     { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/[^/]+$/,          scope: 'document:delete' },
     { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/ocr$/,            scope: 'document:write' },
     { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/confirm$/,        scope: 'vehicle:write' },
-    { method: 'POST',   pattern: /^\/api\/identify\/registration-document$/,                             scope: 'vehicle:resolve' }
+    { method: 'POST',   pattern: /^\/api\/identify\/registration-document$/,                             scope: 'vehicle:resolve' },
+    { method: 'POST',   pattern: /^\/api\/registration-documents\/match$/,                               scope: 'vehicle:resolve' }
   ];
   var routes = [
     { method: 'POST', pattern: /^\/api\/identify\/registration-document$/, handler: guard(postIdentify) },
+    { method: 'POST', pattern: /^\/api\/registration-documents\/match$/, handler: guard(postMatch) },
     { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document$/, handler: guard(getDocument) },
     { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document\/ocr$/, handler: guard(postOcr) },
     { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document\/confirm$/, handler: guard(postConfirm) },
