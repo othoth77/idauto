@@ -83,5 +83,10 @@ ok(/passes: \['4', '11'\], edge: 2400, filter: 'grayscale\(1\) contrast\(1\.6\)'
   'page and ops/cg2-ocr-validate.js: same passes (psm 4 + 11), same 2400 px long edge, same grayscale + contrast');
 ok(/quality === 'none'/.test(ui) && /Aucune information technique n\\'a pu être lue/.test(ui), 'the page warns when no technical field was read (never « terminée » alone)');
 
+console.log('\n6. FOUND DURING THE DIAGNOSIS: THE LOGIN FORM NEVER PUTS A PASSWORD IN A URL');
+var login = fs.readFileSync(path.join(__dirname, '..', 'reference', 'login.html'), 'utf8'), loginJs = fs.readFileSync(path.join(__dirname, '..', 'reference', 'login-ui.js'), 'utf8');
+ok(/<form id="login-form"[^>]*method="post"/.test(login), 'the sign-in form is method="post": a submit before the script is ready never sends ?email=…&password=… in the URL');
+ok(/<button id="login-submit"[^>]*disabled/.test(login) && /submit\.disabled = false;\s*form\.setAttribute\("data-ready", "1"\);/.test(loginJs), 'the button starts disabled and is enabled only once the script handles the submit');
+
 console.log('\nIDA-CG2 parser on the real layout: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

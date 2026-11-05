@@ -63,7 +63,7 @@ function vin() { var s = 'VF3'; for (var i = 0; i < 14; i++) s += VIN_CHARS[cryp
     await send('Network.setExtraHTTPHeaders', { headers: { 'X-Real-IP': '10.82.' + crypto.randomInt(1, 250) + '.' + crypto.randomInt(1, 250) } });
     await send('Network.clearBrowserCookies');
     await send('Page.navigate', { url: B + '/login?next=' + encodeURIComponent(next) });
-    await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 30000); await sleep(300);
+    await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 30000); await sleep(300);
     await ev('document.querySelector("#login-email").value=' + JSON.stringify(email) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
     // Landed AND ready: the page's script has bound its handlers and finished its session check
     // (under heavy host I/O a click sent before that is lost — found 2026-11-05).
@@ -159,7 +159,7 @@ function vin() { var s = 'VF3'; for (var i = 0; i < 14; i++) s += VIN_CHARS[cryp
 
   console.log('\n== 390 px');
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: true });
-  await send('Page.navigate', { url: B + '/atelier/carte-grise' }); await waitFor('document.readyState === "complete" && !!document.getElementById("list")', 15000); await sleep(800);
+  await send('Page.navigate', { url: B + '/atelier/carte-grise' }); await waitFor('document.readyState === "complete" && !!document.querySelector("#list a")', 45000); await sleep(800);
   ok(await ev('document.documentElement.scrollWidth <= window.innerWidth'), 'no horizontal overflow at 390 px (list)');
   await ev('document.querySelector("#list a").click()'); await waitFor('!document.getElementById("work").hidden', 10000); await sleep(800);
   ok(await ev('document.documentElement.scrollWidth <= window.innerWidth'), 'no horizontal overflow at 390 px (a card, its faces and fields)');

@@ -59,7 +59,7 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   await send('Network.enable'); await send('Network.setExtraHTTPHeaders', { headers: { 'X-Real-IP': '10.77.10.' + (1 + crypto.randomBytes(1)[0] % 250) } });
   await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/atelier' });
-  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 30000); await sleep(300);
+  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 30000); await sleep(300);
   ok(/\/login\?next=%2Fatelier$/.test(await ev('location.pathname + location.search')), '/atelier without a session lands on /login?next=/atelier');
   ok(await ev('!!document.querySelector("#login-form") && /Connexion à IDauto/.test(document.body.textContent)'), 'the French sign-in form is shown');
   await ev('document.querySelector("#login-email").value=' + JSON.stringify(WEB_EMAIL) + ';document.querySelector("#login-password").value="wrong-password-000";document.querySelector("#login-submit").click()');
