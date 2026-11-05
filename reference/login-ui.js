@@ -58,4 +58,7 @@
     clearError();
     help.textContent = "La réinitialisation se fait par l'administrateur IDauto : contactez-le pour recevoir un nouveau mot de passe.";
   });
+  // Ready: the submit is now handled here (POST /api/auth/sign-in/email), never by the browser's form.
+  submit.disabled = false;
+  form.setAttribute("data-ready", "1");
 })();
