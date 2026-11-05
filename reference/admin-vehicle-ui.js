@@ -166,7 +166,7 @@
         var fig = el('figure', { class: 'ida-card ida-stack' }, [el('p', { class: 'ida-caption' }, 'Face ' + f.face + ' · version ' + f.version + ' · ' + f.width + '×' + f.height + ' px · ' + Math.round(f.byte_size / 1024) + ' Ko (originale)')]);
         faces.appendChild(fig);
         var base = '/api/registration-submissions/' + encodeURIComponent(sub.ref) + '/faces/' + f.face + '/image';
-        fetch(base + (f.has_thumbnail ? '?variant=thumb' : ''), { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } })
+        fetch(base, { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } })
           .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.blob(); })
           .then(function (b) { var img = el('img', { src: URL.createObjectURL(b), alt: 'Carte grise — face ' + f.face, class: 'ida-admin-cg-image' }); fig.insertBefore(img, fig.firstChild); })
           .catch(function () { fig.appendChild(el('p', { class: 'ida-muted' }, 'Image indisponible.')); });

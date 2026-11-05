@@ -35,6 +35,7 @@ var imageMeta = require('./image-meta.js');
 var storageModule = require('./document-storage.js');
 var parser = require('./registration-parser.js');
 var matcher = require('./vehicle-matcher.js');
+var documentRepo = require('./document-repository.js');
 
 var LIMITS = {
   // The ORIGINAL photo (D4): larger than V14's optimised copy. 15 MB default; readBinaryBody caps at 20 MB.
@@ -78,7 +79,28 @@ function normalize(key, value) {
   if (ranges[key]) { if (!/^\d{1,6}$/.test(v)) return { ok: false, reason: 'not_a_number' }; var n = +v; return n >= ranges[key][0] && n <= ranges[key][1] ? { ok: true, value: String(n) } : { ok: false, reason: 'out_of_range' }; }
   if (key === 'fuel') return ['petrol', 'diesel', 'lpg', 'electric', 'hybrid'].indexOf(v.toLowerCase()) !== -1 ? { ok: true, value: v.toLowerCase() } : { ok: false, reason: 'unknown_fuel' };
   if (key === 'category_code') return /^[A-Z][0-9A-Z]{0,3}$/.test(v.toUpperCase()) ? { ok: true, value: v.toUpperCase() } : { ok: false, reason: 'invalid_category' };
-  return v.length <= 80 ? { ok: true, value: v.toUpperCase().replace(/\s+/g, ' ') } : { ok: false, reason: 'too_long' };
+  var up = v.toUpperCase().replace(/\s+/g, ' ');
+  // A VIN never travels in a free-text field (it would be shown and stored in clear).
+  if (/[A-HJ-NPR-Z0-9OIQ]{17}/.test(up)) return { ok: false, reason: 'looks_like_a_vin' };
+  // engine → vehicle engine_code VARCHAR(30); the other free-text columns allow 80.
+  return up.length <= (key === 'engine' ? 30 : 80) ? { ok: true, value: up } : { ok: false, reason: 'too_long' };
+}
+
+// What was read, kept for the reviewer (D1: never the OCR text itself). Only the value token, at
+// most 60 characters; outside the VIN field anything shaped like a VIN is masked, so a VIN glued to
+// another label's line is never stored or shown in clear.
+var VIN_SHAPE = /[A-HJ-NPR-Z0-9OIQ]{17}/g;
+function safeRaw(key, raw) {
+  if (raw === null || raw === undefined) return null;
+  var r = String(raw).trim().slice(0, 60);
+  if (key !== 'vin') r = r.replace(VIN_SHAPE, '[VIN]');
+  return r || null;
+}
+
+// A refused write leaves no file behind: fresh bytes nobody references (V14, observations,
+// any CG2 version) are removed. Content-addressed: bytes another row uses are kept.
+async function dropIfUnreferenced(key) {
+  try { if (key && await documentRepo.referencesOfKey(key, 0) === 0) await storageModule.getStorage().remove(key); } catch (e) { /* best effort: the write itself already failed */ }
 }
 
 // ---- reads ----
@@ -122,7 +144,7 @@ function assess(sub, faces, fields) {
   Object.keys(byKey).forEach(function (k) { if (byKey[k].corrected_by_parser && REVIEWED.indexOf(byKey[k].status) === -1) checks.push({ code: 'parser_substituted_characters', key: k }); });
   var identifierSettled = ['registration', 'vin'].some(function (k) { return byKey[k] && (byKey[k].status === 'confirmed' || byKey[k].status === 'corrected') && byKey[k].value_normalized; });
   return { complete: problems.length === 0, problems: problems, unreviewed: unreviewed, checks: checks,
-    ready_for_decision: problems.length === 0 && unreviewed.length === 0 && identifierSettled && TERMINAL.indexOf(sub.status) === -1 && sub.status !== 'needs_better_image',
+    ready_for_decision: problems.length === 0 && unreviewed.length === 0 && identifierSettled && TERMINAL.indexOf(sub.status) === -1 && ['draft', 'needs_better_image'].indexOf(sub.status) === -1,
     identifier_settled: identifierSettled };
 }
 
@@ -200,7 +222,9 @@ async function putFace(ref, face, bytes, opts, actor) {
   editable(sub0);
   var stored = await storageModule.getStorage().put(bytes, meta.mime);
   var warnings = [];
-  var out = await writes.withAudit({ principal: actor.principal, event_type: 'registration_submission.face', target_type: 'idauto_registration_submissions', change_summary: 'Face ' + f + ' stored (original, ' + bytes.length + ' bytes)' },
+  var out;
+  try {
+  out = await writes.withAudit({ principal: actor.principal, event_type: 'registration_submission.face', target_type: 'idauto_registration_submissions', change_summary: 'Face ' + f + ' stored (original, ' + bytes.length + ' bytes)' },
     actor.identity, async function (client) {
       var sub = await load(ref, actor, client);
       editable(sub);
@@ -217,10 +241,13 @@ async function putFace(ref, face, bytes, opts, actor) {
       var quality = Object.assign({ server: { short_edge: Math.min(meta.width, meta.height), mime: meta.mime } }, clientQuality(opts && opts.quality) ? { client: clientQuality(opts.quality) } : {});
       await client.query('INSERT INTO idauto_registration_submission_faces (submission_id, face, version, storage_key, mime_type, byte_size, width, height, sha256, quality, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
         [sub.id, f, last + 1, stored.key, meta.mime, bytes.length, meta.width, meta.height, sha, JSON.stringify(quality), actor.identity]);
-      // A new image of a face invalidates "needs a better image" and any OCR run on the old one.
+      // A new image of a face invalidates "needs a better image" and every field read or reviewed on
+      // the old one: the fields are superseded (kept in history) and the faces must be read again.
+      await client.query('UPDATE idauto_registration_submission_fields SET superseded_at = NOW() WHERE submission_id = $1 AND superseded_at IS NULL', [sub.id]);
       await client.query("UPDATE idauto_registration_submissions SET status = 'draft', version = version + 1, updated_at = NOW() WHERE id = $1", [sub.id]);
       return { record: { ref: ref, face: f, version: last + 1, sha256: sha }, auditTargetRef: ref };
     });
+  } catch (err) { await dropIfUnreferenced(stored.key); throw err; }
   return { ref: ref, face: f, version: out.version, sha256: sha, warnings: warnings, submission: await view(await load(ref, actor)) };
 }
 
@@ -229,13 +256,27 @@ async function putThumbnail(ref, face, bytes, actor) {
   if (!bytes || !bytes.length || bytes.length > LIMITS.max_thumb_bytes) throw bad('thumbnail_size', { max_bytes: LIMITS.max_thumb_bytes });
   var meta = imageMeta.inspect(bytes);
   if (!meta) throw Object.assign(errors.IdautoError('VALIDATION', { reason: 'not_an_image' }), { httpStatus: 415 });
-  var sub = await load(ref, actor);
-  editable(sub);
-  var row = (await currentFaces(sub.id)).filter(function (x) { return x.face === f; })[0];
-  if (!row) throw errors.IdautoError('NOT_FOUND', { reason: 'face_not_stored' });
+  var sub0 = await load(ref, actor);
+  editable(sub0);
   var stored = await storageModule.getStorage().put(bytes, meta.mime);
-  await db.query('UPDATE idauto_registration_submission_faces SET thumb_storage_key = $1 WHERE id = $2', [stored.key, row.id]);
-  return { ref: ref, face: f, version: row.version, thumbnail: { width: meta.width, height: meta.height, byte_size: bytes.length } };
+  var out;
+  try {
+  out = await writes.withAudit({ principal: actor.principal, event_type: 'registration_submission.thumbnail', target_type: 'idauto_registration_submissions', change_summary: 'Face ' + f + ' thumbnail stored' },
+    actor.identity, async function (client) {
+      var sub = await load(ref, actor, client);
+      editable(sub);
+      var row = (await currentFaces(sub.id, client)).filter(function (x) { return x.face === f; })[0];
+      if (!row) throw errors.IdautoError('NOT_FOUND', { reason: 'face_not_stored' });
+      // A thumbnail is a smaller picture OF THIS original: never larger, same proportions (±3 %),
+      // either way round (a browser may apply the photo's EXIF orientation when it draws it).
+      function close(a, b) { var r = a / b; return r >= 0.97 && r <= 1.03; }
+      var tr = meta.width / meta.height, or = row.width / row.height;
+      if (Math.max(meta.width, meta.height) > Math.max(row.width, row.height) || !(close(tr, or) || close(tr, 1 / or))) throw bad('thumbnail_does_not_match_original', { face: f });
+      await client.query('UPDATE idauto_registration_submission_faces SET thumb_storage_key = $1 WHERE id = $2', [stored.key, row.id]);
+      return { record: { ref: ref, face: f, version: row.version, thumbnail: { width: meta.width, height: meta.height, byte_size: bytes.length } }, auditTargetRef: ref };
+    });
+  } catch (err) { await dropIfUnreferenced(stored.key); throw err; }
+  return { ref: ref, face: f, version: out.version, thumbnail: out.thumbnail };
 }
 
 async function image(ref, face, variant, version, actor) {
@@ -287,10 +328,10 @@ async function extract(ref, input, actor) {
     var bestNorm = normalize(key, best.fl.value);
     if (distinct.length > 1) {
       rows.push({ key: key, status: 'conflict', raw: null, norm: null, confidence: null, face: null, version: null, label: null, line: null, corrected: false,
-        note: JSON.stringify({ reason: 'faces_disagree', proposals: key === 'vin' ? hits.map(function (h) { return { face: h.pf.face }; }) : hits.map(function (h) { return { face: h.pf.face, value: String(h.fl.value).slice(0, 80) }; }) }) });
+        note: JSON.stringify({ reason: 'faces_disagree', proposals: key === 'vin' ? hits.map(function (h) { return { face: h.pf.face }; }) : hits.map(function (h) { return { face: h.pf.face, value: safeRaw(key, h.fl.value) }; }) }) });
       return;
     }
-    rows.push({ key: key, status: 'extracted', raw: best.fl.raw !== undefined && best.fl.raw !== null ? String(best.fl.raw).slice(0, 120) : String(best.fl.value).slice(0, 120),
+    rows.push({ key: key, status: 'extracted', raw: safeRaw(key, best.fl.raw !== undefined && best.fl.raw !== null ? best.fl.raw : best.fl.value),
       norm: bestNorm.ok ? bestNorm.value : null, confidence: best.fl.confidence, face: best.pf.face, version: best.pf.version, label: best.fl.label, line: best.fl.line === undefined ? null : best.fl.line,
       corrected: !!best.fl.corrected, note: bestNorm.ok ? null : JSON.stringify({ reason: 'not_normalisable', detail: bestNorm.reason }) });
   });
@@ -299,6 +340,12 @@ async function extract(ref, input, actor) {
     actor.identity, async function (client) {
       var sub = await load(ref, actor, client);
       editable(sub);
+      // Re-checked under the submission lock: a face replaced since the OCR was read refuses the run.
+      var nowFaces = await currentFaces(sub.id, client);
+      parsedFaces.forEach(function (pf) {
+        var cur = nowFaces.filter(function (r) { return r.face === pf.face; })[0];
+        if (!cur || cur.version !== pf.version) throw conflict('ocr_for_another_image_version', { face: pf.face, current_version: cur ? cur.version : null });
+      });
       var run = (await client.query('SELECT coalesce(max(extraction_run), 0) + 1 AS r FROM idauto_registration_submission_fields WHERE submission_id = $1', [sub.id])).rows[0].r;
       // A new OCR run is a new proposal: every current row is superseded (kept in history).
       await client.query('UPDATE idauto_registration_submission_fields SET superseded_at = NOW() WHERE submission_id = $1 AND superseded_at IS NULL', [sub.id]);
@@ -320,11 +367,15 @@ async function review(ref, input, actor) {
   input = input || {};
   var actions = Array.isArray(input.actions) ? input.actions : [];
   if (!actions.length) throw bad('actions_required');
+  // Every review states the version it was made on: two people never overwrite each other silently.
+  if (typeof input.expected_version !== 'number') throw bad('expected_version_required');
   var prepared = actions.map(function (a) {
     if (KEYS.indexOf(a.key) === -1) throw bad('unknown_field', { key: a.key, allowed: KEYS });
     if (['confirm', 'correct', 'unreadable', 'not_present'].indexOf(a.action) === -1) throw bad('unknown_action', { key: a.key });
     var out = { key: a.key, action: a.action, note: typeof a.note === 'string' ? a.note.trim().slice(0, 300) : null };
-    if (a.action === 'correct') { var n = normalize(a.key, a.value); if (!n.ok) throw bad('invalid_value', { key: a.key, detail: n.reason }); out.value = n.value; out.raw = String(a.value).trim().slice(0, 120); }
+    // Setting the VIN aside (unreadable / not on the card) skips the strongest identity check: it is said why.
+    if (a.key === 'vin' && (a.action === 'unreadable' || a.action === 'not_present') && !(out.note && out.note.length >= 5)) throw bad('note_required_to_set_vin_aside', { key: 'vin' });
+    if (a.action === 'correct') { var n = normalize(a.key, a.value); if (!n.ok) throw bad('invalid_value', { key: a.key, detail: n.reason }); out.value = n.value; out.raw = safeRaw(a.key, a.value); }
     return out;
   });
   await writes.withAudit({ principal: actor.principal, event_type: 'registration_submission.review', target_type: 'idauto_registration_submissions',
@@ -332,7 +383,7 @@ async function review(ref, input, actor) {
     actor.identity, async function (client) {
       var sub = await load(ref, actor, client);
       editable(sub);
-      if (input.expected_version !== undefined && input.expected_version !== sub.version) throw conflict('stale_version', { current_version: sub.version });
+      if (input.expected_version !== sub.version) throw conflict('stale_version', { current_version: sub.version });
       if (sub.status === 'draft') throw conflict('no_extraction_yet');
       for (var i = 0; i < prepared.length; i++) {
         var p = prepared[i];
@@ -385,7 +436,6 @@ async function match(ref, actor) {
   return { ref: ref, used: { plate: !!mi.plate, vin: !!(mi.vin && allowVin) }, vin_searched: !!(mi.vin && allowVin), result: out, vin_for_audit: mi.vin && allowVin ? mi.vin : null };
 }
 
-function lockKey(s) { return crypto.createHash('sha256').update(s).digest().readBigInt64BE(0).toString(); }
 
 // input = { action: 'link'|'create'|'reject', vehicle_ref?, expected_version, acknowledge_ambiguity?, reason? }
 async function decide(ref, input, actor) {
@@ -420,22 +470,24 @@ async function decide(ref, input, actor) {
       var plate = val('registration'), vin = val('vin');
       if (vin && !allowVin) throw Object.assign(errors.IdautoError('FORBIDDEN', { reason: 'vin_search_required_to_decide_on_a_card_with_a_vin' }), { httpStatus: 403 });
       // Serialise every decision on the same plate / VIN (sorted: no deadlock), then look again with the lock held.
-      var keys = [plate ? 'idauto:plate:' + plate : null, vin ? 'idauto:vin:' + vin : null].filter(Boolean).sort();
-      for (var i = 0; i < keys.length; i++) await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [lockKey(keys[i])]);
-      var m = await matcher.match({ plate: plate, vin: vin }, { allowVin: allowVin });
+      await repository.lockIdentifiers(client, plate, vin);
+      var m = await matcher.match({ plate: plate, vin: vin }, { allowVin: allowVin, runner: client });
       var snapshot = { outcome: m.outcome, reasons: m.reasons, candidates: m.candidates.map(function (c) { return { ivid: c.ivid, strong: c.strong, vin_check: c.vin_check, evidence: c.evidence.map(function (e) { return { identifier: e.identifier, plate: e.plate || null, plate_status: e.plate_status || null, strong: e.strong }; }) }; }), at: new Date().toISOString() };
       var prov = { method: 'carte_grise_ocr', source: 'carte_grise_ocr', confidence: 1 };
       var applied = {}, discrepancies = {}, vehicleRow;
 
       if (action === 'create') {
         if (m.outcome !== 'none') throw conflict('vehicle_already_known', { match: snapshot });
+        // Without a verified VIN nothing proves the vehicle is not already in IDauto under another plate:
+        // only an administrator creates it.
+        if (!vin && !isAdmin(actor)) throw conflict('create_without_vin_requires_admin');
         var input2 = { plate: plate ? plateNormalizer.parsePlate(plate) : null, vin: vin || null };
         Object.keys(COLUMN).forEach(function (k) { var v = val(k); if (v !== null) input2[COLUMN[k]] = /^(year|engine_cc|seats|gross_weight_kg)$/.test(COLUMN[k]) ? Number(v) : v; });
         if (!input2.plate && !input2.vin && !input2.make) throw conflict('nothing_to_identify');
         vehicleRow = await repository.insertIdentifiedVehicle(client, input2, actor, prov, true);
         Object.keys(input2).forEach(function (k) { if (input2[k] !== null && input2[k] !== undefined) applied[k === 'plate' ? 'plate' : k] = k === 'vin' ? '(enregistré)' : k === 'plate' ? plate : input2[k]; });
       } else {
-        var target = typeof input.vehicle_ref === 'string' ? await repository.findByRef(input.vehicle_ref) : null;
+        var target = typeof input.vehicle_ref === 'string' ? await repository.findByRef(input.vehicle_ref, client) : null;
         if (!target) throw errors.IdautoError('VEHICLE_NOT_FOUND');
         var cand = m.candidates.filter(function (c) { return c.ivid === target.ivid; })[0];
         if (!cand) throw conflict('vehicle_not_among_matches', { match: snapshot });
@@ -455,7 +507,10 @@ async function decide(ref, input, actor) {
         if (sets.length) { params.push(vehicleRow.id); await client.query('UPDATE idauto_vehicles SET ' + sets.join(', ') + ', updated_at = NOW() WHERE id = $' + params.length, params); }
         var onRecord = await repository.vinOfWith(vehicleRow.id, client);
         if (vin) {
-          if (!onRecord) {
+          // One VIN, one vehicle: a VIN active on ANOTHER record is a discrepancy, never copied here.
+          var holders = (await repository.vehiclesWithVin(client, vin)).filter(function (id) { return id !== vehicleRow.id; });
+          if (holders.length) discrepancies.vin = { vehicle: onRecord ? '(différent)' : '(absent)', card: '(sur un autre véhicule)' };
+          else if (!onRecord) {
             await client.query("INSERT INTO idauto_vehicle_facts (vehicle_id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope) VALUES ($1,'vin',$2,$3,1.0,'verified','professional')", [vehicleRow.id, vin, vin.toLowerCase()]);
             applied.vin = '(enregistré)';
           } else if (onRecord.toUpperCase() !== vin) discrepancies.vin = { vehicle: '(différent)', card: '(différent)' };
@@ -491,6 +546,6 @@ async function forVehicle(canonicalId, actor) {
   return out;
 }
 
-module.exports = { create: create, get: get, list: list, putFace: putFace, putThumbnail: putThumbnail, image: image, extract: extract, review: review,
+module.exports = { safeRaw: safeRaw, create: create, get: get, list: list, putFace: putFace, putThumbnail: putThumbnail, image: image, extract: extract, review: review,
   requestBetterImage: requestBetterImage, match: match, decide: decide, forVehicle: forVehicle, normalize: normalize, assess: assess,
   LIMITS: LIMITS, KEYS: KEYS.slice(), EXPECTED: EXPECTED.slice() };

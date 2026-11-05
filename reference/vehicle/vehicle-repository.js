@@ -59,10 +59,10 @@ async function canonicalById(id, runner) {
   return row;
 }
 
-async function findByRef(ref) {
+async function findByRef(ref, runner) {
   if (typeof ref !== 'string' || !ref) return null;
-  var res = await db.query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1', [ref]);
-  return res.rows.length ? canonicalById(res.rows[0].id) : null;
+  var res = await (runner || db).query('SELECT id FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1', [ref]);
+  return res.rows.length ? canonicalById(res.rows[0].id, runner) : null;
 }
 
 async function findByPlate(canonical) {
@@ -117,8 +117,8 @@ async function vinOf(vehicleId, runner) {
 // present/absent.
 async function record(row, opts) {
   opts = opts || {};
-  var plates = await platesOf(row.id);
-  var vin = await vinOf(row.id);
+  var plates = await platesOf(row.id, opts.runner);
+  var vin = await vinOf(row.id, opts.runner);
   var primary = plates.length ? plateNormalizer.parsePlate(plates[0].plate_number) : null;
   var out = {
     id: row.ivid,
@@ -229,6 +229,20 @@ async function createIdentifiedVehicle(input, actor, prov, verified) {
   ).then(function (r) { return canonicalById(r.id); });
 }
 
+// Every creation or link on the same plate / VIN is serialised by a transaction-scoped
+// advisory lock (sorted keys: no deadlock). Shared by IDA-V12 creation and IDA-CG2
+// decisions, so the two flows cannot both create a vehicle for one identifier.
+function identifierLockKey(s) { return require('crypto').createHash('sha256').update(s).digest().readBigInt64BE(0).toString(); }
+async function lockIdentifiers(client, plateCanonical, vin) {
+  var keys = [plateCanonical ? 'idauto:plate:' + plateCanonical : null, vin ? 'idauto:vin:' + String(vin).toUpperCase() : null].filter(Boolean).sort();
+  for (var i = 0; i < keys.length; i++) await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [identifierLockKey(keys[i])]);
+}
+// The vehicles that carry this VIN as an ACTIVE fact (any key case), read on the caller's client.
+async function vehiclesWithVin(client, vin) {
+  var res = await client.query("SELECT DISTINCT vehicle_id FROM idauto_vehicle_facts WHERE LOWER(TRIM(fact_key)) = 'vin' AND is_active AND (UPPER(TRIM(fact_value)) = $1 OR fact_value_normalized = $2)", [String(vin).toUpperCase(), String(vin).toLowerCase()]);
+  return res.rows.map(function (r) { return r.vehicle_id; });
+}
+
 // The body of createIdentifiedVehicle on a caller's transaction client, so a
 // caller that must create the vehicle AND link something to it atomically
 // (IDA-CG2 registration submissions) runs both in ONE transaction. The IVID
@@ -236,6 +250,9 @@ async function createIdentifiedVehicle(input, actor, prov, verified) {
 async function insertIdentifiedVehicle(client, input, actor, prov, verified) {
   var fields = cleanIdentFields(input);
   if (!fields.make && !input.vin && !(input.plate && input.plate.ok)) throw errors.IdautoError('VALIDATION', { reason: 'nothing_to_identify' });
+  await lockIdentifiers(client, input.plate && input.plate.ok ? input.plate.canonical : null, input.vin || null);
+  // One VIN, one vehicle: a VIN already active on another record is never given to a new one.
+  if (input.vin && (await vehiclesWithVin(client, input.vin)).length) throw errors.IdautoError('CONFLICT', { reason: 'vin_already_on_another_vehicle' });
   var internalRef = 'IDA2D-' + Date.now().toString(36) + '-' + require('crypto').randomBytes(4).toString('hex');
   var cols = ['internal_ref', 'fiche_status'], vals = [internalRef, verified ? 'verified' : 'pending_review'];
   Object.keys(fields).forEach(function (k) { cols.push(k); vals.push(fields[k]); });
@@ -288,6 +305,7 @@ async function history(vehicleId) {
 }
 
 module.exports = {
+  lockIdentifiers: lockIdentifiers, vehiclesWithVin: vehiclesWithVin, identifierLockKey: identifierLockKey,
   findByRef: findByRef, findByPlate: findByPlate, findByVin: findByVin, findByTecDocCarId: findByTecDocCarId,
   findByAttributes: findByAttributes, platesOf: platesOf, vinOf: vinOf, record: record,
   createIdentifiedVehicle: createIdentifiedVehicle, saveIdentification: saveIdentification, history: history,

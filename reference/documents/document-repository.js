@@ -32,7 +32,16 @@ async function face(vehicleId, faceNo, principal) {
 async function referencesOfKey(key, exceptId, client) {
   var res = await (client || db).query('SELECT count(*)::int n FROM idauto_vehicle_documents WHERE (storage_key = $1 OR thumb_storage_key = $1) AND id <> $2', [key, exceptId || 0]);
   var media = await (client || db).query('SELECT count(*)::int n FROM idauto_observation_media WHERE object_key = $1', [key]);
-  return res.rows[0].n + media.rows[0].n;
+  // IDA-CG2 carte grise submissions share the content-addressed store: bytes a
+  // submission face still references must never be removed by a V14 replace or
+  // delete. The table is counted only once its migration is applied.
+  var cg2n = 0;
+  var has = await (client || db).query("SELECT to_regclass('public.idauto_registration_submission_faces') IS NOT NULL AS ok");
+  if (has.rows[0].ok) {
+    var cg2 = await (client || db).query('SELECT count(*)::int n FROM idauto_registration_submission_faces WHERE storage_key = $1 OR thumb_storage_key = $1', [key]);
+    cg2n = cg2.rows[0].n;
+  }
+  return res.rows[0].n + media.rows[0].n + cg2n;
 }
 
 // Insert or replace one face. `meta` was produced by the service from the

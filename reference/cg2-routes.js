@@ -35,6 +35,8 @@ function createCg2(ctx) {
     return function (req, res, m) {
       return Promise.resolve().then(function () { return fn(req, res, m); }).catch(function (err) {
         if (res.headersSent) { req.socket.destroy(); return; }
+        // The CG2 tables are not there (migration not applied): a clear 503, never a generic 500.
+        if (err && err.code === '42P01') { sendJson(res, 503, { error: 'FEATURE_NOT_INSTALLED', message_fr: 'L\'enregistrement des cartes grises n\'est pas encore installé sur ce serveur.', details: { reason: 'cg2_migration_not_applied' } }); return; }
         var mapped = errors.toResponse(err);
         if (err && err.isIdautoError && err.httpStatus === 413) mapped.body.message_fr = 'Image trop volumineuse (maximum ' + Math.round(service.LIMITS.max_bytes / 1024 / 1024) + ' Mo).';
         if (err && err.isIdautoError && err.httpStatus === 415) mapped.body.message_fr = 'Le fichier n\'est pas une image JPEG, PNG ou WebP.';

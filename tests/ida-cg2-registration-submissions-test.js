@@ -314,6 +314,95 @@ async function main() {
   var audRaw = JSON.stringify((await db.query("SELECT change_summary, new_value_json FROM idauto_audit_log WHERE event_type LIKE 'registration_submission.%'")).rows);
   ok(audRaw.indexOf(VIN) === -1 && audRaw.indexOf(VIN3) === -1 && audRaw.indexOf(HOLDER) === -1, 'no VIN and no holder data in any registration_submission audit row');
 
+  /* ===================================================================== */
+  say('\n11. REVIEW FINDINGS (PR #43) — each fixed behaviour, end to end');
+  var fsx = require('fs');
+  function inStore(buf) { var k = sha(buf); return fsx.existsSync(path.join(process.env.IDAUTO_MEDIA_STORAGE_PATH, k.slice(0, 2), k.slice(2, 4), k)); }
+  var SM = require(path.join(BASE, 'reference', 'documents', 'registration-submissions.js'));
+
+  // F1 — a V14 delete never removes bytes a CG2 submission still references.
+  var shared = png(1600, 1000, 'shared-' + run);
+  var sh = (await M.create({})).body.ref;
+  ok((await M.face(sh, 1, shared)).status === 201, 'F1: a CG2 face stored');
+  var v14put = await request('PUT', '/api/vehicles/' + encodeURIComponent(cr.body.ivid) + '/registration-document/1', { token: T.ADMIN, raw: shared, headers: { 'Content-Type': 'application/octet-stream' } });
+  var v14del = await request('DELETE', '/api/vehicles/' + encodeURIComponent(cr.body.ivid) + '/registration-document/1', { token: T.ADMIN });
+  var after = await M.image(sh, 1);
+  ok(v14put.status < 300 && v14del.status === 200 && after.status === 200 && Buffer.compare(after.buf, shared) === 0 && inStore(shared), 'F1: the same bytes uploaded then deleted through V14 → the CG2 original is still stored and served (' + v14put.status + '/' + v14del.status + '/' + after.status + ')');
+
+  // F2 — replacing a face after review invalidates every reviewed field.
+  var r2 = await fullSubmission(M, await unusedPlate(), randomVin(), MAKE, 'F2');
+  ok(r2.review.body.assessment.ready_for_decision === true, 'F2: a fully reviewed submission is ready');
+  var rep = await M.face(r2.ref, 1, png(1600, 1000, r2.ref + 'replaced'));
+  var s2 = rep.body.submission;
+  ok(s2.status === 'draft' && s2.fields.length === 0 && s2.assessment.ready_for_decision === false && s2.assessment.unreviewed.length >= 8, 'F2: a replaced face supersedes every field → draft, nothing reviewed, not ready');
+  ok((await M.decide(r2.ref, { action: 'create', expected_version: s2.version })).status === 409, 'F2: and a decision is refused until the faces are read and reviewed again');
+  var hist = (await db.query('SELECT count(*)::int n FROM idauto_registration_submission_fields f JOIN idauto_registration_submissions s ON s.id = f.submission_id WHERE s.public_ref = $1 AND f.superseded_at IS NOT NULL', [r2.ref])).rows[0].n;
+  ok(hist >= 8, 'F2: the reviewed fields are kept in history (' + hist + ' superseded rows)');
+
+  // F3 — the stored `raw` is the value token only; a VIN on another label's line is masked, and refused as a value.
+  var GLUE = randomVin();
+  var r3 = (await M.create({})).body.ref, g1 = png(1600, 1000, r3 + '1'), g2 = png(1600, 1000, r3 + '2');
+  await M.face(r3, 1, g1); await M.face(r3, 2, g2);
+  var P3 = await unusedPlate();
+  var ex3 = await M.extract(r3, { faces: [{ face: 1, image_sha256: sha(g1), text: face1Text(P3, MAKE + ' ' + GLUE, 'TYPEX'), confidence: 88 }, { face: 2, image_sha256: sha(g2), text: face2Text(randomVin()), confidence: 85 }] });
+  var man = (ex3.body.submission.fields || []).filter(function (f) { return f.key === 'manufacturer'; })[0];
+  var rows3 = JSON.stringify((await db.query('SELECT value_raw, value_normalized, note FROM idauto_registration_submission_fields f JOIN idauto_registration_submissions s ON s.id = f.submission_id WHERE s.public_ref = $1', [r3])).rows);
+  ok(ex3.status === 200 && man && man.value === null && man.raw.indexOf('[VIN]') !== -1 && man.raw.length <= 60, 'F3: a VIN glued to the make line → value refused, raw masked (' + (man && man.raw) + ')');
+  ok(rows3.indexOf(GLUE) === -1 && JSON.stringify(ex3.body).indexOf(GLUE) === -1, 'F3: that VIN is in no stored row and in no response');
+  ok(SM.safeRaw('type', 'AB-'.repeat(70)).length === 60 && SM.safeRaw('vin', GLUE) === GLUE, 'F3: raw is capped at 60 characters (the VIN field keeps its own reading, server side only)');
+  await request('PUT', '/api/vehicles/' + encodeURIComponent(cr.body.ivid) + '/registration-document/1', { token: T.ADMIN, raw: png(1600, 1000, 'v14ocr-' + run), headers: { 'Content-Type': 'application/octet-stream' } });
+  var v14ocr = await request('POST', '/api/vehicles/' + encodeURIComponent(cr.body.ivid) + '/registration-document/ocr', { token: T.ADMIN, body: { faces: [{ face: 1, text: face1Text(await unusedPlate(), MAKE + ' ' + GLUE, 'V14T'), confidence: 80 }] } });
+  var v14rows = (await db.query("SELECT ocr_fields FROM idauto_vehicle_documents d JOIN idauto_vehicles v ON v.id = d.vehicle_id WHERE v.ivid = $1 AND ocr_fields IS NOT NULL", [cr.body.ivid])).rows;
+  ok(v14ocr.status === 200 && v14rows.length >= 1 && v14rows.every(function (r) { return (r.ocr_fields.fields || []).every(function (f) { return !('raw' in f) && !('line' in f); }); }), 'F3: V14 OCR rows store no raw text and no line number (' + v14ocr.status + ', ' + v14rows.length + ' rows)');
+
+  // F6 + F12 — a VIN is set aside only with a reason; without a VIN only an admin creates; a link never copies a VIN held by another vehicle.
+  var PX = await unusedPlate(), VY = randomVin();
+  var nx = await fullSubmission(M, PX, randomVin(), MAKE, 'F6X', { overrides: { vin: { action: 'not_present', note: 'carte provisoire sans VIN' } } });
+  var noNote = await M.review(nx.ref, { expected_version: nx.review.body.version, actions: [{ key: 'vin', action: 'unreadable' }] });
+  ok(noNote.status === 400 && noNote.body.details.reason === 'note_required_to_set_vin_aside', 'F12: setting the VIN aside without a reason → 400');
+  var mgrCreate = await M.decide(nx.ref, { action: 'create', expected_version: nx.review.body.version });
+  ok(mgrCreate.status === 409 && mgrCreate.body.details.reason === 'create_without_vin_requires_admin', 'F12: a workshop cannot create a vehicle without a verified VIN');
+  var adm = await A.decide(nx.ref, { action: 'create', expected_version: nx.review.body.version });
+  ok(adm.status === 200, 'F12: an administrator can');
+  var ny = await fullSubmission(M, await unusedPlate(), VY, MAKE, 'F6Y');
+  var yCreated = await M.decide(ny.ref, { action: 'create', expected_version: ny.review.body.version });
+  var amb = await fullSubmission(A, PX, VY, MAKE, 'F6AMB');
+  var lk = await A.decide(amb.ref, { action: 'link', vehicle_ref: adm.body.ivid, acknowledge_ambiguity: true, expected_version: amb.review.body.version });
+  var holders = (await db.query("SELECT count(DISTINCT vehicle_id)::int n FROM idauto_vehicle_facts WHERE fact_key = 'vin' AND fact_value = $1 AND is_active", [VY])).rows[0].n;
+  ok(yCreated.status === 200 && lk.status === 200 && lk.body.submission.discrepancies.vin && holders === 1, 'F6: an admin link to the plate\'s vehicle never copies a VIN another vehicle holds (discrepancy recorded, still one holder)');
+  var repo = require(path.join(BASE, 'reference', 'vehicle', 'vehicle-repository.js'));
+  var dupErr = null;
+  try { await repo.createIdentifiedVehicle({ vin: VY, make: MAKE }, { principal: { kind: 'admin', scopes: ['*'] }, identity: identities[T.ADMIN] }, { method: 'test', source: 'test', confidence: 1 }, true); } catch (e) { dupErr = e; }
+  ok(dupErr && dupErr.details && dupErr.details.reason === 'vin_already_on_another_vehicle', 'F6: the V12 creation path refuses a VIN already active on another vehicle');
+
+  // F7 — the UI never acknowledges an ambiguity on an ordinary click.
+  var uiSrc = fsx.readFileSync(path.join(BASE, 'reference', 'atelier-carte-grise-ui.js'), 'utf8');
+  ok(/acknowledge_ambiguity: ack && ack\.checked \? true : undefined/.test(uiSrc) && !/acknowledge_ambiguity: r\.outcome === 'ambiguous' \? true/.test(uiSrc), 'F7: the ambiguity is acknowledged only through an explicit checkbox');
+
+  // F8 — engine fits the vehicle column.
+  ok(SM.normalize('engine', 'K9K 612 K9K 612 K9K 612 K9K 612').ok === false && SM.normalize('engine', 'K9K 612 K9K 612 K9K 612 K9K 612').reason === 'too_long' && SM.normalize('engine', 'K9K 612').ok === true, 'F8: an engine code longer than engine_code VARCHAR(30) is refused');
+
+  // F9 + F10 — a thumbnail must match its original; a refused one leaves no file behind.
+  var th = (await M.create({})).body.ref, thOrig = png(1600, 1000, th + 'o');
+  await M.face(th, 1, thOrig);
+  var wrong = png(300, 300, th + 'square'), right = png(480, 300, th + 'thumb');
+  var tw = await request('PUT', R + '/' + th + '/faces/1/thumbnail', { token: T.MGR, raw: wrong, headers: { 'Content-Type': 'image/png' } });
+  ok(tw.status === 400 && tw.body.details.reason === 'thumbnail_does_not_match_original' && !inStore(wrong), 'F9/F10: a thumbnail with other proportions → 400, and its bytes are not left in the store');
+  var tr = await request('PUT', R + '/' + th + '/faces/1/thumbnail', { token: T.MGR, raw: right, headers: { 'Content-Type': 'image/png' } });
+  var thAud = (await db.query("SELECT count(*)::int n FROM idauto_audit_log WHERE target_ref = $1 AND event_type = 'registration_submission.thumbnail'", [th])).rows[0].n;
+  ok(tr.status === 200 && thAud === 1, 'F9: a matching thumbnail is stored, in a transaction, audited');
+  var dupFace = await M.face(th, 2, thOrig);
+  ok(dupFace.status === 409 && inStore(thOrig), 'F10: a refused face whose bytes ARE referenced keeps them (content-addressed)');
+
+  // F11 — every review states its version.
+  ok((await M.review(th, { actions: [{ key: 'seats', action: 'unreadable' }] })).body.details.reason === 'expected_version_required', 'F11: a review without expected_version → 400');
+
+  // F13 — the CG2 tables missing → a clear 503, not a generic 500 (renamed for one request, then restored).
+  var miss;
+  await db.query('ALTER TABLE idauto_registration_submissions RENAME TO idauto_registration_submissions_f13');
+  try { miss = await M.get(th); } finally { await db.query('ALTER TABLE idauto_registration_submissions_f13 RENAME TO idauto_registration_submissions'); }
+  ok(miss.status === 503 && miss.body.error === 'FEATURE_NOT_INSTALLED', 'F13: migration not applied → 503 FEATURE_NOT_INSTALLED');
+
   say('\n' + pass + ' passed, ' + fail + ' failed');
   server.close(); await db.closePool();
   process.exit(fail ? 1 : 0);

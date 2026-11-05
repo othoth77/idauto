@@ -52,9 +52,12 @@ function plateInput(raw, role) {
   return { role: role, kind: 'plate', usable: true, canonical: parsed.canonical, display: parsed.display, format_code: parsed.format_code };
 }
 
+// opts.runner: a transaction client — a caller holding one (a decision under its locks)
+// must not take a second pool connection per lookup (pool exhaustion).
 async function match(input, opts) {
   input = input || {};
   opts = opts || {};
+  var q = opts.runner || db;
   var identifiers = [];
   var current = plateInput(input.plate, 'current');
   if (current) identifiers.push(current);
@@ -74,7 +77,7 @@ async function match(input, opts) {
   // canonical vehicle id → { row, evidence[] }
   var found = {};
   async function attach(vehicleId, ev) {
-    var row = await repository.canonicalById(vehicleId);
+    var row = await repository.canonicalById(vehicleId, opts.runner);
     if (!row) return;
     var slot = found[row.id] = found[row.id] || { row: row, evidence: [] };
     if (vehicleId !== row.id) ev.via_merged_record = true;
@@ -83,7 +86,7 @@ async function match(input, opts) {
 
   var plateIds = identifiers.filter(function (i) { return i.kind === 'plate' && i.usable; });
   for (var i = 0; i < plateIds.length; i++) {
-    var rows = (await db.query(
+    var rows = (await q.query(
       'SELECT vehicle_id, status FROM idauto_plates WHERE plate_number = $1 AND vehicle_id IS NOT NULL ORDER BY id', [plateIds[i].canonical])).rows;
     for (var j = 0; j < rows.length; j++) {
       await attach(rows[j].vehicle_id, { identifier: plateIds[i].role === 'current' ? 'plate' : 'previous_plate', plate: plateIds[i].canonical,
@@ -91,7 +94,7 @@ async function match(input, opts) {
     }
   }
   if (vin) {
-    var vrows = (await db.query(
+    var vrows = (await q.query(
       "SELECT vehicle_id, is_active FROM idauto_vehicle_facts WHERE LOWER(TRIM(fact_key)) = 'vin' AND (UPPER(TRIM(fact_value)) = $1 OR fact_value_normalized = $2) ORDER BY id",
       [vin, vin.toLowerCase()])).rows;
     for (var k = 0; k < vrows.length; k++) await attach(vrows[k].vehicle_id, { identifier: 'vin', vin_active: vrows[k].is_active, strong: !!vrows[k].is_active });
@@ -102,8 +105,8 @@ async function match(input, opts) {
   var candidates = [];
   for (var c = 0; c < ids.length; c++) {
     var slot = found[ids[c]];
-    var record = await repository.record(slot.row, { includeVin: false });
-    var onRecord = await repository.vinOf(slot.row.id);
+    var record = await repository.record(slot.row, { includeVin: false, runner: opts.runner });
+    var onRecord = await repository.vinOf(slot.row.id, opts.runner);
     var vinCheck = vin ? (onRecord ? (onRecord.toUpperCase() === vin ? 'match' : 'differs') : 'none_on_record') : 'not_checked';
     candidates.push({
       ivid: slot.row.ivid, internal_ref: slot.row.internal_ref,
@@ -125,7 +128,7 @@ async function match(input, opts) {
     if (only.vin_check === 'differs') { outcome = 'ambiguous'; reasons.push('vin_differs_from_record'); }
     // The card's current plate is not active on this vehicle (cancelled, transferred…): a person checks why.
     if (current && current.usable && !only.evidence.some(function (e) { return e.identifier === 'plate' && e.plate_status === 'active'; })) {
-      var elsewhere = (await db.query("SELECT 1 FROM idauto_plates WHERE plate_number = $1 AND status = 'active'", [current.canonical])).rows.length > 0;
+      var elsewhere = (await q.query("SELECT 1 FROM idauto_plates WHERE plate_number = $1 AND status = 'active'", [current.canonical])).rows.length > 0;
       if (elsewhere) { outcome = 'ambiguous'; reasons.push('current_plate_active_on_another_vehicle'); }
       else if (only.strong) reasons.push('current_plate_not_on_record');
     }

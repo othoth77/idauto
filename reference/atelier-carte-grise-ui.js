@@ -37,7 +37,12 @@
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
   function badge(text, tone) { return el('span', { class: 'ida-status ida-status--' + tone }, text); }
   function say(node, text, kind) { clear(node); if (text) node.appendChild(el('p', { class: kind === 'error' ? 'ida-alert ida-alert--danger' : kind === 'ok' ? 'ida-alert ida-alert--success' : 'ida-muted', role: kind === 'error' ? 'alert' : null }, text)); }
-  function message(err) { return (err && err.body && err.body.message_fr ? err.body.message_fr : 'La demande n\'a pas abouti.') + (err && err.body && err.body.details && err.body.details.reason ? ' (' + err.body.details.reason + ')' : ''); }
+  var REASON_FR = { create_without_vin_requires_admin: 'Sans VIN vérifié, seul un administrateur peut créer le véhicule.',
+    note_required_to_set_vin_aside: 'Indiquez pourquoi le VIN est illisible ou absent (au moins 5 caractères).',
+    thumbnail_does_not_match_original: 'La miniature ne correspond pas à la photo originale.' };
+  function message(err) {
+    var r = err && err.body && err.body.details && err.body.details.reason;
+    if (r && REASON_FR[r]) return REASON_FR[r]; return (err && err.body && err.body.message_fr ? err.body.message_fr : 'La demande n\'a pas abouti.') + (err && err.body && err.body.details && err.body.details.reason ? ' (' + err.body.details.reason + ')' : ''); }
 
   async function call(method, path, body, raw, extraHeaders) {
     var headers = Object.assign({ 'X-IDauto-Session': '1', Accept: 'application/json' }, extraHeaders || {});
@@ -191,8 +196,8 @@
     if (items.length) box.appendChild(el('ul', { class: 'ida-cgr-checks' }, items.map(function (t) { return el('li', null, t); })));
     else if (state.sub.fields.length) box.appendChild(el('p', { class: 'ida-alert ida-alert--success' }, 'Toutes les informations sont vérifiées.'));
   }
-  async function review(key, action, value) {
-    try { render(await call('POST', API + '/' + state.ref + '/review', { expected_version: state.sub.version, actions: [{ key: key, action: action, value: value }] })); }
+  async function review(key, action, value, note) {
+    try { render(await call('POST', API + '/' + state.ref + '/review', { expected_version: state.sub.version, actions: [{ key: key, action: action, value: value, note: note }] })); }
     catch (e) { say($('status'), (LABEL[key] || key) + ' : ' + message(e), 'error'); if (e && e.status === 409) render(await call('GET', API + '/' + state.ref)); }
   }
   function renderFields() {
@@ -223,6 +228,12 @@
         var b = e.target.closest('button[data-action]'); if (!b) return;
         var a = b.getAttribute('data-action');
         if (a === 'correct') { if (!input.value.trim()) { input.focus(); return; } review(f.key, 'correct', input.value.trim()); }
+        else if (f.key === 'vin') {
+          // Setting the VIN aside skips the strongest identity check: the server requires a reason.
+          var why = window.prompt(a === 'unreadable' ? 'Pourquoi le VIN est-il illisible ? (au moins 5 caractères)' : 'Pourquoi le VIN est-il absent de la carte ? (au moins 5 caractères)');
+          if (why === null) return;
+          review(f.key, a, undefined, why.trim());
+        }
         else review(f.key, a);
       });
       return tr;
@@ -252,9 +263,18 @@
       var r = state.match.result;
       box.appendChild(el('p', null, [badge(r.outcome === 'existing' ? 'Véhicule trouvé' : r.outcome === 'ambiguous' ? 'Ambigu — à décider' : 'Aucun véhicule', r.outcome === 'existing' ? 'verified' : r.outcome === 'ambiguous' ? 'anomaly' : 'neutral'),
         r.reasons.length ? ' ' + r.reasons.map(function (x) { return REASON[x] || x; }).join(' ; ') : '']));
+      // An ambiguous match is never acknowledged by an ordinary click: the person ticks an explicit
+      // confirmation first (the server still requires an administrator).
+      var ack = null, linkButtons = [];
+      if (r.outcome === 'ambiguous') {
+        ack = el('input', { type: 'checkbox', id: 'cgr-ack-ambiguity' });
+        ack.addEventListener('change', function () { linkButtons.forEach(function (x) { x.disabled = !s.assessment.ready_for_decision || !ack.checked; }); });
+        box.appendChild(el('p', { class: 'ida-cgr-ack' }, [ack, ' ', el('label', { for: 'cgr-ack-ambiguity' }, 'J\'ai comparé la carte et le dossier : je confirme le véhicule choisi malgré l\'ambiguïté (administrateur).')]));
+      }
       r.candidates.forEach(function (c) {
-        var b = el('button', { type: 'button', class: 'ida-btn ida-btn--primary ida-btn--sm', disabled: !s.assessment.ready_for_decision }, 'Rattacher à ce véhicule');
-        b.addEventListener('click', function () { decide({ action: 'link', vehicle_ref: c.ivid, acknowledge_ambiguity: r.outcome === 'ambiguous' ? true : undefined }); });
+        var b = el('button', { type: 'button', class: 'ida-btn ida-btn--primary ida-btn--sm', disabled: !s.assessment.ready_for_decision || !!ack }, 'Rattacher à ce véhicule');
+        linkButtons.push(b);
+        b.addEventListener('click', function () { decide({ action: 'link', vehicle_ref: c.ivid, acknowledge_ambiguity: ack && ack.checked ? true : undefined }); });
         box.appendChild(el('div', { class: 'ida-card ida-cgr-candidate' }, [el('p', null, [el('code', { class: 'ida-id' }, c.ivid), ' · ', [c.make, c.model, c.year].filter(Boolean).join(' ') || '—']),
           el('p', { class: 'ida-small' }, 'Plaques : ' + (c.active_plates.join(', ') || '—') + ' · VIN : ' + ({ match: 'concorde', differs: 'DIFFÉRENT', none_on_record: 'aucun enregistré', not_checked: 'non vérifié' }[c.vin_check] || c.vin_check)),
           el('p', { class: 'ida-small' }, 'Preuves : ' + c.evidence.map(function (e) { return e.identifier + (e.plate ? ' ' + e.plate : '') + (e.plate_status && e.plate_status !== 'active' ? ' (' + e.plate_status + ')' : ''); }).join(' ; ')), b]));

@@ -39,7 +39,10 @@ function vin() { var s = 'VF3'; for (var i = 0; i < 14; i++) s += VIN_CHARS[cryp
   for (var role of ['manager', 'admin']) { var u = await auth.api.signUpEmail({ body: { email: users[role], password: PW, name: role + ' ' + run } }); await db.query('UPDATE idauto_auth_user SET "role" = $1, "org_id" = $2 WHERE "id" = $3', [role, role === 'admin' ? null : ORG, u.user.id]); }
   var S = crypto.randomInt(100, 999), N = crypto.randomInt(1000, 9999);
   while ((await db.query('SELECT 1 FROM idauto_plates WHERE plate_number = $1', [S + ' TUN ' + N])).rows.length) { S = crypto.randomInt(100, 999); N = crypto.randomInt(1000, 9999); }
-  var PLATE = S + ' TUN ' + N, VIN = vin(), MAKE = 'CGB' + run;
+  // The make is printed on the synthetic card and read back by OCR: letters only, none that OCR
+  // confuses with a digit (hex « 16 » was read « IG » once, 2026-11-05).
+  var MAKE = 'CGB' + Array.from(crypto.randomBytes(6)).map(function (b) { return 'ACEHKMNPRTUVWXY'[b % 15]; }).join('');
+  var PLATE = S + ' TUN ' + N, VIN = vin();
   var HOLDER = 'TESTHOLDER' + run;
 
   var chrome = cp.spawn(CHROME, ['--headless=new', '--no-sandbox', '--disable-gpu', '--remote-debugging-port=' + CDP, '--window-size=1280,1000', '--user-data-dir=/tmp/idauto-cg2-e2e-' + process.pid, 'about:blank'], { stdio: 'ignore' });
@@ -47,8 +50,10 @@ function vin() { var s = 'VF3'; for (var i = 0; i < 14; i++) s += VIN_CHARS[cryp
   var targets = null;
   for (var attempt = 0; attempt < 30 && !targets; attempt++) { await sleep(1000); try { targets = await get('http://127.0.0.1:' + CDP + '/json'); } catch (e) { targets = null; } }
   if (!targets) throw new Error('Chrome did not open its DevTools port');
-  var ws = new WebSocket(targets.filter(function (t) { return t.type === 'page'; })[0].webSocketDebuggerUrl); var id = 0, pending = {}, errors = [];
-  ws.onmessage = function (m) { var d = JSON.parse(m.data); if (d.id && pending[d.id]) { pending[d.id](d); delete pending[d.id]; } if (d.method === 'Runtime.exceptionThrown') errors.push(d.params.exceptionDetails.text); };
+  var ws = new WebSocket(targets.filter(function (t) { return t.type === 'page'; })[0].webSocketDebuggerUrl); var id = 0, pending = {}, errors = [], dialogs = [];
+  ws.onmessage = function (m) { var d = JSON.parse(m.data); if (d.id && pending[d.id]) { pending[d.id](d); delete pending[d.id]; } if (d.method === 'Runtime.exceptionThrown') errors.push(d.params.exceptionDetails.text);
+    // Setting the VIN aside asks for a reason (window.prompt): the test answers it like an operator.
+    if (d.method === 'Page.javascriptDialogOpening') { dialogs.push(d.params.message); ws.send(JSON.stringify({ id: ++id, method: 'Page.handleJavaScriptDialog', params: { accept: true, promptText: 'carte de test sans VIN lisible' } })); } };
   await new Promise(function (r) { ws.onopen = r; });
   function send(method, params) { return new Promise(function (r) { var i = ++id; pending[i] = r; ws.send(JSON.stringify({ id: i, method: method, params: params || {} })); }); }
   async function ev(expr) { var r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); if (r.result.exceptionDetails) throw new Error(JSON.stringify(r.result.exceptionDetails.exception && r.result.exceptionDetails.exception.description)); return r.result.result.value; }
@@ -60,7 +65,9 @@ function vin() { var s = 'VF3'; for (var i = 0; i < 14; i++) s += VIN_CHARS[cryp
     await send('Page.navigate', { url: B + '/login?next=' + encodeURIComponent(next) });
     await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 30000); await sleep(300);
     await ev('document.querySelector("#login-email").value=' + JSON.stringify(email) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
-    return waitFor('location.pathname === ' + JSON.stringify(next), 25000);
+    // Landed AND ready: the page's script has bound its handlers and finished its session check
+    // (under heavy host I/O a click sent before that is lost — found 2026-11-05).
+    return waitFor('location.pathname === ' + JSON.stringify(next) + ' && document.readyState === "complete" && !/Vérification de la session/.test((document.getElementById("session-line") || {}).textContent || "")', 45000);
   }
   var HELPERS = 'window.__card = function (lines) { var c = document.createElement("canvas"); c.width = 1700; c.height = 1100; var x = c.getContext("2d");' +
     ' x.fillStyle = "#f4efe2"; x.fillRect(0, 0, 1700, 1100); x.fillStyle = "#151515"; x.font = "bold 46px sans-serif"; x.fillText("CERTIFICAT D IMMATRICULATION", 70, 100);' +

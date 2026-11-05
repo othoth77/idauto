@@ -192,7 +192,9 @@ async function ocr(vehicleRef, input, actor) {
   var currentVin = await vehicleRepository.vinOf(vehicle.id);
   var comparison = compare(candidate, current, currentVin);
   // Store the TECHNICAL extraction (fields + confidences) on each face row; the text is gone when this function returns.
-  var stored = { fields: parsed.fields.filter(function (f) { return ['registration', 'manufacturer', 'type', 'genre', 'engine', 'vin', 'year', 'first_registration_date', 'fuel', 'engine_cc', 'seats', 'gross_weight_kg', 'fiscal_power', 'category_code'].indexOf(f.key) !== -1; }), warnings: parsed.warnings };
+  // Only the technical shape is kept: never what was read (`raw`) nor the line it came from.
+  var stored = { fields: parsed.fields.filter(function (f) { return ['registration', 'manufacturer', 'type', 'genre', 'engine', 'vin', 'year', 'first_registration_date', 'fuel', 'engine_cc', 'seats', 'gross_weight_kg', 'fiscal_power', 'category_code'].indexOf(f.key) !== -1; })
+    .map(function (f) { return { key: f.key, value: f.value, confidence: f.confidence, source: f.source, label: f.label, corrected: !!f.corrected }; }), warnings: parsed.warnings };
   for (var i = 0; i < faces.length; i++) {
     var own = { fields: stored.fields.filter(function (f) { return f.source === 'face_' + faces[i].face; }), warnings: parsed.warnings };
     await repo.setOcr(byFace[faces[i].face].id, own.fields.length ? 'extracted' : 'failed', parsed.confidence, own, actor);
