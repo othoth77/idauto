@@ -76,13 +76,23 @@ function createV14(ctx) {
     res.end(out.bytes);
   }
   async function deleteFace(req, res, m) { sendJson(res, 200, await service.remove(decode(m[1]), decode(m[2]), actorOf(req))); }
+  // IDA-UI-3 (owner decision 2026-11-05): the carte grise is no longer read automatically — the
+  // registration is typed in « Ajouter un véhicule » and the photos are evidence only. The OCR
+  // routes are retired (410) unless IDAUTO_CG_OCR_ENABLED=1; the storage routes are unchanged.
+  function ocrRetired(res) {
+    if (process.env.IDAUTO_CG_OCR_ENABLED === '1') return false;
+    sendJson(res, 410, { error: 'RETIRED', message_fr: 'La lecture automatique de la carte grise est retirée : saisissez les informations dans « Ajouter un véhicule ».' });
+    return true;
+  }
   async function postOcr(req, res, m) {
+    if (ocrRetired(res)) return;
     if (!(await throttle(req, res, 'ocr'))) return;
     var body = await readJsonBody(req);
     sendJson(res, 200, await service.ocr(decode(m[1]), body, actorOf(req)));
   }
   // The proposal, confirmed by a person, goes through the ONE identification write path.
   async function postConfirm(req, res, m) {
+    if (ocrRetired(res)) return;
     var body = await readJsonBody(req);
     var ref = decode(m[1]);
     var vehicle = await resolver.confirm({
@@ -97,6 +107,7 @@ function createV14(ctx) {
 
   // Homepage « Rechercher par carte grise »: identification only, no storage.
   async function postIdentify(req, res) {
+    if (ocrRetired(res)) return;
     if (!(await throttle(req, res, 'ocr'))) return;
     var body = await readJsonBody(req);
     var allowVin = require('./identity.js').principalHasScope(req.principal, 'vin:search');

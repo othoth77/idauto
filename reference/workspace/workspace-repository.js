@@ -150,6 +150,7 @@ async function listInterventions(actor, opts) {
   else if (opts.org_id) { params.push(parseInt(opts.org_id, 10) || 0); where.push('w.org_id = $' + params.length); }
   if (['open', 'in_progress', 'closed', 'cancelled'].indexOf(opts.status) !== -1) { params.push(opts.status); where.push('w.status = $' + params.length); }
   if (opts.vehicle) { var vv = await repository.findByRef(String(opts.vehicle)); params.push(vv ? vv.id : -1); where.push('w.vehicle_id = $' + params.length); }
+  if (opts.id && /^\d{1,9}$/.test(String(opts.id))) { params.push(parseInt(opts.id, 10)); where.push('w.id = $' + params.length); }
   return { interventions: await interventionsFor(where.join(' AND '), params, 50) };
 }
 

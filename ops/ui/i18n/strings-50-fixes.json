@@ -1,0 +1,15 @@
+{
+ "(optional)": "(اختياري)",
+ "Authentifié par votre session ouverte (IDA-V13) ; aucun jeton n'est demandé ici.": "تمت المصادقة عبر جلستكم المفتوحة (IDA-V13)؛ لا يُطلب أي رمز هنا.",
+ "Chaque donnée garde sa source, son statut de vérification, sa portée et ses preuves. « Appuyé par un document » et « Attestation professionnelle » viennent des preuves enregistrées ; aucune source institutionnelle n'est connectée à IDauto aujourd'hui.": "تحتفظ كل معلومة بمصدرها وحالة توثيقها ونطاقها وإثباتاتها. «مدعوم بوثيقة» و«شهادة مهنية» مصدرهما الإثباتات المسجّلة؛ ولا يوجد اليوم أي مصدر مؤسسي متصل بـ IDauto.",
+ "IDauto — console opérateur. Réservée aux administrateurs ; les lectures du numéro de châssis sont auditées.": "IDauto — لوحة المشغّل. مخصّصة للمشرفين؛ وكل اطّلاع على رقم الهيكل مسجّل في التدقيق.",
+ "La lecture automatique de la carte grise est retirée : saisissez les informations dans « Ajouter un véhicule ».": "تمّ إيقاف القراءة الآلية للبطاقة الرمادية: أدخلوا المعلومات في «إضافة مركبة».",
+ "Le niveau de confiance d'une source (1 à 5) est celui de sa configuration ; il ne dit rien de l'exactitude d'une donnée particulière. Une base légale « à revoir » signifie que la revue juridique n'est pas faite.": "مستوى الثقة في مصدر (من 1 إلى 5) هو المستوى المضبوط في إعداده؛ ولا يدلّ على دقّة معلومة بعينها. وأساس قانوني «للمراجعة» يعني أن المراجعة القانونية لم تُنجز بعد.",
+ "Les identités de véhicules enregistrées, leurs plaques et leur historique. Lecture seule ; chaque modification passe par les opérations auditées existantes.": "هويات المركبات المسجّلة ولوحاتها وسجلّها. للاطّلاع فقط؛ وكل تعديل يمرّ عبر العمليات المدقَّقة القائمة.",
+ "Les organisations connues d'IDauto et leur activité mesurée, les sources de capture telles qu'elles sont configurées, et les fournisseurs externes réellement branchés. Lecture seule ; rien n'est estimé.": "المؤسسات المعروفة لدى IDauto ونشاطها المقيس، ومصادر الالتقاط كما هي مُعدّة، والمزوّدون الخارجيون المتصلون فعلًا. للاطّلاع فقط؛ لا شيء تقديري.",
+ "Saisissez les informations de la carte grise. Les photos de la carte sont jointes au dossier comme pièces justificatives ; rien n'est lu automatiquement.": "أدخلوا معلومات البطاقة الرمادية. تُرفق صور البطاقة بالملف كوثائق إثبات؛ ولا يُقرأ أي شيء آليًّا.",
+ "Toutes les plaques connues du véhicule, toutes graphies ; pour une visite non identifiée, la plaque lue à l'atelier.": "كل اللوحات المعروفة للمركبة بكل صيغ كتابتها؛ وبالنسبة لزيارة غير معرَّفة، اللوحة المقروءة في الورشة.",
+ "Toutes organisations confondues (vue administrateur). Les clients des ateliers ne sont jamais affichés : seule la présence d'une référence opaque est indiquée. Le kilométrage n'est pas saisi lors des visites atelier ; il n'apparaît que sur les événements d'entretien qui le portent.": "كل المؤسسات معًا (عرض المشرف). لا يُعرض حرفاء الورشات أبدًا: يُشار فقط إلى وجود مرجع مُبهم. لا يُسجَّل عدد الكيلومترات خلال زيارات الورشة؛ ولا يظهر إلا في أحداث الصيانة التي تتضمّنه.",
+ "Catalogue fournisseur non configuré. Le catalogue local reste disponible.": "دليل المزوّد غير مُعدّ. يبقى الدليل المحلي متاحًا.",
+ "gestionnaire": "مسير", "technicien": "تقني", "administrateur": "مشرف"
+}

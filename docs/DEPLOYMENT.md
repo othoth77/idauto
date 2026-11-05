@@ -67,3 +67,20 @@ Structured JSON events on stdout → journald (`SyslogIdentifier=idauto-api`). `
 `npm run test:offline` (no database) — then the live suites against a scratch database (`ops/runbooks/TEST_RUNBOOK.md`): `npm run test:db`, `npm run test:v12`, `npm run test:v13` and `npm run test:v14` (needs `IDAUTO_AUTH_SECRET` in the environment). Reference result on 2026-09-05: 29 suites, 2175 assertions, 0 failures.
 
 > **Corrected 2026-09-22.** "(no database)" was not true of `test:offline` between `4570604` and this correction: `ida-v8`, `ida-v9` and `ida-v10` had been added to it and each opens a PostgreSQL connection, so the script exited non-zero on any host without `IDAUTO_DB_*`. Those three moved to the new `test:db`. Re-measured on a clean checkout with no database: **`test:offline` = 16 suites, 1021 assertions, 0 failures**. `.github/workflows/ci.yml` runs it on every push with no database service, so the claim is now proved by the run rather than asserted here.
+
+## 7. Rolling out IDA-UI (redesign, manual registration, owner contact) — owner approval required
+
+1. Backup `idauto_production` (`pg_dump -Fc`, sha256, `pg_restore --list`) and confirm the nightly off-host backup is green.
+2. Merge; pull. No new npm dependency.
+3. Apply `database/migrations/ida-ui3-registration-maintenance.sql` (additive, idempotent, applied twice on scratch; DOWN block inside).
+   It creates `idauto_vehicle_owner_contacts` (personal data — owner decision 2026-11-05) and adds nullable columns to
+   `idauto_workshop_operations`; no existing row changes.
+4. Environment: nothing new is required. `IDAUTO_CG_OCR_ENABLED` stays unset (the OCR routes answer 410).
+   Optional on a constrained host: `IDAUTO_DB_IDLE_TIMEOUT_MS`, `IDAUTO_DB_CONNECT_TIMEOUT_MS`.
+5. Restart `idauto-api`.
+6. Smoke: `/login` (language selector), `/atelier/tableau-de-bord` signed in (sidebar + top bar), `/atelier/vehicules/nouveau`,
+   `/api/search?q=…` 200, `/api/vehicles/:ref/registration-document/ocr` 410, an Arabic page served with `dir="rtl"`.
+
+Rollback: previous release + restart. The new table and columns are inert for the old code; the owner contacts it holds
+are personal data — keep them protected or delete them with the DOWN block.
+

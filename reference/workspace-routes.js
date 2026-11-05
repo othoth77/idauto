@@ -68,7 +68,7 @@ function createWorkspace(ctx) {
   async function putOwner(req, res, m) { var v = await repo.vehicleOr404(decode(m[1])); sendJson(res, 200, await owners.put(v, await readJsonBody(req), actorOf(req))); }
   async function deleteOwner(req, res, m) { var v = await repo.vehicleOr404(decode(m[1])); sendJson(res, 200, await owners.remove(v, actorOf(req))); }
   async function getDocuments(req, res) { sendJson(res, 200, await repo.listDocuments(actorOf(req), { page: query(req).get('page') })); }
-  async function getInterventions(req, res) { var q = query(req); sendJson(res, 200, await repo.listInterventions(actorOf(req), { status: q.get('status'), vehicle: q.get('vehicle'), org_id: q.get('org_id') })); }
+  async function getInterventions(req, res) { var q = query(req); sendJson(res, 200, await repo.listInterventions(actorOf(req), { status: q.get('status'), vehicle: q.get('vehicle'), org_id: q.get('org_id'), id: q.get('id') })); }
   async function getPartsUsed(req, res) { sendJson(res, 200, await repo.listPartsUsed(actorOf(req), { source: query(req).get('source') })); }
   async function getTechnicians(req, res) { sendJson(res, 200, await repo.listTechnicians(actorOf(req))); }
   async function getRoles(req, res) {

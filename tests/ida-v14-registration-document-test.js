@@ -1,4 +1,6 @@
 'use strict';
+// IDA-UI-3: the carte grise OCR routes are retired by default (410); this suite keeps testing that legacy path.
+process.env.IDAUTO_CG_OCR_ENABLED = '1';
 /* IDA-V14 — CARTE GRISE: document faces, storage, OCR proposal, confirmation.
  * Owner order, 2026-09-05. HTTP against a scratch database, signed in through
  * Better Auth as admin / manager / technician of two organisations.

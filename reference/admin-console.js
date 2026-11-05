@@ -19,6 +19,18 @@
     window.location.replace('/login?next=' + encodeURIComponent(next || (window.location.pathname + window.location.search)));
   }
 
+  // IDA-UI-3 — writes: JSON body (or raw bytes with their headers); a refusal carries the server's details.
+  async function send(method, path, body, opts) {
+    opts = opts || {};
+    var headers = Object.assign({}, SESSION_HEADERS, opts.headers || {});
+    if (body !== undefined && !opts.raw) headers['Content-Type'] = 'application/json';
+    var response = await fetch(path, { method: method, credentials: 'same-origin', headers: headers, body: body === undefined ? undefined : (opts.raw ? body : JSON.stringify(body)) });
+    var data = await response.json().catch(function () { return {}; });
+    if (response.status === 401) { toLogin(); throw new Error('Session expirée — reconnectez-vous.'); }
+    if (!response.ok) throw Object.assign(new Error(data.message_fr || ('Le serveur n\'a pas pu répondre (' + response.status + '). Réessayez.')), { status: response.status, body: data });
+    return data;
+  }
+
   async function api(path) {
     var response = await fetch(path, { credentials: 'same-origin', headers: SESSION_HEADERS });
     var body = await response.json().catch(function () { return {}; });
@@ -56,7 +68,9 @@
     if (!v) return DASH;
     var d = new Date(v);
     if (isNaN(d.getTime())) return String(v);
-    return withTime ? d.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : d.toLocaleDateString('fr-FR', { dateStyle: 'medium' });
+    // The page language (i18n.js); Western digits in both.
+    var loc = root.IdAutoI18n && root.IdAutoI18n.lang() === 'ar' ? 'ar-TN-u-nu-latn' : 'fr-FR';
+    return withTime ? d.toLocaleString(loc, { dateStyle: 'medium', timeStyle: 'short' }) : d.toLocaleDateString(loc, { dateStyle: 'medium' });
   }
 
   // A plate keeps its left-to-right order whatever the surrounding direction
@@ -94,12 +108,19 @@
     operation_status: { planned: 'Prévue', done: 'Réalisée', cancelled: 'Annulée' },
     history_action: { resolved: 'Identifié', confirmed: 'Confirmé', edited: 'Modifié', refreshed: 'Actualisé', rejected: 'Rejeté' },
     actor_type: { system: 'Système', contributor: 'Contributeur', professional_user: 'Professionnel', admin: 'Administrateur', anonymous: 'Anonyme' },
-    outcome: { pass: 'Conforme', fail: 'Non conforme', conditional: 'Sous réserve', informational: 'Information' }
+    outcome: { pass: 'Conforme', fail: 'Non conforme', conditional: 'Sous réserve', informational: 'Information' },
+    // IDA-UI-3 — the part source as DECLARED by the technician (no invoice is held by IDauto).
+    part_source: { our_shop: 'Pièce achetée auprès de notre établissement', customer_supplied: 'Pièce fournie par le client', external_supplier: 'Pièce achetée auprès d\'un fournisseur externe' },
+    part_condition: { new: 'Neuve', used: 'Occasion' },
+    fuel_type: { petrol: 'Essence', diesel: 'Diesel', lpg: 'GPL', electric: 'Électrique', hybrid: 'Hybride', other: 'Autre' },
+    role: { admin: 'Administrateur', manager: 'Gestionnaire', technician: 'Technicien' }
   };
   function label(group, value) {
     if (value === null || value === undefined || value === '') return DASH;
     var g = LABELS[group];
-    return g && Object.prototype.hasOwnProperty.call(g, value) ? g[value] : String(value);
+    // Labels come translated in the page language (i18n.js), so a label joined to other text stays whole.
+    var tr = root.IdAutoI18n ? root.IdAutoI18n.t : function (x) { return x; };
+    return g && Object.prototype.hasOwnProperty.call(g, value) ? tr(g[value]) : String(value);
   }
 
   // Badge tone from the Design System's four status tones.
@@ -128,6 +149,17 @@
     return me.user;
   }
 
-  root.IdAutoConsole = { api: api, el: el, append: append, clear: clear, text: text, date: date, plate: plate, id: id,
+  // A server refusal in words: its message, plus the field it concerns when known.
+  var FIELD = { plate: 'Immatriculation', vin: 'Numéro de châssis (VIN)', make: 'Marque', model: 'Modèle', year: 'Année', engine_cc: 'Cylindrée', seats: 'Places',
+    gross_weight_kg: 'Poids total', fuel_type: 'Énergie', category_code: 'Catégorie', 'owner.full_name': 'Nom du propriétaire', 'owner.phone': 'Téléphone du propriétaire',
+    'owner.email': 'E-mail du propriétaire', part_source: 'Provenance de la pièce', performed_on: 'Date', quantity: 'Quantité', operation_type: 'Type d\'opération' };
+  function errorText(e) {
+    var d = e && e.body && e.body.details;
+    var msg = (e && e.message) || 'La demande n\'a pas abouti.';
+    if (d && d.field && FIELD[d.field]) msg += ' — ' + FIELD[d.field];
+    return msg;
+  }
+
+  root.IdAutoConsole = { api: api, send: send, errorText: errorText, FIELD: FIELD, el: el, append: append, clear: clear, text: text, date: date, plate: plate, id: id,
     label: label, badge: badge, state: state, sessionLine: sessionLine, LABELS: LABELS, DASH: DASH };
 }(typeof window !== 'undefined' ? window : this));

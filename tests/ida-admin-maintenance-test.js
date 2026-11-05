@@ -128,13 +128,15 @@ async function main() {
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html), 'the page has no inline script/style and is French');
   // IDA-ADMIN-7 — one navigation, defined once in the shared shell.
   var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
-  var NAV = [['/admin/dashboard', 'Tableau de bord'], ['/admin/vehicles', 'Véhicules'], ['/admin/maintenance', 'Historique d\u2019entretien'],
-    ['/admin/sources', 'Ateliers & Sources'], ['/admin/quality', 'Qualité des données'], ['/admin/security', 'Sécurité & Audit']];
-  ok(JSON.stringify(shellNav.NAV.map(function (m) { return [m.href, m.label]; })) === JSON.stringify(NAV), 'the shared navigation lists the six modules in order, with their French labels');
-  var kept = { '/admin': '/admin/vehicles', '/admin/vehicle': '/admin/vehicles', '/admin/review': '/admin/quality' };
-  ok(Object.keys(kept).every(function (p) { var l = shellNav.locate(p); return l.module && l.module.href === kept[p]; }), 'every kept page (manual entry, dossier, review queue) belongs to a module');
-  ok(shellNav.locate('/admin/maintenance').page.href === '/admin/maintenance' && shellNav.locate('/admin/maintenance/').module.href === '/admin/maintenance', 'maintenance: current module and page, with or without a trailing slash');
-  ok(shellNav.locate('/admin/nope').module === null && shellNav.locate('/').module === null, 'a path outside the console marks no module');
+  // IDA-UI-1 — the application shell: sections in order, each item with its admin page.
+  var SECTIONS = ['Vue générale', 'Gestion des véhicules', 'Carte grise', 'Maintenance', 'Ateliers', 'Catalogue', 'Administration', 'Sécurité', 'Configuration'];
+  ok(JSON.stringify(shellNav.SECTIONS.map(function (x) { return x.label; })) === JSON.stringify(SECTIONS), 'the shared navigation lists its nine sections in order, with their French labels');
+  var adminPages = { '/admin/dashboard': 'Tableau de bord', '/admin/vehicles': 'Véhicules', '/admin/vehicle': 'Véhicules', '/admin/maintenance': 'Historique de maintenance', '/admin/sources': 'Liste des ateliers',
+    '/admin/quality': 'Qualité des données', '/admin/review': 'Vérification et validation', '/admin/security': 'Journal d\u2019activité et audit', '/admin': 'Saisie technique (avancée)' };
+  ok(Object.keys(adminPages).every(function (p) { var l = shellNav.locate(p); return l.item && l.item.label === adminPages[p]; }), 'every console page belongs to one menu item');
+  ok(shellNav.locate('/admin/maintenance/').item.admin === undefined && shellNav.locate('/admin/maintenance/').item.href === '/admin/maintenance', 'maintenance: located with or without a trailing slash');
+  ok(shellNav.locate('/admin/nope').item === null && shellNav.locate('/').item === null, 'a path outside the application marks no item');
+  ok(shellNav.visible('technician').every(function (sec) { return sec.items.every(function (i) { return !/^\/admin/.test(shellNav.hrefFor(i, 'technician')); }); }), 'a technician\'s menu holds no console page (the server refuses them anyway)');
   var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];
   ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1 && (h.match(/<script src="\/admin\/shell\.js"><\/script>/g) || []).length === 1 && !/ida-nav-links|aria-current=/.test(h); }),
     'all ' + pages.length + ' console pages carry the one shared sidebar slot and load the shell once, with no menu of their own');

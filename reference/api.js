@@ -442,6 +442,13 @@ var ADMIN_ASSETS = {
   '/admin/assets/components.css': { root: WEB_ROOT, file: 'design-system/css/components.css', contentType: 'text/css; charset=utf-8' },
   '/admin/assets/ui.js': { root: WEB_ROOT, file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
   '/admin/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
+  // IDA-UI-3 — platform accounts and the role matrix (admin; data from /api/admin/accounts, /api/admin/roles).
+  '/admin/utilisateurs': { file: 'admin-users.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/utilisateurs/': { file: 'admin-users.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/users-ui.js': { file: 'admin-users-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/roles': { file: 'admin-roles.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/roles/': { file: 'admin-roles.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/roles-ui.js': { file: 'admin-roles-ui.js', contentType: 'application/javascript; charset=utf-8' },
   // IDA-UI-2 — French/Arabic (the same two files on every surface).
   '/admin/i18n.js': { file: 'i18n.js', contentType: 'application/javascript; charset=utf-8' },
   '/admin/i18n-catalog-ar.js': { file: 'i18n-catalog-ar.js', contentType: 'application/javascript; charset=utf-8' },
@@ -501,6 +508,8 @@ var CITIZEN_ASSETS = {
   '/assets/components.css': { file: 'design-system/css/components.css', contentType: 'text/css; charset=utf-8' },
   '/assets/plate.js': { file: 'design-system/js/plate.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/ui.js': { file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/i18n.js': { root: __dirname, file: 'i18n.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/i18n-catalog-ar.js': { root: __dirname, file: 'i18n-catalog-ar.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/ivid-client.js': { file: 'design-system/js/ivid-client.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/qrcodegen.js': { file: 'vendor/qrcodegen.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/passport-render.js': { file: 'citizen/passport-render.js', contentType: 'application/javascript; charset=utf-8' },

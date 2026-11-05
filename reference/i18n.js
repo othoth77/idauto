@@ -29,23 +29,53 @@
   });
 
   function norm(s) { return String(s).replace(/\s+/g, ' ').trim(); }
+  // Counters: a catalogue key may use « # » for a number (« # véhicule(s) · page # sur # »); the
+  // numbers of the French text are put back, in order, where the Arabic has « # ».
+  var NUM = /\d+(?:[.,]\d+)?(?:\s?%)?/g;
+  var NUMBERED = {};
+  Object.keys(STRINGS).forEach(function (k) { if (k.indexOf('#') !== -1) NUMBERED[k] = STRINGS[k]; });
+  function numbered(key) {
+    var nums = key.match(NUM);
+    if (!nums) return null;
+    var shape = key.replace(NUM, '#');
+    if (!Object.prototype.hasOwnProperty.call(NUMBERED, shape)) return null;
+    var i = 0;
+    return NUMBERED[shape].replace(/#/g, function () { return nums[i++] || ''; });
+  }
+  // A line made of parts joined by « · » or « — » (counters, statuses) is translated part by part,
+  // only when EVERY part is known — never a half-translated sentence.
+  function byParts(key) {
+    var sep = key.indexOf(' · ') !== -1 ? ' · ' : key.indexOf(' — ') !== -1 ? ' — ' : null;
+    if (!sep) return null;
+    var parts = key.split(sep), out = [];
+    for (var i = 0; i < parts.length; i++) { var p = single(parts[i].trim()); if (p === null) { if (/[A-Za-zÀ-ÿ]{2}/.test(parts[i])) return null; p = parts[i].trim(); } out.push(p); }
+    return out.join(sep);
+  }
   // French text → Arabic text, or the French text itself when the catalogue has nothing.
-  function toArabic(fr) {
-    var key = norm(fr);
-    if (!key) return fr;
+  // One known text: exact, counter (« # »), or template; null when unknown.
+  function single(key) {
     if (Object.prototype.hasOwnProperty.call(STRINGS, key)) return STRINGS[key];
+    var n = numbered(key); if (n !== null) return n;
     for (var i = 0; i < TEMPLATES.length; i++) {
       var m = TEMPLATES[i].re.exec(key);
       if (m) {
         var t = TEMPLATES[i], out = t.ar;
-        t.order.forEach(function (n, idx) { out = out.split('{' + n + '}').join(translateFragment(m[idx + 1])); });
+        t.order.forEach(function (k, idx) { out = out.split('{' + k + '}').join(translateFragment(m[idx + 1])); });
         return out;
       }
     }
+    return null;
+  }
+  function toArabic(fr) {
+    var key = norm(fr);
+    if (!key) return fr;
+    var one = single(key); if (one !== null) return one;
+    var parts = byParts(key); if (parts !== null) return parts;
     return fr;
   }
   // A captured value is translated only if it is itself a known text (« Rattaché »), never an identifier.
-  function translateFragment(v) { var k = norm(v); return Object.prototype.hasOwnProperty.call(STRINGS, k) ? STRINGS[k] : v; }
+  // A captured value is translated only if it is itself known text (« Rattaché », « gestionnaire · …»), never an identifier.
+  function translateFragment(v) { var k = norm(v); var one = single(k); if (one !== null) return one; var p = byParts(k); return p !== null ? p : v; }
   function has(fr) { var r = toArabic(fr); return r !== fr || !/[A-Za-zÀ-ÿ]{2}/.test(fr); }
 
   var LANGS = ['fr', 'ar'];
@@ -106,5 +136,8 @@
     }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRS.concat(['value']) });
   }
   root.IdAutoI18n = { lang: current, t: t, date: date, day: day, number: number, setLanguage: setLanguage, toArabic: toArabic };
+  // A plain <select data-public-lang> (public pages, no shell) switches the language too.
+  function wireSelects() { Array.prototype.forEach.call(document.querySelectorAll('select[data-public-lang]'), function (s) { s.value = lang; s.addEventListener('change', function () { setLanguage(s.value); }); }); }
+  if (document.readyState !== 'loading') wireSelects(); else document.addEventListener('DOMContentLoaded', wireSelects);
   if (lang === 'ar') { if (document.body) start(); else document.addEventListener('DOMContentLoaded', start); }
 }(typeof self !== 'undefined' ? self : this));

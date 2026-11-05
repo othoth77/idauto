@@ -5,7 +5,9 @@
 ## 1. Applying
 
 Fresh database: `schema.sql`, then every file in `database/migrations/` in this order:
-`ida-3a-ingestion-schema.sql` → `ida4-option-c-ivid.sql` → `ida-v4-verification-scope-separation.sql` → `ida-v8-identity-resolution.sql` → `ida-v9-organisation-scoped-access.sql` → `ida-v10-vehicle-search.sql` → `ida-v12-vehicle-identification.sql`.
+`ida-3a-ingestion-schema.sql` → `ida4-option-c-ivid.sql` → `ida-v4-verification-scope-separation.sql` → `ida-v8-identity-resolution.sql` → `ida-v9-organisation-scoped-access.sql` → `ida-v10-vehicle-search.sql` → `ida-v12-vehicle-identification.sql` → `ida-v13-auth-session.sql` → `ida-v14-registration-document.sql` → `ida-ui3-registration-maintenance.sql`.
+
+**IDA-UI-3 (2026-11-05)** — `idauto_vehicle_owner_contacts` (the owner's private contact, per organisation, superseded not edited — `docs/PRIVACY_ARCHITECTURE.md` §1a); `idauto_workshop_operations` gains `part_source` (our_shop / customer_supplied / external_supplier), `part_condition` (new / used), `part_label`, `part_reference_text`, `performed_on`, `notes`; `identification_method` accepts `manual_registration`. Additive, idempotent, DOWN block inside.
 Every migration is additive and idempotent (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`); each ends with a commented DOWN block. `ida-v12` was applied twice in a row on the scratch database as proof (second run: NOTICEs only). Result: 33 `idauto_` tables.
 
 Production: `idauto_production` in the `idauto-postgres` container. The older `idauto` database is test residue, not production. Live suites refuse any database whose name does not start with `idauto_scratch_`.

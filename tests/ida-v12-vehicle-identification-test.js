@@ -319,7 +319,7 @@ async function main() {
   await request('POST', '/api/parts/' + p2.body.local_id + '/compatibility', ORG_A, { manufacturer: 'RENAULT', model: 'CLIO IV', motorisation: '1.5 dCi 90' });
   var visitParts = await request('GET', '/api/workshop/visits/' + VISIT + '/parts', ORG_A);
   ok(visitParts.status === 200 && visitParts.body.catalogue.parts.some(function (p) { return p.reference === 'DF4184'; }), '7. parts for the visit — matched on make / model / motorisation');
-  var op = await request('POST', '/api/workshop/visits/' + VISIT + '/operations', ORG_A, { operation_type: 'replacement', description: 'Plaquettes avant', part_id: p2.body.id, quantity: 1 });
+  var op = await request('POST', '/api/workshop/visits/' + VISIT + '/operations', ORG_A, { operation_type: 'replacement', description: 'Plaquettes avant', part_id: p2.body.id, quantity: 1, part_source: 'our_shop' });   // IDA-UI-3: a part carries its declared source
   ok(op.status === 201 && op.body.part_id === p2.body.id, '8. the mechanic selects the part in an operation');
   var op2 = await request('POST', '/api/workshop/visits/' + VISIT + '/operations', ORG_A, { operation_type: 'service', description: 'Vidange' });
   ok(op2.status === 201, '9. and adds a service operation');

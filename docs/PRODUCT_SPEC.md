@@ -365,3 +365,29 @@ The following items require formal legal review before the corresponding feature
 
 **No real data collection begins from this IDA-1 documentation commit.**
 
+
+---
+
+## 13. Workshop registration and maintenance (IDA-UI-3, 2026-11-05)
+
+**Manual registration.** A workshop account types the carte grise into « Ajouter un véhicule »: plate (TU or RS) or VIN,
+make (required), model, version, year, energy, cylinder capacity, seats, PTAC, category, body, colour, engine code, and —
+optionally — the owner's name, phone, e-mail and address. Face 1 and face 2 photos are attached as **evidence only**: they
+are stored privately and never read automatically (the IDA-V14 OCR flow is retired). A plate or VIN already in IDauto is
+refused with a link to the existing dossier — one vehicle, one record.
+
+**Owner contact.** Private to the recording workshop (and admins), every read audited, never public — `PRIVACY_ARCHITECTURE.md` §1a.
+
+**Dossier.** Identity, plates, carte grise photos, the owner contact (on request) and the maintenance history of the
+account's own workshop (an admin sees every workshop). An empty history says that **no record exists**, never that
+nothing happened.
+
+**Interventions.** A technician opens an intervention on a vehicle (from its dossier or by its plate), then records each
+operation: type, work done, date, the part replaced or repaired (catalogue or free text, reference, quantity, new/used) and
+its **source**, chosen by radio button — « Pièce achetée auprès de notre établissement », « Pièce fournie par le client »,
+« Pièce achetée auprès d'un fournisseur externe ». The source is a declaration: IDauto holds no invoice, so it never claims
+a sale; a catalogue entry proves neither stock nor purchase. Piece.Autos / Casse.Autos are not connected in this release.
+
+**Roles.** Administrator: everything. Manager: the workshop's vehicles, interventions, owner contacts, documents (incl.
+deletion), catalogue entries, team list, VIN search. Technician: the same workshop's vehicles, interventions and owner
+contacts; no VIN search, no document deletion, no team list. Enforced on the server (`reference/auth/principal.js`).

@@ -182,8 +182,9 @@ const api = require(path.join(ROOT, "reference", "api.js"));
 const assets = api._citizenAssets;
 ok(assets && typeof assets === "object", "api.js exposes the citizen asset map");
 for (const [route, spec] of Object.entries(assets)) {
-  const full = path.join(WEB, spec.file);
-  ok(fs.existsSync(full), "served asset exists: " + route + " → web/" + spec.file);
+  // IDA-UI-2: an entry may name its own root (the shared French/Arabic layer lives in reference/).
+  const full = path.join(spec.root || WEB, spec.file);
+  ok(fs.existsSync(full), "served asset exists: " + route + " → " + (spec.root ? "reference/" : "web/") + spec.file);
   ok(!spec.file.includes(".."), "asset path is map-fixed (no traversal): " + spec.file);
 }
 const servedHtml = Object.values(assets).filter(s => s.contentType.startsWith("text/html")).map(s => s.file);
@@ -217,7 +218,7 @@ for (const f of new Set(servedHtml)) {
 // every served .js asset parses and stays CSP-safe (no eval / new Function)
 for (const spec of Object.values(assets)) {
   if (!spec.contentType.startsWith("application/javascript")) continue;
-  const src = read(spec.file);
+  const src = fs.readFileSync(path.join(spec.root || WEB, spec.file), "utf8");
   /* IDA-V11 — STRICTER, not looser.
    *
    * Our own code must still contain ZERO eval / new Function. A VENDORED file
@@ -349,7 +350,8 @@ ok(/flex-wrap\s*:\s*wrap/.test(navInnerRule),
 
 /* The three items must survive this fix, exactly and in order. */
 const navMarkup = (read("citizen/index.html").match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [""])[0];
-ok((navMarkup.match(/<li>/g) || []).length === 3, "the navigation carries exactly three items");
+// IDA-UI-2: a fourth item, the French / Arabic selector.
+ok((navMarkup.match(/<li>/g) || []).length === 4 && /data-public-lang/.test(navMarkup), "the navigation carries its three items plus the language selector");
 ok(navMarkup.indexOf(">Vérifier<") !== -1, "the first item is Vérifier");
 ok(navMarkup.indexOf(">Passeport<") !== -1, "the second item is Passeport");
 ok(/data-theme-toggle/.test(navMarkup), "the third item is the theme toggle");

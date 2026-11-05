@@ -1,0 +1,30 @@
+    <div class="ida-admin-grid">
+      <section class="ida-card ida-stack" aria-labelledby="sec-profile">
+        <h2 id="sec-profile" class="ida-h3">Profil</h2>
+        <div id="profile"><p class="ida-muted">Chargement…</p></div>
+      </section>
+      <section class="ida-card ida-stack" aria-labelledby="sec-prefs">
+        <h2 id="sec-prefs" class="ida-h3">Langue et affichage</h2>
+        <div class="ida-field"><label for="pref-lang">Langue de l'interface</label>
+          <select class="ida-input" id="pref-lang" data-i18n-skip><option value="fr" lang="fr">Français</option><option value="ar" lang="ar">العربية</option></select>
+          <p class="ida-field-hint">Le choix est conservé sur cet appareil et s'applique à toutes les pages.</p></div>
+        <div><button type="button" class="ida-btn ida-btn--secondary" data-theme-toggle>Thème clair / sombre</button></div>
+      </section>
+    </div>
+    <section class="ida-card ida-stack" aria-labelledby="sec-pwd">
+      <h2 id="sec-pwd" class="ida-h3">Changer le mot de passe</h2>
+      <form id="pwd-form" class="ida-stack" novalidate>
+        <div class="ida-form-grid">
+          <div class="ida-field"><label for="pwd-current" class="ida-required">Mot de passe actuel</label><input class="ida-input" id="pwd-current" type="password" autocomplete="current-password" required></div>
+          <div class="ida-field"><label for="pwd-new" class="ida-required">Nouveau mot de passe</label><input class="ida-input" id="pwd-new" type="password" autocomplete="new-password" minlength="12" required aria-describedby="hint-pwd"></div>
+          <div class="ida-field"><label for="pwd-new2" class="ida-required">Confirmer le nouveau mot de passe</label><input class="ida-input" id="pwd-new2" type="password" autocomplete="new-password" minlength="12" required></div>
+        </div>
+        <p class="ida-field-hint" id="hint-pwd">12 caractères au moins, avec des lettres et des chiffres. Vos autres sessions seront fermées.</p>
+        <div id="pwd-msg" aria-live="assertive"></div>
+        <div class="ida-form-actions"><button type="submit" class="ida-btn ida-btn--primary">Changer le mot de passe</button></div>
+      </form>
+    </section>
+    <section class="ida-card ida-stack" aria-labelledby="sec-sessions">
+      <div class="ida-section-head"><h2 id="sec-sessions" class="ida-h3">Sessions ouvertes</h2><button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" id="revoke-others">Fermer les autres sessions</button></div>
+      <div id="sessions" aria-live="polite"><p class="ida-muted">Chargement…</p></div>
+    </section>

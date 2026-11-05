@@ -120,8 +120,16 @@
 
   // ONE session read per page, shared with the page scripts (Better Auth limits
   // /api/auth/* per client; two reads per page could reach 429).
-  var sessionPromise = fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-    .then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  // A 429 (too many session reads) is NOT a sign-out: retry with a short backoff instead of
+  // sending the person to /login.
+  function readSession(attempt) {
+    return fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (r) {
+        if (r.status === 429 && attempt < 4) return new Promise(function (res) { setTimeout(res, 800 * Math.pow(2, attempt)); }).then(function () { return readSession(attempt + 1); });
+        return r.ok ? r.json() : null;
+      }).catch(function () { return null; });
+  }
+  var sessionPromise = readSession(0);
   window.IdAutoAdminShell = { NAV: NAV, SECTIONS: SECTIONS, locate: locate, session: function () { return sessionPromise; } };
 
   var aside = document.querySelector('[data-admin-sidebar]');
@@ -149,7 +157,7 @@
       var hid = 'nav-sec-' + si;
       var list = el('ul', { class: 'ida-admin-nav-list', 'aria-labelledby': hid });
       s.items.forEach(function (m) {
-        var href = hrefFor(m, role), active = here.item === m;
+        var href = hrefFor(m, role), active = !!here.item && here.item.label === m.label && here.item.section === s.label;
         list.appendChild(el('li', null, el('a', { href: href, class: 'ida-admin-nav-link' + (active ? ' is-active' : ''), title: m.label,
           'aria-current': active ? 'page' : null, 'data-module': href }, [icon(m.icon), el('span', { class: 'ida-admin-nav-label' }, m.label)])));
       });
@@ -228,7 +236,7 @@
       g.items.forEach(function (it) {
         var id = 'srch-o-' + options.length;
         var o = el('a', { id: id, role: 'option', class: 'ida-app-search-option', href: it.href, 'aria-selected': 'false' }, [
-          el('span', { class: 'ida-app-search-title' }, [it.plate ? el('bdi', { dir: 'ltr', class: 'ida-app-search-plate' }, it.plate) : null, it.plate && it.title ? ' · ' : null, it.title || '']),
+          el('span', { class: 'ida-app-search-title' }, [it.plate ? el('bdi', { dir: 'ltr', class: 'ida-id' }, it.plate) : null, it.plate && it.title ? ' · ' : null, it.title || '']),
           it.subtitle ? el('span', { class: 'ida-app-search-sub' }, it.subtitle) : null]);
         options.push(o); box.appendChild(o);
       });

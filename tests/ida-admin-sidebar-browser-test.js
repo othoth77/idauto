@@ -25,8 +25,12 @@ var TOKEN = 'sb-' + crypto.randomBytes(12).toString('hex');
 process.env.IDAUTO_ADMIN_IDENTITIES = JSON.stringify({ [TOKEN]: 'usr_sidebar_e2e' });
 var db = require(path.join(BASE, 'reference', 'db.js'));
 var CDP = 9800 + Math.floor(Math.random() * 150);
-var MODULES = [['/admin/dashboard', 'Tableau de bord'], ['/admin/vehicles', 'Véhicules'], ['/admin/maintenance', 'Historique d\u2019entretien'],
-  ['/admin/sources', 'Ateliers & Sources'], ['/admin/quality', 'Qualité des données'], ['/admin/security', 'Sécurité & Audit']];
+// IDA-UI-1 — the application shell: the admin's menu is the shell's own list (sections filtered
+// by role), and six console pages are walked through it.
+var SHELL = require(path.join(BASE, 'reference', 'admin-shell.js'));
+var LABELS = [].concat.apply([], SHELL.visible('admin').map(function (sec) { return sec.items.map(function (i) { return i.label; }); }));
+var MODULES = ['/admin/dashboard', '/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/security'].map(function (h) {
+  return [h, SHELL.NAV.filter(function (i) { return SHELL.hrefFor(i, 'admin') === h; })[0].label]; });
 function get(url) { return new Promise(function (r, j) { http.get(url, function (res) { var c = []; res.on('data', function (x) { c.push(x); }); res.on('end', function () { r(JSON.parse(Buffer.concat(c).toString())); }); }).on('error', j); }); }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS ' + l); } else { fail++; console.log('  FAIL ' + l); } }
@@ -84,7 +88,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
     await send('Network.setExtraHTTPHeaders', { headers: { 'X-Real-IP': '10.81.' + crypto.randomInt(1, 250) + '.' + crypto.randomInt(1, 250) } });
     await send('Network.clearBrowserCookies');
     await send('Page.navigate', { url: B + '/login?next=%2Fadmin%2Fdashboard' });
-    await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 30000); await sleep(300);
+    await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 30000); await sleep(300);
     await ev('document.querySelector("#login-email").value=' + JSON.stringify(email) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
     return waitFor('location.pathname === "/admin/dashboard" && !!document.querySelector("[data-admin-sidebar] .ida-admin-nav-link")', 25000);
   }
@@ -94,14 +98,15 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
     await send('Emulation.setDeviceMetricsOverride', { width: width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
     ok(await signIn(users.admin), 'the admin signs in and lands on the dashboard');
     var drawer = width < 1024;
-    var pages = MODULES.map(function (m) { return [m[0], m[0], m[0]]; }).concat([['/admin/review', '/admin/quality', '/admin/review'], ['/admin', '/admin/vehicles', '/admin'],
-      ['/admin/vehicle?ref=' + encodeURIComponent(veh.id), '/admin/vehicles', null], ['/admin/quality/', '/admin/quality', '/admin/quality']]);
+    var pages = MODULES.map(function (m) { return [m[0], m[0], m[0]]; }).concat([['/admin/review', '/admin/review', '/admin/review'], ['/admin', '/admin', '/admin'],
+      ['/admin/vehicle?ref=' + encodeURIComponent(veh.id), '/admin/vehicles', '/admin/vehicles'], ['/admin/quality/', '/admin/quality', '/admin/quality'],
+      ['/admin/utilisateurs', '/admin/utilisateurs', '/admin/utilisateurs'], ['/admin/roles', '/admin/roles', '/admin/roles']]);
     var bad = [];
     for (var p of pages) {
       if (!(await nav(p[0]))) { bad.push(p[0] + ' did not load (at ' + await ev('location.href') + ')'); continue; }
       var s = await ev(STATE);
       var good = s.active.length === 1 && s.active[0] === p[1] && (p[2] ? s.current.length === 1 && s.current[0] === p[2] : s.current.length === 0) && s.overflow <= 0 &&
-        JSON.stringify(s.labels) === JSON.stringify(MODULES.map(function (m) { return m[1]; })) && s.mode === (drawer ? 'drawer' : 'sidebar');
+        JSON.stringify(s.labels) === JSON.stringify(LABELS) && s.mode === (drawer ? 'drawer' : 'sidebar');
       if (!good) bad.push(p[0] + ' ' + JSON.stringify(s));
     }
     if (width === 1440) {
@@ -114,10 +119,10 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
       }
       ok(perPage.every(function (x) { return /=1$/.test(x); }), 'each console page reads the session once, shared by the shell and the page (' + perPage.join(', ') + ')');
     }
-    ok(bad.length === 0, 'direct access to ' + pages.length + ' pages: six modules in order, one active module, the right current page, no overflow' + (bad.length ? ' — ' + bad.join(' | ').slice(0, 400) : ''));
+    ok(bad.length === 0, 'direct access to ' + pages.length + ' pages: the admin menu (' + LABELS.length + ' items) in order, one active item marked as the current page, no overflow' + (bad.length ? ' — ' + bad.join(' | ').slice(0, 400) : ''));
     await waitFor('/Admin Sidebar/.test(document.querySelector(".ida-admin-identity").textContent)');
     var ident = await ev('document.querySelector(".ida-admin-identity").textContent');
-    ok(/Admin Sidebar/.test(ident) && /Administrateur/.test(ident) && (await ev('document.querySelector("[data-admin-sidebar]").textContent')).indexOf('@') === -1, 'identity: name and role, never the e-mail');
+    ok(/Admin Sidebar/.test(ident) && /Administrateur/.test(ident) && (await ev('document.querySelector("[data-admin-sidebar]").textContent + document.querySelector("[data-app-topbar]").textContent')).indexOf('@') === -1, 'identity: name and role, never the e-mail');
 
     // Click each module, then Back, Back, Forward.
     await nav('/admin/dashboard');
@@ -151,13 +156,13 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
       await sleep(300);
       var c = await ev(STATE);
       var hiddenLabel = await ev('document.querySelector(".ida-admin-nav-link .ida-admin-nav-label").getBoundingClientRect().width <= 1');
-      ok(w0 >= 240 && c.sidebarW < 80 && hiddenLabel && JSON.stringify(c.labels) === JSON.stringify(MODULES.map(function (m) { return m[1]; })) && c.active[0] === '/admin/security' &&
+      ok(w0 >= 240 && c.sidebarW < 80 && hiddenLabel && JSON.stringify(c.labels) === JSON.stringify(LABELS) && c.active[0] === '/admin/security' &&
         await ev('document.querySelector(".ida-admin-sidebar-collapse").getAttribute("aria-expanded")') === 'false',
         'collapse: an icon rail (' + w0 + ' → ' + c.sidebarW + ' px), labels kept as accessible names, active module unchanged');
       await ev('document.querySelector(".ida-admin-sidebar-collapse").click()');
       await sleep(300);
       ok((await ev(STATE)).sidebarW >= 240 && await ev('document.querySelector(".ida-admin-sidebar-collapse").getAttribute("aria-expanded")') === 'true', 'expand restores the full sidebar');
-      ok(await ev('getComputedStyle(document.querySelector(".ida-admin-topbar")).display === "none"'), 'desktop: no top bar, the sidebar is persistent');
+      ok(await ev('getComputedStyle(document.querySelector(".ida-admin-topbar")).display !== "none" && document.querySelector(".ida-admin-shell").getAttribute("data-mode") === "sidebar" && !document.querySelector("[data-admin-sidebar]").hasAttribute("inert")'), 'desktop: the top bar (search, notifications, language, profile) above a persistent sidebar');
     } else {
       await nav('/admin/dashboard');
       ok(await ev('(function(){var a=document.querySelector("[data-admin-sidebar]");return a.hasAttribute("inert") && getComputedStyle(a).visibility === "hidden" && a.getBoundingClientRect().right <= 0})()') &&
@@ -179,8 +184,9 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
     errors = [];
 
     if (width === 390) {
-      await ev('document.querySelector(".ida-admin-menu-btn").click()');
-      await waitFor('!document.querySelector("[data-admin-logout]").hidden');
+      // IDA-UI-1 — sign-out lives in the profile menu of the top bar.
+      await ev('document.querySelector(".ida-app-profile").click()');
+      await waitFor('!document.querySelector("#app-profile").hidden && !document.querySelector("[data-admin-logout]").hidden');
       await ev('document.querySelector("[data-admin-logout]").click()');
       var out = await waitFor('location.pathname === "/login"', 20000);
       var st401 = await ev('fetch("/api/admin/dashboard",{credentials:"same-origin",headers:{"X-IDauto-Session":"1"}}).then(function(r){return r.status})');

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Tableau de bord</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Navigation principale"></aside>
+<div class="ida-admin-main">
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-page-head">
+      <div>
+        <h1>Tableau de bord</h1>
+        <p class="ida-muted ida-u-maxch-52">L&#x27;activité de votre atelier, comptée dans la base au chargement de la page.</p>
+      </div>
+      <div class="ida-page-actions"><a class="ida-btn ida-btn--secondary" href="/atelier/interventions?new=1">Nouvelle intervention</a><a class="ida-btn ida-btn--primary" href="/atelier/vehicules/nouveau">Ajouter un véhicule</a></div>
+    </header>
+    <div id="page-status" aria-live="polite"></div>
+    <div id="stats" class="ida-admin-stats" aria-live="polite" aria-busy="true"><p class="ida-muted">Chargement…</p></div>
+    <div class="ida-admin-grid">
+      <section class="ida-card ida-stack" aria-labelledby="sec-recent-v">
+        <div class="ida-section-head"><h2 id="sec-recent-v">Véhicules récents</h2><a class="ida-small" href="/atelier/vehicules">Tous les véhicules</a></div>
+        <div id="recent-vehicles"></div>
+      </section>
+      <section class="ida-card ida-stack" aria-labelledby="sec-recent-i">
+        <div class="ida-section-head"><h2 id="sec-recent-i">Interventions récentes</h2><a class="ida-small" href="/atelier/interventions">Toutes les interventions</a></div>
+        <div id="recent-interventions"></div>
+      </section>
+    </div>
+  </div>
+</main>
+</div>
+</div>
+<script src="/atelier/i18n-catalog-ar.js"></script>
+<script src="/atelier/i18n.js"></script>
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/shell.js"></script>
+<script src="/atelier/console.js"></script>
+<script src="/atelier/app-dashboard.js"></script>
+</body>
+</html>

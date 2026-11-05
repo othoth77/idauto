@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Utilisateurs</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Navigation principale"></aside>
+<div class="ida-admin-main">
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-page-head">
+      <div>
+        <h1>Utilisateurs</h1>
+        <p class="ida-muted ida-u-maxch-52">Les comptes de la plateforme. Les comptes sont créés et modifiés par l&#x27;opérateur (ops/auth-users.js).</p>
+      </div>
+      <div class="ida-page-actions"></div>
+    </header>
+    <div id="page-status" aria-live="polite"></div>
+    <section class="ida-card ida-stack" aria-labelledby="sec-u">
+      <div id="totals" class="ida-admin-stats" aria-live="polite"></div>
+      <h2 id="sec-u" class="ida-sr-only">Comptes</h2>
+      <div id="list" aria-live="polite" aria-busy="true"><p class="ida-muted">Chargement…</p></div>
+      <p class="ida-small ida-muted">Création, changement de rôle, mot de passe et suppression : <code>node ops/auth-users.js</code> sur le serveur (le mot de passe ne passe jamais par une page web).</p>
+    </section>
+  </div>
+</main>
+</div>
+</div>
+<script src="/admin/i18n-catalog-ar.js"></script>
+<script src="/admin/i18n.js"></script>
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/shell.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/users-ui.js"></script>
+</body>
+</html>

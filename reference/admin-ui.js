@@ -211,6 +211,9 @@
       return;
     }
     if (line) line.textContent = 'Connecté : ' + me.user.name + ' · ' + (ROLE_FR[me.user.role] || me.user.role);
+    // IDA-UI-3 — this technical entry form is for administrators: a workshop account is sent to
+    // the manual registration page (the APIs refuse it anyway; this avoids a form that cannot work).
+    if (me.user.role !== 'admin') { window.location.replace('/atelier/vehicules/nouveau'); return; }
     if (logoutButton) {
       logoutButton.hidden = false;
       logoutButton.addEventListener('click', async function () {
