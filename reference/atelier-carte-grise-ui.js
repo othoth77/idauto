@@ -190,10 +190,11 @@
         var r = await fetch(API + '/' + state.ref + '/faces/' + f + '/image', { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } });
         var bitmap = await createImageBitmap(await r.blob());
         // Every face is read at the same size — a small photo is ENLARGED (card text is tiny), a large
-        // one reduced — in grayscale with more contrast. In memory only; the archive is untouched.
+        // one reduced — in grayscale with more contrast, default resampling (« high » read fewer fields on a
+        // real card, measured 2026-11-05). In memory only; the archive is untouched.
         var s = OCR.edge / Math.max(bitmap.width, bitmap.height);
         var c = document.createElement('canvas'); c.width = Math.round(bitmap.width * s); c.height = Math.round(bitmap.height * s);
-        var cx = c.getContext('2d'); cx.filter = OCR.filter; cx.imageSmoothingQuality = 'high'; cx.drawImage(bitmap, 0, 0, c.width, c.height);
+        var cx = c.getContext('2d'); cx.filter = OCR.filter; cx.drawImage(bitmap, 0, 0, c.width, c.height);
         var texts = [], confs = [];
         for (var p = 0; p < OCR.passes.length; p++) {
           $('ocr-status').textContent = 'Lecture de la face ' + f + ' (' + (p + 1) + '/' + OCR.passes.length + ')…';

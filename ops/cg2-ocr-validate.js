@@ -97,7 +97,7 @@ function combine(parsedFaces) {
     for (var f = 0; f < card.faces.length; f++) {
       var b64 = fs.readFileSync(card.faces[f]).toString('base64');
       var r = await ev('(async function(){var bin=atob("' + b64 + '"),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var bm=await createImageBitmap(new Blob([u]));var s=2400/Math.max(bm.width,bm.height);' +
-        'var c=document.createElement("canvas");c.width=Math.round(bm.width*s);c.height=Math.round(bm.height*s);var x=c.getContext("2d");x.filter="grayscale(1) contrast(1.6)";x.imageSmoothingQuality="high";x.drawImage(bm,0,0,c.width,c.height);var t=[],k=[],ps=["4","11"];for(var q=0;q<ps.length;q++){await window.__w.setParameters({tessedit_pageseg_mode:ps[q]});var o=await window.__w.recognize(c);t.push(o.data.text);k.push(o.data.confidence);}return {text:t.join("\\n"),confidence:k.reduce(function(a,b){return a+b},0)/k.length}})()');
+        'var c=document.createElement("canvas");c.width=Math.round(bm.width*s);c.height=Math.round(bm.height*s);var x=c.getContext("2d");x.filter="grayscale(1) contrast(1.6)";x.drawImage(bm,0,0,c.width,c.height);var t=[],k=[],ps=["4","11"];for(var q=0;q<ps.length;q++){await window.__w.setParameters({tessedit_pageseg_mode:ps[q]});var o=await window.__w.recognize(c);t.push(o.data.text);k.push(o.data.confidence);}return {text:t.join("\\n"),confidence:k.reduce(function(a,b){return a+b},0)/k.length}})()');
       parsed.push(parser.parseFace(r.text, { source: 'face_' + (f + 1), confidence: r.confidence }));   // text dropped right here
       conf.push(Math.round(r.confidence));
     }
