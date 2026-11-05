@@ -74,16 +74,21 @@ Structured JSON events on stdout → journald (`SyslogIdentifier=idauto-api`). `
 installed on the VPS, one clean nightly run whose manifest shows `source_references.vehicle_document`, one restore
 test); VPS disk ≤ 89 %; owner go.
 
-1. Read-only pre-checks on `idauto_production` (inside `idauto-postgres`):
+> **Always name the database: `psql -d idauto_production`.** Inside the `idauto-postgres` container `$POSTGRES_DB`
+> is `idauto`, a **different** database (older data, no accounts). The API uses `IDAUTO_DB_NAME=idauto_production`.
+> On 2026-11-05 a migration sent with `-d "$POSTGRES_DB"` reached `idauto`, not production; the backup scripts were
+> right because they set `MYTHOS_TARGET_DB=idauto_production`. Check with `SELECT current_database()` before any write.
+
+1. Read-only pre-checks on `idauto_production` (inside `idauto-postgres`, `psql -d idauto_production`):
    - `SELECT to_regclass('public.idauto_vehicle_documents'), to_regclass('public.idauto_workshop_operations');` — both
      must exist (IDA-V12 and IDA-V14 applied; the photos of a manual registration are V14 documents);
    - `SELECT identification_method, count(*) FROM idauto_vehicles GROUP BY 1;` — every value must be in the new list
      (`plate_ocr, plate_manual, vin, manual_selection, provider, import, admin, carte_grise_ocr, manual_registration`
      or NULL), otherwise the new CHECK constraint is refused and the migration stops.
-2. Backup `idauto_production` (`pg_dump -Fc`, sha256, `pg_restore --list`) and confirm the nightly off-host backup is green.
+2. Backup `idauto_production` (`pg_dump -Fc idauto_production`, sha256, `pg_restore --list`) and confirm the nightly off-host backup is green.
 3. Merge; fast-forward the production checkout. No new npm dependency.
 4. Apply `database/migrations/ida-ui3-registration-maintenance.sql` **in one transaction**
-   (`psql -1 -v ON_ERROR_STOP=1`): additive, idempotent (applied twice on scratch). It creates
+   (`psql -d idauto_production -1 -v ON_ERROR_STOP=1`): additive, idempotent (applied twice on scratch). It creates
    `idauto_vehicle_owner_contacts` (personal data — owner decision 2026-11-05) and adds nullable columns to
    `idauto_workshop_operations`; no existing row changes.
 5. Environment: nothing new is required. `IDAUTO_CG_OCR_ENABLED` stays unset (the OCR routes answer 410).
