@@ -6,6 +6,18 @@ The protocol is versioned separately from the implementation; see
 
 ---
 
+## 2026-11-05 — ida-cg2: review fixes, staging for owner acceptance (not deployed)
+
+Thirteen review findings of PR #43 fixed (docs/CARTE_GRISE_V2.md §8), plus the same
+class in the observation cleanup path: no code path deletes bytes a carte grise
+submission still references; a replaced face invalidates its reviewed fields; raw
+text limited to the value token with VIN shapes masked; one VIN per vehicle across
+V12 and CG2 (shared advisory lock); explicit, admin-only ambiguity acknowledgement;
+mandatory review version; verified thumbnails; 503 when the migration is missing.
+New: isolated staging on Haddad (ops/staging-cg2.sh, docs/STAGING_CG2.md), gate D7
+OCR validation tool (ops/cg2-ocr-validate.js, docs/CG2_OCR_VALIDATION.md), storage
+assessment (docs/CG2_STORAGE_CAPACITY.md). Tests: submissions 91, browser 36.
+
 ## 2026-11-04 — ida-cg2 stages 2–5: carte grise V2 (not deployed)
 
 A carte grise becomes a **submission** before it belongs to a vehicle: versioned

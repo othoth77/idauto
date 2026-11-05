@@ -39,7 +39,12 @@
   function say(node, text, kind) { clear(node); if (text) node.appendChild(el('p', { class: kind === 'error' ? 'ida-alert ida-alert--danger' : kind === 'ok' ? 'ida-alert ida-alert--success' : 'ida-muted', role: kind === 'error' ? 'alert' : null }, text)); }
   var REASON_FR = { create_without_vin_requires_admin: 'Sans VIN vérifié, seul un administrateur peut créer le véhicule.',
     note_required_to_set_vin_aside: 'Indiquez pourquoi le VIN est illisible ou absent (au moins 5 caractères).',
-    thumbnail_does_not_match_original: 'La miniature ne correspond pas à la photo originale.' };
+    thumbnail_does_not_match_original: 'La miniature ne correspond pas à la photo originale.',
+    resolution_too_low: 'Photo trop petite pour être lisible (au moins 600 pixels sur le petit côté) : reprenez-la plus près, carte à plat.',
+    dimensions_too_large: 'Photo trop grande (plus de 10 000 pixels de côté) : utilisez la photo normale du téléphone.',
+    empty_image: 'Le fichier est vide.',
+    same_image_both_faces: 'La même photo est déjà utilisée pour l\'autre face : photographiez l\'autre côté de la carte.',
+    ocr_for_another_image_version: 'La photo a changé pendant la lecture : relancez « Lire la carte ».' };
   function message(err) {
     var r = err && err.body && err.body.details && err.body.details.reason;
     if (r && REASON_FR[r]) return REASON_FR[r]; return (err && err.body && err.body.message_fr ? err.body.message_fr : 'La demande n\'a pas abouti.') + (err && err.body && err.body.details && err.body.details.reason ? ' (' + err.body.details.reason + ')' : ''); }

@@ -61,16 +61,18 @@ Rollback: previous `main` + restart; the table is inert for the old code.
 ## 6. Rolling out IDA-CG2 (carte grise V2) — **NOT AUTHORISED YET**
 
 Gates before any production use (owner decisions, `docs/CARTE_GRISE_V2.md`): **D6** the off-host backup must capture
-the submission images (`idauto_registration_submission_faces.storage_key`, `thumb_storage_key`) — today the capture
-script (`mythos-prod/ops/backup/mythos-backup-capture.sh`) reads `idauto_observation_media` keys only; **D7** OCR
-accuracy measured on real, holder-redacted Tunisian cards; **D4** storage capacity reviewed (originals ≈ 2–6 MB per face).
+the submission images (`idauto_registration_submission_faces.storage_key`, `thumb_storage_key`) — the capture change
+is mythos-prod PR #694 (not merged, not installed); it takes effect after `install.sh` on the VPS, one nightly run and
+one restore test; **D7** OCR accuracy measured on real, holder-redacted Tunisian cards (`docs/CG2_OCR_VALIDATION.md`);
+**D4** storage capacity reviewed (`docs/CG2_STORAGE_CAPACITY.md` — the VPS has no headroom for real volume today); and
+the owner's acceptance on staging (`docs/STAGING_CG2.md`).
 
 When authorised:
 1. Backup `idauto_production`.
 2. Merge; pull. No new npm dependency.
 3. Apply `database/migrations/ida-cg2-registration-submissions.sql` (additive: three new tables; idempotent, applied
    twice on scratch; DOWN block inside). No existing table changes. Until it is applied the admin dossier still answers
-   (`registration_submissions: []`); the `/api/registration-submissions` routes would fail — apply it before use.
+   (`registration_submissions: []`); the `/api/registration-submissions` routes answer 503 `FEATURE_NOT_INSTALLED`.
 4. Optional environment: `IDAUTO_CG_ORIGINAL_MAX_BYTES` (default 15 MB; `readBinaryBody` caps at 20 MB).
 5. Restart `idauto-api`.
 6. Smoke: `/atelier/carte-grise` → 302 to `/login` when signed out; signed in, a submission opens, a face uploads, its

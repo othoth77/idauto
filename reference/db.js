@@ -33,8 +33,9 @@ function getPool() {
     password: process.env.IDAUTO_DB_PASSWORD,
     database: process.env.IDAUTO_DB_NAME,
     max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000
+    // Optional overrides for a resource-constrained host (the Haddad staging); defaults unchanged.
+    idleTimeoutMillis: parseInt(process.env.IDAUTO_DB_IDLE_TIMEOUT_MS || '30000', 10),
+    connectionTimeoutMillis: parseInt(process.env.IDAUTO_DB_CONNECT_TIMEOUT_MS || '5000', 10)
   });
   // Never let a pool-level error crash the process silently with a stack
   // trace that might include connection details in some driver versions.

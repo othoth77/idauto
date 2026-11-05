@@ -122,7 +122,33 @@ off-host object store for originals — a decision, not made here.
   browser decodes it (`createImageBitmap`) before upload and refuses what it cannot decode.
 - Sharpness is measured in the browser (Laplacian variance) and reported; it warns, it does not block — a person decides.
 - Rotation / orientation is not corrected or detected on the server.
-- An interrupted upload can leave an unreferenced, content-addressed file in the media store (no row points to it).
+- An upload refused by the server removes its fresh file when nothing references it; a crash between the file write
+  and the transaction can still leave an unreferenced, content-addressed file (no row points to it).
 - A VIN is never shown back: the operator reads it on the photo and confirms or types it.
 - No database constraint makes a VIN unique (existing data and tests rely on that); duplicates are prevented by the
-  matcher plus an advisory lock per plate/VIN during the decision.
+  matcher plus an advisory lock per plate/VIN, now shared by IDA-V12 creation and IDA-CG2 decisions, and creation
+  refuses a VIN already active on another vehicle. Older duplicates already in a database are not merged.
+
+## 8. Review of PR #43 and the acceptance preparation (2026-11-05)
+
+An independent review found 13 issues; all are fixed with a test each (`tests/ida-cg2-registration-submissions-test.js`
+§11) and a mutation that reverts the fix (all caught). Summary in commit 38c9743; the most serious:
+
+- **V14 and observation code could delete a CG2 original** (content-addressed bytes shared): `referencesOfKey()` now
+  counts every table, and the observation failure path uses it (F1, F1b).
+- **Replacing a face kept the reviewed fields**: every field is superseded, the faces must be read and reviewed again (F2).
+- **Raw text**: at most the 60-character value token is kept, a VIN shape is masked outside the VIN field and refused as
+  a free-text value; IDA-V14 OCR rows store no raw text (F3).
+- **One VIN, one vehicle**: creation refuses a VIN active elsewhere; a link never copies another vehicle's VIN (F6).
+- **Ambiguity**: acknowledged only through an explicit checkbox, by an administrator (F7).
+- Without a verified VIN only an administrator creates a vehicle; setting the VIN aside requires a reason (F12).
+
+Acceptance preparation:
+
+| Document | Content |
+|---|---|
+| `docs/STAGING_CG2.md` | the isolated staging on Haddad, accounts, test cards, the 16-step acceptance scenario with expected results, limits, backup evidence |
+| `docs/CG2_OCR_VALIDATION.md` + `ops/cg2-ocr-validate.js` | gate D7: how to measure OCR on real redacted cards (not run — needs the owner's samples) |
+| `docs/CG2_STORAGE_CAPACITY.md` | D4: per-card size, VPS headroom, projections, options (nothing applied) |
+| mythos-prod PR #694 | gate D6: the off-host backup captures carte grise images (not deployed) |
+
