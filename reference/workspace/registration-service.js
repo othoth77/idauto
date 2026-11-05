@@ -43,9 +43,9 @@ function plateOf(body) {
     var type = p.type === 'RS' ? 'RS' : 'TU';
     var series = String(p.series || '').trim(), number = String(p.number || '').trim();
     if (!series && !number) return null;
-    if (type === 'TU' && (!/^\d{1,3}$/.test(series) || !/^\d{1,4}$/.test(number))) throw fail('plate', 'invalid_plate');
-    if (type === 'RS' && !/^\d{1,6}$/.test(number || series)) throw fail('plate', 'invalid_plate');
-    p = type === 'TU' ? series + ' TU ' + number : 'RS ' + (number || series);
+    // TU and RS (régime suspensif) plates have the same shape: « 123 TU 4567 », « 123 RS 4567 ».
+    if (!/^\d{1,3}$/.test(series) || !/^\d{1,4}$/.test(number)) throw fail('plate', 'invalid_plate');
+    p = series + ' ' + type + ' ' + number;
   }
   if (p === null || p === undefined || String(p).trim() === '') return null;
   var parsed = plateNormalizer.parsePlate(String(p));

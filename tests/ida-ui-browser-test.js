@@ -105,6 +105,14 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   await go('/atelier/vehicules/nouveau', '!!document.getElementById("register-form")');
   await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(String(S)) + ';f.plate_number.value=' + JSON.stringify(String(N)) + ';f.make.value="AUTRE";document.getElementById("register-submit").click();true');
   ok(await waitFor('/existe déjà/.test(document.getElementById("form-errors").textContent) && !!document.querySelector("#form-errors a[href*=\\"vehicule?ref=\\"]")', 15000), 'the same plate again → « existe déjà », with a link to its dossier (no duplicate)');
+  // régime suspensif: same shape as TU (series RS number), chosen by the radio button
+  var RS_S = String(100 + Math.floor(Math.random() * 899)), RS_N = String(1000 + Math.floor(Math.random() * 8999));
+  await go('/atelier/vehicules/nouveau', '!!document.getElementById("register-form")');
+  await ev('document.querySelector("input[name=plate_type][value=RS]").click();true');
+  ok(await ev('document.querySelector("[data-plate-word]").textContent === "RS" && !document.getElementById("f-plate-series").closest("[hidden]")'), 'RS chosen: the plate reads series RS number');
+  await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(RS_S) + ';f.plate_number.value=' + JSON.stringify(RS_N) + ';f.make.value="RSTEST";document.getElementById("register-submit").click();true');
+  ok(await waitFor('location.pathname === "/atelier/vehicule" && /created=1/.test(location.search)', 30000), 'an RS vehicle registers from the form');
+  ok((await db.query("SELECT count(*)::int n FROM idauto_plates WHERE plate_number = $1", [RS_S + ' RS ' + RS_N])).rows[0].n === 1, 'with the plate ' + RS_S + ' RS ' + RS_N);
 
   console.log('\n== INTERVENTION AND PART SOURCE');
   await go('/atelier/interventions?new=1&vehicle=' + encodeURIComponent(IVID), '!!document.getElementById("new-dialog") && document.getElementById("new-dialog").open && /Véhicule choisi/.test(document.getElementById("n-results").textContent)');

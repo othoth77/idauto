@@ -9,14 +9,10 @@
         <div class="ida-form-grid">
           <div class="ida-field">
             <label for="f-plate-series" id="lbl-plate">Immatriculation</label>
-            <div class="ida-plate-row" data-plate-tu>
+            <div class="ida-plate-row">
               <input class="ida-input ida-id" id="f-plate-series" name="plate_series" inputmode="numeric" maxlength="3" autocomplete="off" aria-label="Série (3 chiffres au plus)" aria-describedby="hint-plate">
-              <span class="ida-plate-word ida-id" aria-hidden="true">TU</span>
+              <span class="ida-plate-word ida-id" aria-hidden="true" data-plate-word>TU</span>
               <input class="ida-input ida-id" id="f-plate-number" name="plate_number" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Numéro (4 chiffres au plus)" aria-describedby="hint-plate">
-            </div>
-            <div class="ida-plate-row" data-plate-rs hidden>
-              <span class="ida-plate-word ida-id" aria-hidden="true">RS</span>
-              <input class="ida-input ida-id" id="f-plate-rs" name="plate_rs" inputmode="numeric" maxlength="6" autocomplete="off" aria-label="Numéro RS" aria-describedby="hint-plate">
             </div>
             <p class="ida-field-hint" id="hint-plate">Comme sur la plaque : série et numéro. L'immatriculation ou le numéro de châssis est obligatoire.</p>
           </div>

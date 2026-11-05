@@ -78,6 +78,9 @@ async function freePlate() {
   ok(vrow.make === MAKE && vrow.model === '208' && vrow.year === 2019 && vrow.colour === 'Gris' && vrow.identification_method === 'manual_registration' && vrow.identification_verified, 'the vehicle holds the typed values, provenance manual_registration');
   var cols = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'idauto_vehicles' AND (column_name ILIKE '%owner%' OR column_name ILIKE '%phone%' OR column_name ILIKE '%name%')")).rows;
   ok(cols.length === 0, 'the vehicle table still has NO owner / phone / name column (owner data is a separate table)');
+  var rsSeries = String(crypto.randomInt(10, 999)), rsNumber = String(crypto.randomInt(1000, 9999));
+  var rsReg = await request('POST', '/api/vehicles/register', T.MGR, { plate: { type: 'RS', series: rsSeries, number: rsNumber }, make: MAKE });
+  ok(rsReg.status === 201 && rsReg.body.plate === rsSeries + ' RS ' + rsNumber, 'a régime suspensif plate (series RS number, as the form sends it) registers: ' + rsReg.status + ' ' + rsReg.body.plate);
   var dupPlate = await request('POST', '/api/vehicles/register', T.MGR, { plate: P1, make: MAKE });
   ok(dupPlate.status === 409 && dupPlate.body.details.reason === 'vehicle_already_registered' && dupPlate.body.details.ivid === IVID, 'the same plate again → 409, pointing to the existing vehicle');
   var P2 = await freePlate();
