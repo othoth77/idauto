@@ -81,8 +81,12 @@ async function freePlate() {
   var dupPlate = await request('POST', '/api/vehicles/register', T.MGR, { plate: P1, make: MAKE });
   ok(dupPlate.status === 409 && dupPlate.body.details.reason === 'vehicle_already_registered' && dupPlate.body.details.ivid === IVID, 'the same plate again → 409, pointing to the existing vehicle');
   var P2 = await freePlate();
+  var probeQ = "SELECT count(*)::int n FROM idauto_audit_log WHERE event_type = 'vehicle.search.vin' AND actor_ref = $1";
+  var probe0 = (await db.query(probeQ, [ids[T.TECH].actor_ref])).rows[0].n;
   var dupVinTech = await request('POST', '/api/vehicles/register', T.TECH, { plate: P2, vin: VIN1, make: MAKE });
   ok(dupVinTech.status === 409 && dupVinTech.body.details.identifier === 'vin' && dupVinTech.body.details.ivid === null, 'the same VIN by a technician (no vin:search) → 409 without revealing which vehicle');
+  var probeRows = (await db.query("SELECT target_ref, change_summary FROM idauto_audit_log WHERE event_type = 'vehicle.search.vin' AND actor_ref = $1", [ids[T.TECH].actor_ref])).rows;
+  ok(probeRows.length === probe0 + 1 && probeRows.every(function (r) { return r.target_ref === null && r.change_summary.indexOf(VIN1) === -1; }), 'that VIN conflict is a VIN lookup: audited (digest only, no vehicle named), although the 409 rolls the registration back');
   var race = await Promise.all([request('POST', '/api/vehicles/register', T.MGR, { plate: P2, make: MAKE }), request('POST', '/api/vehicles/register', T.OTHER, { plate: P2, make: MAKE })]);
   ok(race.map(function (r) { return r.status; }).sort().join(',') === '201,409' && (await db.query('SELECT count(*)::int n FROM idauto_plates WHERE plate_number = $1', [P2.canonical])).rows[0].n === 1, 'two registrations of one plate at once → one vehicle');
   var regAudit = (await db.query("SELECT new_value_json::text j, change_summary FROM idauto_audit_log WHERE event_type = 'vehicle.register.manual' AND target_ref = $1", [IVID])).rows;
@@ -107,6 +111,10 @@ async function freePlate() {
   ok(hist === 2, 'a change supersedes the previous contact (history kept: ' + hist + ' rows)');
   var setAudit = JSON.stringify((await db.query("SELECT new_value_json FROM idauto_audit_log WHERE event_type = 'vehicle.owner.set' AND target_ref = $1", [IVID])).rows);
   ok(setAudit.indexOf('Corrig') === -1 && setAudit.indexOf('765') === -1, 'the change audit names the fields, never their values');
+  var racePut = await Promise.all([1, 2, 3].map(function (i) { return request('PUT', '/api/vehicles/' + encodeURIComponent(IVID) + '/owner', T.OTHER, { full_name: 'Autre Client ' + i + ' ' + run, phone: '22 333 44' + i }); }));
+  var rs = racePut.map(function (r) { return r.status; });
+  var curB = (await db.query('SELECT count(*)::int n FROM idauto_vehicle_owner_contacts c JOIN idauto_vehicles v ON v.id = c.vehicle_id WHERE v.ivid = $1 AND c.org_id <> $2 AND c.superseded_at IS NULL', [IVID, orgA])).rows[0].n;
+  ok(rs.every(function (x) { return x === 200 || x === 409; }) && rs.indexOf(200) !== -1 && curB === 1, 'simultaneous saves of one contact: 200 or 409, never a 500, and one current contact (' + rs.join(',') + ')');
   var pub = await request('GET', '/api/passport/' + encodeURIComponent(IVID), T.ADMIN);
   var veh = await request('GET', '/api/vehicles/' + encodeURIComponent(IVID), T.ADMIN);
   var srch = await request('GET', '/api/search/vehicles?plate=' + encodeURIComponent(P1.canonical), T.MGR);
@@ -187,6 +195,7 @@ async function freePlate() {
   ok((await request('GET', '/api/search?q=abc', null)).status === 401, 'anonymous → 401');
   var ownerSearchAudit = (await db.query("SELECT change_summary FROM idauto_audit_log WHERE event_type = 'vehicle.owner.search' AND actor_ref = $1", [ids[T.MGR].actor_ref])).rows;
   ok(ownerSearchAudit.length >= 1 && ownerSearchAudit.every(function (r) { return r.change_summary.indexOf('corr') === -1; }), 'owner searches are audited without the query text');
+  ok(ownerSearchAudit.some(function (r) { return r.change_summary.indexOf('vehicles=' + IVID) !== -1; }), 'and the audit names which vehicles\' contacts were shown (IVIDs only)');
 
   say('\n6. SECURITY FIX — the VIN fact needs vin:search');
   var factsTech = await request('GET', '/api/vehicles/' + encodeURIComponent(IVID) + '/facts', T.TECH);

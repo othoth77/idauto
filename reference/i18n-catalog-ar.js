@@ -1038,6 +1038,7 @@
   "Trop de demandes. Patientez une minute.": "طلبات كثيرة جدًا. يرجى الانتظار دقيقة.",
   "Trop de recherches": "عمليات بحث كثيرة جدًا",
   "Trop de recherches : patientez un instant.": "عمليات بحث كثيرة جدًا: يرجى الانتظار قليلًا.",
+  "Trop de tentatives : patientez un instant.": "محاولات كثيرة جدًا: يرجى الانتظار قليلًا.",
   "Trop de tentatives. Patientez une minute avant de réessayer.": "محاولات كثيرة جدًا. يرجى الانتظار دقيقة قبل إعادة المحاولة.",
   "Tunisie — plaque standard (série courante)": "تونس — لوحة عادية (السلسلة الجارية)",
   "Type": "النوع",

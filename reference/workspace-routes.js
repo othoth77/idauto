@@ -60,6 +60,9 @@ function createWorkspace(ctx) {
   async function getVehicles(req, res) { var q = query(req); sendJson(res, 200, await repo.listVehicles(actorOf(req), { q: q.get('q'), page: q.get('page') })); }
   async function postRegister(req, res) {
     var actor = actorOf(req);
+    // A refused duplicate says whether a plate or VIN exists: rate-limited like the search.
+    var rl = await rateLimit.enforcePublicResolution(db, 'register:' + (req.mythosIdentity || 'anonymous'), SEARCH_LIMIT);
+    if (!rl.allowed) return sendJson(res, 429, { error: 'RATE_LIMITED', message_fr: 'Trop de tentatives : patientez un instant.', retry_at: rl.retry_at });
     if (!isAdmin(req) && !(req.principal && req.principal.org_id)) throw errors.IdautoError('FORBIDDEN');
     sendJson(res, 201, await registration.register(await readJsonBody(req), actor));
   }

@@ -64,8 +64,15 @@ async function current(vehicle, actor, why) {
 async function upsertWith(client, vehicleId, input, actor) {
   var c = validate(input), org = orgOf(actor);
   await client.query('UPDATE idauto_vehicle_owner_contacts SET superseded_at = NOW(), superseded_by = $3 WHERE vehicle_id = $1 AND COALESCE(org_id, 0) = COALESCE($2::int, 0) AND superseded_at IS NULL', [vehicleId, org, actor.identity]);
-  await client.query('INSERT INTO idauto_vehicle_owner_contacts (vehicle_id, org_id, full_name, phone, phone_normalized, email, address, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-    [vehicleId, org, c.full_name, c.phone, c.phone_normalized, c.email, c.address, c.notes, actor.identity]);
+  try {
+    await client.query('INSERT INTO idauto_vehicle_owner_contacts (vehicle_id, org_id, full_name, phone, phone_normalized, email, address, notes, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [vehicleId, org, c.full_name, c.phone, c.phone_normalized, c.email, c.address, c.notes, actor.identity]);
+  } catch (err) {
+    // Two simultaneous saves for the same vehicle and workshop: the unique "current contact" index
+    // refuses the second. That is a conflict to retry, not a server error.
+    if (err && err.code === '23505') throw errors.IdautoError('CONFLICT', { reason: 'owner_contact_changed_concurrently' });
+    throw err;
+  }
   // What the audit row may say: which fields are present, never their values.
   return ['full_name', 'phone', 'email', 'address', 'notes'].filter(function (k) { return !!c[k]; });
 }
@@ -106,8 +113,10 @@ async function search(q, actor, limit) {
   var rows = (await db.query('SELECT c.full_name, c.phone, v.ivid, v.make, v.model FROM idauto_vehicle_owner_contacts c JOIN idauto_vehicles v ON v.id = c.vehicle_id WHERE ' + where.join(' AND ') + ' ORDER BY c.created_at DESC LIMIT $' + params.length, params)).rows;
   if (rows.length) {
     var org = orgOf(actor);
+    // Which vehicles' contacts were shown (their IVIDs, never the contact data itself).
+    var ivids = rows.map(function (r) { return r.ivid; }).filter(function (x, i, a) { return a.indexOf(x) === i; });
     await db.query('INSERT INTO idauto_audit_log (event_type, actor_type, actor_ref, org_id, target_type, change_summary) VALUES ($1,$2,$3,$4,$5,$6)',
-      ['vehicle.owner.search', org ? 'professional_user' : 'admin', actor.identity, org, 'idauto_vehicle_owner_contacts', 'Owner search by ' + (byPhone ? 'phone' : 'name') + ' (' + rows.length + ' result' + (rows.length === 1 ? '' : 's') + ')']);
+      ['vehicle.owner.search', org ? 'professional_user' : 'admin', actor.identity, org, 'idauto_vehicle_owner_contacts', 'Owner search by ' + (byPhone ? 'phone' : 'name') + ' (' + rows.length + ' result' + (rows.length === 1 ? '' : 's') + ') vehicles=' + ivids.join(',')]);
   }
   return rows;
 }

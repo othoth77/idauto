@@ -82,7 +82,14 @@ function validate(body) {
 async function register(body, actor) {
   var v = validate(body);
   var canSeeVin = identity.principalHasScope(actor.principal, 'vin:search');
-  var created = await writes.withAudit(
+  var canSeePlate = identity.principalHasScope(actor.principal, 'plate:read');
+  // A VIN conflict tells the caller that this VIN is already in IDauto: that is a VIN lookup, and the
+  // transaction (with its audit row) is rolled back by the 409. It is audited on its own, before the
+  // answer leaves, like every VIN search; if that audit cannot be written, the request fails closed.
+  var vinProbe = null;
+  var created;
+  try {
+  created = await writes.withAudit(
     { principal: actor.principal, event_type: 'vehicle.register.manual', target_type: 'idauto_vehicles', change_summary: 'Vehicle registered manually from its carte grise' },
     actor.identity,
     async function (client) {
@@ -91,11 +98,11 @@ async function register(body, actor) {
       // Already in IDauto? Say so — and where, when this account may know it.
       if (p) {
         var hit = (await client.query("SELECT vehicle_id FROM idauto_plates WHERE plate_number = $1 AND status = 'active' AND vehicle_id IS NOT NULL LIMIT 1", [p.canonical])).rows[0];
-        if (hit) { var known = await repository.canonicalById(hit.vehicle_id, client); throw errors.IdautoError('CONFLICT', { reason: 'vehicle_already_registered', identifier: 'plate', ivid: known ? known.ivid : null }); }
+        if (hit) { var known = await repository.canonicalById(hit.vehicle_id, client); throw errors.IdautoError('CONFLICT', { reason: 'vehicle_already_registered', identifier: 'plate', ivid: known && canSeePlate ? known.ivid : null }); }
       }
       if (v.vehicle.vin) {
         var holders = await repository.vehiclesWithVin(client, v.vehicle.vin);
-        if (holders.length) { var kv = canSeeVin ? await repository.canonicalById(holders[0], client) : null; throw errors.IdautoError('CONFLICT', { reason: 'vehicle_already_registered', identifier: 'vin', ivid: kv ? kv.ivid : null }); }
+        if (holders.length) { var kv = canSeeVin ? await repository.canonicalById(holders[0], client) : null; vinProbe = { vin: v.vehicle.vin, ivid: kv ? kv.ivid : null }; throw errors.IdautoError('CONFLICT', { reason: 'vehicle_already_registered', identifier: 'vin', ivid: kv ? kv.ivid : null }); }
       }
       var input = Object.assign({}, v.vehicle); delete input.colour;
       var row = await repository.insertIdentifiedVehicle(client, input, actor, { method: 'manual_registration', source: 'manual_registration', confidence: 1 }, true);
@@ -103,6 +110,10 @@ async function register(body, actor) {
       var ownerFields = v.owner ? await owners.upsertWith(client, row.id, v.ownerInput, actor) : [];
       return { record: { ivid: row.ivid, plate: p ? p.canonical : null, vin_recorded: !!v.vehicle.vin, owner_fields: ownerFields }, auditTargetRef: row.ivid };
     });
+  } catch (err) {
+    if (vinProbe) await writes.recordVinSearchAudit(actor.principal, actor.identity, vinProbe.vin, vinProbe.ivid);
+    throw err;
+  }
   return { ivid: created.ivid, plate: created.plate, vin_recorded: created.vin_recorded, owner_recorded: created.owner_fields.length > 0 };
 }
 

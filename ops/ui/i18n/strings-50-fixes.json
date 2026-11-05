@@ -11,5 +11,8 @@
  "Toutes les plaques connues du véhicule, toutes graphies ; pour une visite non identifiée, la plaque lue à l'atelier.": "كل اللوحات المعروفة للمركبة بكل صيغ كتابتها؛ وبالنسبة لزيارة غير معرَّفة، اللوحة المقروءة في الورشة.",
  "Toutes organisations confondues (vue administrateur). Les clients des ateliers ne sont jamais affichés : seule la présence d'une référence opaque est indiquée. Le kilométrage n'est pas saisi lors des visites atelier ; il n'apparaît que sur les événements d'entretien qui le portent.": "كل المؤسسات معًا (عرض المشرف). لا يُعرض حرفاء الورشات أبدًا: يُشار فقط إلى وجود مرجع مُبهم. لا يُسجَّل عدد الكيلومترات خلال زيارات الورشة؛ ولا يظهر إلا في أحداث الصيانة التي تتضمّنه.",
  "Catalogue fournisseur non configuré. Le catalogue local reste disponible.": "دليل المزوّد غير مُعدّ. يبقى الدليل المحلي متاحًا.",
- "gestionnaire": "مسير", "technicien": "تقني", "administrateur": "مشرف"
+ "gestionnaire": "مسير",
+ "technicien": "تقني",
+ "administrateur": "مشرف",
+ "Trop de tentatives : patientez un instant.": "محاولات كثيرة جدًا: يرجى الانتظار قليلًا."
 }

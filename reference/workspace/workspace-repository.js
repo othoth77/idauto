@@ -230,7 +230,9 @@ async function search(q, actor) {
   var org = orgOf(actor);
   // Vehicles: plate (exact or prefix), IVID, make / model prefix; VIN exact, only with vin:search (audited).
   var vehicles = [];
-  if (can(actor, 'vehicle:search') || can(actor, 'vehicle:read')) {
+  // Same scope as the registry search (/api/search/vehicles): the vehicle registry is shared between
+  // workshops by design (identity facts only); owner contacts and maintenance stay per workshop below.
+  if (can(actor, 'vehicle:search')) {
     var params = [], conds = [];
     var pp = plateNormalizer.parsePlate(s);
     if (pp.ok) { params.push(pp.canonical); conds.push('EXISTS (SELECT 1 FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.plate_number = $' + params.length + ')'); }
