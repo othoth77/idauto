@@ -29,7 +29,8 @@
   var ARABIC_DIGITS = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9", "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9" };
   function asciiDigits(s) { return String(s).replace(/[٠-٩۰-۹]/g, function (d) { return ARABIC_DIGITS[d] || d; }); }
   function stripAccents(s) { return s.normalize ? s.normalize("NFD").replace(/[̀-ͯ]/g, "") : s; }
-  function norm(s) { return stripAccents(asciiDigits(s)).toUpperCase().replace(/[ \t]+/g, " ").trim(); }
+  // Tesseract wraps Arabic runs in invisible direction marks (U+200E/U+200F…): they split labels and values.
+  function norm(s) { return stripAccents(asciiDigits(s)).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "").toUpperCase().replace(/[ \t]+/g, " ").trim(); }
 
   // Lines carrying holder data are removed BEFORE anything else looks at them.
   var DENY = [/\bNOM\b/, /\bPRENOM\b/, /\bADRESSE\b/, /\bC\.?I\.?N\b/, /\bPROPRIETAIRE\b/, /\bTITULAIRE\b/, /\bNE\s*LE\b/, /\bDATE DE NAISSANCE\b/,
@@ -37,12 +38,12 @@
 
   // label → field. Order matters when a label is a prefix of another.
   var LABELS = [
-    { key: "vin", labels: ["N° DE SERIE DU TYPE", "NUMERO DE SERIE", "N° DE SERIE", "N° SERIE", "NO SERIE", "CHASSIS", "N° CHASSIS", "VIN", "رقم الهيكل", "الهيكل", "رقم السلسلة"] },
+    { key: "vin", labels: ["N° DE SERIE DU TYPE", "N° SERIE DU TYPE", "NO SERIE DU TYPE", "SERIE DU TYPE", "NUMERO DE SERIE", "N° DE SERIE", "N° SERIE", "NO SERIE", "CHASSIS", "N° CHASSIS", "VIN", "رقم الهيكل", "الهيكل", "رقم السلسلة"] },
     { key: "registration", labels: ["N° D'IMMATRICULATION", "NUMERO D'IMMATRICULATION", "IMMATRICULATION", "N° IMMAT", "IMMAT", "رقم التسجيل", "التسجيل", "رقم المنجم"] },
     { key: "manufacturer", labels: ["MARQUE", "CONSTRUCTEUR", "الصانع", "ماركة", "الماركة"] },
     { key: "type", labels: ["TYPE COMMERCIAL", "TYPE", "MODELE", "VARIANTE", "الطراز", "النوع التجاري", "النوع"] },
     { key: "genre", labels: ["GENRE", "CATEGORIE", "الصنف", "الفئة"] },
-    { key: "first_registration_date", labels: ["D.P.M.C", "DPMC", "DATE DE PREMIERE MISE EN CIRCULATION", "PREMIERE MISE EN CIRCULATION", "MISE EN CIRCULATION", "1ERE MISE", "تاريخ أول جولان", "أول جولان", "تاريخ اول جولان"] },
+    { key: "first_registration_date", labels: ["DATE DE 1ERE MISE EN CIRCULATION", "DATE 1ERE MISE EN CIRCULATION", "1ERE MISE EN CIRCULATION", "D.P.M.C", "DPMC", "DATE DE PREMIERE MISE EN CIRCULATION", "PREMIERE MISE EN CIRCULATION", "MISE EN CIRCULATION", "1ERE MISE", "تاريخ أول جولان", "أول جولان", "تاريخ اول جولان"] },
     { key: "fuel", labels: ["ENERGIE", "CARBURANT", "SOURCE D'ENERGIE", "الطاقة", "الوقود", "مصدر الطاقة"] },
     { key: "engine_cc", labels: ["CYLINDREE", "CYLINDRE", "السعة الاسطوانية", "السعة", "سعة المحرك"] },
     { key: "fiscal_power", labels: ["PUISSANCE FISCALE", "PUISSANCE", "P. FISCALE", "القوة الجبائية", "القوة"] },
@@ -50,9 +51,52 @@
     { key: "gross_weight_kg", labels: ["POIDS TOTAL AUTORISE", "POIDS TOTAL", "PTAC", "P.T.A.C", "الوزن الجملي المرخص", "الوزن الجملي", "الوزن"] },
     { key: "engine", labels: ["TYPE MOTEUR", "N° MOTEUR", "NUMERO MOTEUR", "MOTEUR", "رقم المحرك", "نوع المحرك", "المحرك"] }
   ];
+  // Printed headings and labels of things NOT extracted: they end the value before them and are
+  // never read as a field (« CERTIFICAT D'IMMATRICULATION » is a title, not a plate label).
+  var STOP = ["CERTIFICAT D'IMMATRICULATION", "CERTIFICAT D IMMATRICULATION", "N° DU CERTIFICAT", "REPUBLIQUE TUNISIENNE",
+    "AGENCE TECHNIQUE DES TRANSPORTS TERRESTRES", "CARROSSERIE", "CHARGE UTILE", "COULEUR", "USAGE", "DATE DE DELIVRANCE", "LIEU",
+    "الجمهورية التونسية", "شهادة تسجيل"];
   var LABEL_INDEX = [];
   LABELS.forEach(function (d) { d.labels.forEach(function (l) { LABEL_INDEX.push({ key: d.key, label: norm(l) }); }); });
+  STOP.forEach(function (l) { LABEL_INDEX.push({ key: null, label: norm(l) }); });
   LABEL_INDEX.sort(function (a, b) { return b.label.length - a.label.length; });
+  // Long Latin labels are also matched with OCR typos (1 edit; 2 from 9 characters), at a lower confidence.
+  var FUZZY = LABEL_INDEX.filter(function (l) { return l.label.length >= 7 && /^[A-Z0-9 °'.\-]+$/.test(l.label); });
+  function wordChar(c) { return !!c && /[A-Z0-9\u0600-\u06FF]/.test(c); }
+  function edits(a, b) {
+    var prev = [], cur, i, j; for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) { cur = [i]; for (j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+    return prev[b.length];
+  }
+  // Every label on a line, anywhere (a two-column bilingual card puts several on one OCR line),
+  // longest first, never overlapping; then the typo-tolerant ones in the gaps.
+  function findLabels(line) {
+    var found = [];
+    function free(a, b) { return !found.some(function (f) { return a < f.end && b > f.start; }); }
+    LABEL_INDEX.forEach(function (L) {
+      var from = 0, idx;
+      while ((idx = line.indexOf(L.label, from)) !== -1) {
+        from = idx + 1;
+        var end = idx + L.label.length;
+        if (wordChar(L.label[0]) && wordChar(line[idx - 1])) continue;
+        if (wordChar(L.label[L.label.length - 1]) && wordChar(line[end])) continue;
+        if (free(idx, end)) found.push({ key: L.key, start: idx, end: end, label: L.label, fuzzy: false });
+      }
+    });
+    FUZZY.forEach(function (L) {
+      var max = L.label.length >= 9 ? 2 : 1;
+      for (var q = 0; q < line.length; q++) {
+        if (wordChar(line[q - 1]) || !wordChar(line[q])) continue;
+        for (var len = L.label.length - 1; len <= L.label.length + 1; len++) {
+          var end = q + len;
+          if (end > line.length || wordChar(line[end])) continue;
+          if (!free(q, end)) continue;
+          if (edits(line.slice(q, end), L.label) <= max) { found.push({ key: L.key, start: q, end: end, label: L.label, fuzzy: true }); q = end; break; }
+        }
+      }
+    });
+    return found.sort(function (a, b) { return a.start - b.start; });
+  }
 
   var FUEL = [[/ESS|ES\b|ESSENCE|بنزين/, "petrol"], [/GO\b|GAS ?OIL|GAZOLE|DIESEL|قازوال|ديزل|مازوط/, "diesel"], [/GPL|LPG|غاز/, "lpg"], [/EL\b|ELEC|كهرب/, "electric"], [/HYB|هجين/, "hybrid"]];
   var GENRE = [[/^VP\b|VOITURE PART|سيارة خاصة|سيارة سياحية/, "M1"], [/CTTE|CAMIONNETTE|شاحنة خفيفة/, "N1"], [/^CAM\b|CAMION|شاحنة/, "N2"], [/MOTO|دراجة/, "L3"], [/BUS|AUTOCAR|حافلة/, "M3"]];
@@ -118,27 +162,45 @@
     var at = { line: null, raw: null };
     function add(key, value, conf, label, extra) { if (value === null || value === undefined || value === "") return; fields.push(Object.assign({ key: key, value: value, confidence: Math.round(Math.max(0.05, Math.min(1, conf)) * 100) / 100, source: source, label: label || null, line: at.line, raw: at.raw, corrected: false }, extra || {})); }
 
-    // 1. Labelled fields.
+    // 1. Labelled fields — every label on a line (a bilingual two-column card puts several on one
+    // OCR line), its value running to the next label; a label alone at the end of a line takes the
+    // next line. A label read with an OCR typo counts, at a lower confidence.
+    function segment(t, key) {
+      var v = key === "registration" ? t : t.replace(/[\u0600-\u06FF]+/g, " ");
+      v = cleanValue(v.replace(/[|_«»"“”]+/g, " ").replace(/\s+/g, " "));
+      return v && /[A-Z0-9\u0600-\u06FF]/.test(v) ? v : "";
+    }
     for (var i = 0; i < lines.length; i++) {
-      var hit = labelAt(lines[i]);
-      if (!hit) continue;
-      var got = valueAfter(lines, i, hit.end);
-      if (!got) continue;
-      var v = got.value;
-      at = { line: i, raw: v.slice(0, 120) };
-      if (hit.key === "vin") { var vc = vinCandidates(v); if (vc.length) add("vin", vc[0].value, base + (vc[0].corrected ? 0.05 : 0.2), hit.label, { raw: vc[0].raw, corrected: vc[0].corrected }); }
-      else if (hit.key === "registration") add("registration", v, base + 0.1, hit.label);
-      else if (hit.key === "manufacturer") add("manufacturer", v.replace(/[^A-Z0-9 \-]/g, "").trim().slice(0, 80), base + 0.1, hit.label);
-      else if (hit.key === "type") add("type", v.replace(/[^A-Z0-9 \-\/.]/g, "").trim().slice(0, 80), base, hit.label);
-      else if (hit.key === "genre") { add("genre", v.slice(0, 40), base, hit.label); GENRE.forEach(function (g) { if (g[0].test(v)) add("category_code", g[1], base, hit.label); }); }
-      else if (hit.key === "first_registration_date") { var d = parseDate(v); if (d) { if (d.date) add("first_registration_date", d.date, base + 0.1, hit.label); add("year", d.year, base + 0.1, hit.label); } }
-      else if (hit.key === "fuel") { var f = null; FUEL.forEach(function (x) { if (!f && x[0].test(v)) f = x[1]; }); add("fuel", f || v.toLowerCase().slice(0, 20), f ? base + 0.15 : base - 0.2, hit.label); }
-      else if (hit.key === "engine_cc") add("engine_cc", intValue(v, 49, 20000), base + 0.05, hit.label);
-      else if (hit.key === "fiscal_power") add("fiscal_power", intValue(v, 1, 99), base, hit.label);
-      else if (hit.key === "seats") add("seats", intValue(v, 1, 99), base + 0.05, hit.label);
-      else if (hit.key === "gross_weight_kg") add("gross_weight_kg", intValue(v, 100, 60000), base, hit.label);
-      else if (hit.key === "engine") add("engine", v.replace(/[^A-Z0-9 \-\/.]/g, "").trim().slice(0, 30), base - 0.1, hit.label);
-      i += got.span;
+      var hits = findLabels(lines[i]), skip = 0;
+      for (var h = 0; h < hits.length; h++) {
+        var hit = hits[h];
+        if (!hit.key) continue;
+        var v = segment(lines[i].slice(hit.end, h + 1 < hits.length ? hits[h + 1].start : lines[i].length), hit.key);
+        if (!v && h === hits.length - 1 && i + 1 < lines.length) {
+          var nh = findLabels(lines[i + 1]);
+          if (!nh.length || nh[0].start > 4) { v = segment(lines[i + 1].slice(0, nh.length ? nh[0].start : lines[i + 1].length), hit.key); if (v) skip = 1; }
+        }
+        if (!v) continue;
+        var b = base - (hit.fuzzy ? 0.15 : 0);
+        at = { line: i, raw: v.slice(0, 120) };
+        if (hit.key === "vin") { var vc = vinCandidates(v); if (vc.length) add("vin", vc[0].value, b + (vc[0].corrected ? 0.05 : 0.2), hit.label, { raw: vc[0].raw, corrected: vc[0].corrected }); }
+        else if (hit.key === "registration") add("registration", v, b + 0.1, hit.label);
+        // A date read from the next column is never a make or a type; a make has letters (a type may be
+        // digits only: « 208 », « 2008 »).
+        else if ((hit.key === "manufacturer" || hit.key === "type") && /^\s*\d{1,4}[\/.\-]\d{1,2}[\/.\-]\d{1,4}/.test(v)) continue;
+        else if (hit.key === "manufacturer" && !/[A-Z]{2}/.test(v)) continue;
+        else if (hit.key === "manufacturer") add("manufacturer", v.replace(/[^A-Z0-9 \-]/g, "").trim().slice(0, 80), b + 0.1, hit.label);
+        else if (hit.key === "type") add("type", v.replace(/[^A-Z0-9 \-\/.]/g, "").trim().slice(0, 80), b, hit.label);
+        else if (hit.key === "genre") { add("genre", v.slice(0, 40), b, hit.label); GENRE.forEach(function (g) { if (g[0].test(v)) add("category_code", g[1], b, hit.label); }); }
+        else if (hit.key === "first_registration_date") { var d = parseDate(v); if (d) { if (d.date) add("first_registration_date", d.date, b + 0.1, hit.label); add("year", d.year, b + 0.1, hit.label); } }
+        else if (hit.key === "fuel") { var f = null; FUEL.forEach(function (x) { if (!f && x[0].test(v)) f = x[1]; }); add("fuel", f || v.toLowerCase().slice(0, 20), f ? b + 0.15 : b - 0.2, hit.label); }
+        else if (hit.key === "engine_cc") add("engine_cc", intValue(v, 49, 20000), b + 0.05, hit.label);
+        else if (hit.key === "fiscal_power") add("fiscal_power", intValue(v, 1, 99), b, hit.label);
+        else if (hit.key === "seats") add("seats", intValue(v, 1, 99), b + 0.05, hit.label);
+        else if (hit.key === "gross_weight_kg") add("gross_weight_kg", intValue(v, 100, 60000), b, hit.label);
+        else if (hit.key === "engine") add("engine", v.replace(/[^A-Z0-9 \-\/.]/g, "").trim().slice(0, 30), b - 0.1, hit.label);
+      }
+      i += skip;
     }
 
     // 2. Unlabelled detectors over the whole face (labels are often lost by OCR).
@@ -153,6 +215,10 @@
     if (!fields.some(function (f) { return f.key === "year"; })) { var anyDate = /(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/.exec(joined); if (anyDate) { var d2 = parseDate(anyDate[0]); if (d2) { add("first_registration_date", d2.date, base - 0.15, null); add("year", d2.year, base - 0.15, null); } } }
     if (!fields.some(function (f) { return f.key === "fuel"; })) { FUEL.forEach(function (x) { if (!fields.some(function (f) { return f.key === "fuel"; }) && new RegExp("\\b" + x[0].source.split("|")[0] + "\\b").test(joined)) add("fuel", x[1], base - 0.25, null); }); }
 
+    // One proposal per key and face: the most confident (labels found on several lines repeat).
+    var best = {};
+    fields.forEach(function (f) { if (!best[f.key] || f.confidence > best[f.key].confidence) best[f.key] = f; });
+    fields = fields.filter(function (f) { return best[f.key] === f; });
     return { fields: fields, warnings: warnings, line_count: lines.length, dropped_lines: rawLines.length - lines.length };
   }
 

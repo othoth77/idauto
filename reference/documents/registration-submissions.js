@@ -359,7 +359,15 @@ async function extract(ref, input, actor) {
       await client.query("UPDATE idauto_registration_submissions SET status = 'extracted', version = version + 1, updated_at = NOW() WHERE id = $1", [sub.id]);
       return { record: { ref: ref, extraction_run: run, fields: rows.length }, auditTargetRef: ref };
     });
-  return { ref: ref, extraction_run: out.extraction_run, holder_lines_dropped: parsedFaces.reduce(function (s, p) { return s + (p.dropped_lines || 0); }, 0), submission: await view(await load(ref, actor)) };
+  // OCR that RAN is not OCR that READ: how many expected technical fields came out usable.
+  var usable = rows.filter(function (r) { return EXPECTED.indexOf(r.key) !== -1 && r.status === 'extracted' && r.norm; }).length;
+  var extraction = { expected: EXPECTED.length, read: usable,
+    unnormalisable: rows.filter(function (r) { return r.status === 'extracted' && !r.norm; }).length,
+    conflicts: rows.filter(function (r) { return r.status === 'conflict'; }).length,
+    missing: rows.filter(function (r) { return r.status === 'missing'; }).length,
+    ocr_confidence: faces.map(function (x) { return typeof x.confidence === 'number' ? Math.round(x.confidence) : null; }),
+    quality: usable === 0 ? 'none' : usable < Math.ceil(EXPECTED.length / 2) ? 'partial' : 'good' };
+  return { ref: ref, extraction_run: out.extraction_run, extraction: extraction, holder_lines_dropped: parsedFaces.reduce(function (s, p) { return s + (p.dropped_lines || 0); }, 0), submission: await view(await load(ref, actor)) };
 }
 
 // actions = [{ key, action: confirm|correct|unreadable|not_present, value?, note? }]

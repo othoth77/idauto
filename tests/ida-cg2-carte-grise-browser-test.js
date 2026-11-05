@@ -92,8 +92,8 @@ function vin() { var s = 'VF3'; for (var i = 0; i < 14; i++) s += VIN_CHARS[cryp
     var same = await ev('(function(){var ref=/ref=(cgs_[0-9a-f]{24})/.exec(location.search)[1];return fetch("/api/registration-submissions/"+ref,{credentials:"same-origin",headers:{"X-IDauto-Session":"1"}}).then(function(r){return r.json()}).then(function(d){return d.faces[1].sha256===window.__sent[1] && d.faces[2].sha256===window.__sent[2]})})()');
     ok(same, 'the server stored exactly the bytes of the photo chosen (same SHA-256): the original, not a compressed copy');
     await ev('document.getElementById("run-ocr").click()');
-    var read = await waitFor('/Lecture terminée/.test(document.getElementById("ocr-status").textContent)', 120000);
-    ok(read, 'real OCR on both faces (Tesseract fra+ara)');
+    var read = await waitFor('/Lecture terminée : \\d+ information/.test(document.getElementById("ocr-result").textContent)', 240000);
+    ok(read, 'real OCR on both faces (Tesseract fra+ara, two passes) — the page states how many fields were read (' + (await ev('document.getElementById("ocr-result").textContent')).slice(0, 70) + ')');
     return read;
   }
   async function reviewAll(opts) {

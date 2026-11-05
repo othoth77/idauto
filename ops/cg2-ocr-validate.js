@@ -5,8 +5,9 @@
 // ops/cg2-ocr-validate.js --samples <dir> --base <origin> --out <report.json> [--min-cards 20]
 //
 // Runs the SAME pipeline as /atelier/carte-grise, without storing anything:
-//   browser OCR  — the vendored Tesseract (fra+ara, psm 6) loaded from <origin>/atelier/assets/
-//                  in headless Chrome, the image scaled exactly as the page scales it (≤ 1800 px);
+//   browser OCR  — the vendored Tesseract (fra+ara, psm 4) loaded from <origin>/atelier/assets/
+//                  in headless Chrome, the image prepared exactly as the page does (long edge 2400 px,
+//                  enlarged if smaller, grayscale + contrast) — keep OCR equal to atelier-carte-grise-ui.js;
 //   server parse — reference/documents/registration-parser.js + the submission normaliser, with
 //                  the faces combined as extraction does (agreeing → read, disagreeing → conflict).
 // Each card is compared with its ground truth, typed by a person from the card itself.
@@ -86,17 +87,17 @@ function combine(parsedFaces) {
   await send('Page.navigate', { url: BASE + '/login' }); await sleep(2500);
   var ENGINE = '/atelier/assets/tesseract/';
   await ev('new Promise(function(res,rej){var s=document.createElement("script");s.src=' + JSON.stringify(ENGINE + 'tesseract.min.js') + ';s.onload=res;s.onerror=function(){rej(new Error("engine not served"))};document.head.appendChild(s)})');
-  await ev('window.Tesseract.createWorker("fra+ara",1,{workerPath:' + JSON.stringify(ENGINE + 'worker.min.js') + ',corePath:' + JSON.stringify(ENGINE) + ',langPath:' + JSON.stringify(ENGINE) + ',workerBlobURL:false,gzip:true}).then(function(w){window.__w=w;return w.setParameters({tessedit_pageseg_mode:"6",preserve_interword_spaces:"1"})}).then(function(){return true})');
+  await ev('window.Tesseract.createWorker("fra+ara",1,{workerPath:' + JSON.stringify(ENGINE + 'worker.min.js') + ',corePath:' + JSON.stringify(ENGINE) + ',langPath:' + JSON.stringify(ENGINE) + ',workerBlobURL:false,gzip:true}).then(function(w){window.__w=w;return w.setParameters({tessedit_pageseg_mode:"4",preserve_interword_spaces:"1"})}).then(function(){return true})');
 
-  var report = { tool: 'ops/cg2-ocr-validate.js', at: new Date().toISOString(), base: BASE, pipeline: 'tesseract.js fra+ara psm6 ≤1800px → registration-parser → submission normaliser',
+  var report = { tool: 'ops/cg2-ocr-validate.js', at: new Date().toISOString(), base: BASE, pipeline: 'tesseract.js fra+ara psm4+psm11 2400px grayscale+contrast → registration-parser → submission normaliser',
     cards: [], per_field: {}, gate: null };
   FIELDS.forEach(function (f) { report.per_field[f] = { expected: 0, correct: 0, wrong: 0, missing: 0, conflict: 0, spurious: 0 }; });
   for (var c = 0; c < list.length; c++) {
     var card = list[c], parsed = [], conf = [];
     for (var f = 0; f < card.faces.length; f++) {
       var b64 = fs.readFileSync(card.faces[f]).toString('base64');
-      var r = await ev('(async function(){var bin=atob("' + b64 + '"),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var bm=await createImageBitmap(new Blob([u]));var e=Math.min(1800,Math.max(bm.width,bm.height)),s=e/Math.max(bm.width,bm.height);' +
-        'var c=document.createElement("canvas");c.width=Math.round(bm.width*s);c.height=Math.round(bm.height*s);c.getContext("2d").drawImage(bm,0,0,c.width,c.height);var o=await window.__w.recognize(c);return {text:o.data.text,confidence:o.data.confidence}})()');
+      var r = await ev('(async function(){var bin=atob("' + b64 + '"),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var bm=await createImageBitmap(new Blob([u]));var s=2400/Math.max(bm.width,bm.height);' +
+        'var c=document.createElement("canvas");c.width=Math.round(bm.width*s);c.height=Math.round(bm.height*s);var x=c.getContext("2d");x.filter="grayscale(1) contrast(1.6)";x.imageSmoothingQuality="high";x.drawImage(bm,0,0,c.width,c.height);var t=[],k=[],ps=["4","11"];for(var q=0;q<ps.length;q++){await window.__w.setParameters({tessedit_pageseg_mode:ps[q]});var o=await window.__w.recognize(c);t.push(o.data.text);k.push(o.data.confidence);}return {text:t.join("\\n"),confidence:k.reduce(function(a,b){return a+b},0)/k.length}})()');
       parsed.push(parser.parseFace(r.text, { source: 'face_' + (f + 1), confidence: r.confidence }));   // text dropped right here
       conf.push(Math.round(r.confidence));
     }

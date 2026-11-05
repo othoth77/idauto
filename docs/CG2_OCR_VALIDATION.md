@@ -8,8 +8,8 @@ synthetic cards drawn by the test suites, which say nothing about real cards (fo
 
 The exact production pipeline, with nothing stored:
 
-1. **Browser OCR**, as in `/atelier/carte-grise`: vendored Tesseract `fra+ara`, page segmentation 6, the image scaled
-   to ≤ 1800 px, loaded from the staging origin.
+1. **Browser OCR**, as in `/atelier/carte-grise`: vendored Tesseract `fra+ara`, page segmentation 4, the image
+   brought to a 2400 px long edge (enlarged if smaller) in grayscale with more contrast, loaded from the staging origin.
 2. **Server parsing**: `reference/documents/registration-parser.js` (holder lines dropped first), then the submission
    normaliser, with the two faces combined as `extract()` does (agreeing → read, disagreeing → conflict).
 3. **Comparison** with a ground truth typed by a person from the card.

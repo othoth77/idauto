@@ -400,6 +400,17 @@ async function main() {
   var dupFace = await M.face(th, 2, thOrig);
   ok(dupFace.status === 409 && inStore(thOrig), 'F10: a refused face whose bytes ARE referenced keeps them (content-addressed)');
 
+  // Staging 2026-11-05 — OCR that ran but READ nothing is reported as such, never as a success.
+  var nz = (await M.create({})).body.ref, n1 = png(1600, 1000, nz + '1'), n2 = png(1600, 1000, nz + '2');
+  await M.face(nz, 1, n1); await M.face(nz, 2, n2);
+  var exNone = await M.extract(nz, { faces: [{ face: 1, image_sha256: sha(n1), text: '\u200fععععع\u200e aaa | 9 ;\nNOM AA PRENOM', confidence: 33 }, { face: 2, image_sha256: sha(n2), text: '|||\n9 "9', confidence: 30 }] });
+  ok(exNone.status === 200 && exNone.body.extraction.quality === 'none' && exNone.body.extraction.read === 0 && exNone.body.extraction.missing === 8 &&
+    JSON.stringify(exNone.body.extraction.ocr_confidence) === '[33,30]' && exNone.body.submission.fields.every(function (f) { return f.status === 'missing' && (f.value === null || f.value === undefined); }),
+    'OCR noise: extraction.quality « none », 0/8 read, every expected field « missing » with no value (nothing invented)');
+  ok(exNone.body.submission.assessment.ready_for_decision === false, 'and no decision is possible on it');
+  var good = await fullSubmission(M, await unusedPlate(), randomVin(), MAKE, 'QUAL');
+  ok(good.extraction.body.extraction.quality === 'good' && good.extraction.body.extraction.read >= 6, 'a readable card: quality « good », ' + good.extraction.body.extraction.read + '/8 read');
+
   // F11 — every review states its version.
   ok((await M.review(th, { actions: [{ key: 'seats', action: 'unreadable' }] })).body.details.reason === 'expected_version_required', 'F11: a review without expected_version → 400');
 

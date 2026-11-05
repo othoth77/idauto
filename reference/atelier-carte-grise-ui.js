@@ -27,6 +27,10 @@
   var REASON = { several_vehicles: 'plusieurs véhicules correspondent', only_weak_evidence: 'seule une ancienne plaque correspond', vin_differs_from_record: 'le VIN diffère de celui enregistré',
     current_plate_active_on_another_vehicle: 'cette plaque est active sur un autre véhicule', current_plate_not_on_record: 'la plaque de la carte n\'est pas encore enregistrée sur ce véhicule', no_usable_identifier: 'aucun identifiant utilisable' };
 
+  // The OCR set-up, shared with ops/cg2-ocr-validate.js (keep both equal).
+  // Two passes per face: psm 4 (a column of lines) then psm 11 (sparse text, finds isolated values);
+  // the parser keeps, per field, the most confident reading of the two.
+  var OCR = { lang: 'fra+ara', psm: '4', passes: ['4', '11'], edge: 2400, filter: 'grayscale(1) contrast(1.6)' };
   function $(id) { return document.getElementById(id); }
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -154,7 +158,8 @@
         var thumb = await thumbnail(bitmap);
         if (thumb) await call('PUT', API + '/' + state.ref + '/faces/' + f + '/thumbnail', thumb, true, { 'Content-Type': 'image/jpeg' }).catch(function () {});
         var warn = (out.warnings || []).map(function (w) { return w.code === 'image_already_submitted' ? 'Cette photo a déjà été envoyée dans un autre dossier (' + w.refs.join(', ') + ').' : w.code; });
-        say(msgs, 'Face ' + f + ' enregistrée (version ' + out.version + ', originale).' + (quality.blur_score < 60 ? ' La photo semble floue : refaites-la si le texte est difficile à lire.' : '') + (warn.length ? ' ' + warn.join(' ') : ''), warn.length || quality.blur_score < 60 ? null : 'ok');
+        var small = Math.max(bitmap.width, bitmap.height) < 1600;
+        say(msgs, 'Face ' + f + ' enregistrée (version ' + out.version + ', originale).' + (quality.blur_score < 60 ? ' La photo semble floue : refaites-la si le texte est difficile à lire.' : '') + (small ? ' Résolution faible (' + bitmap.width + '×' + bitmap.height + ' px) : la lecture automatique sera difficile ; une photo prise au plus près, en pleine résolution, se lit beaucoup mieux.' : '') + (warn.length ? ' ' + warn.join(' ') : ''), warn.length || quality.blur_score < 60 || small ? null : 'ok');
         render((await call('GET', API + '/' + state.ref)));
       } catch (e) { say(msgs, 'Face ' + f + ' : ' + message(e), 'error'); }
     });
@@ -166,14 +171,16 @@
   async function engine() {
     if (worker) return worker;
     if (!window.Tesseract) await loadScript(ENGINE + 'tesseract.min.js');
-    worker = await window.Tesseract.createWorker('fra+ara', 1, { workerPath: ENGINE + 'worker.min.js', corePath: ENGINE, langPath: ENGINE, workerBlobURL: false, gzip: true });
-    await worker.setParameters({ tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
+    worker = await window.Tesseract.createWorker(OCR.lang, 1, { workerPath: ENGINE + 'worker.min.js', corePath: ENGINE, langPath: ENGINE, workerBlobURL: false, gzip: true });
+    // psm 4 (one column of text of variable sizes) reads the bilingual two-column card far better than
+    // psm 6 (one uniform block), measured on a real card 2026-11-05.
+    await worker.setParameters({ tessedit_pageseg_mode: OCR.psm, preserve_interword_spaces: '1' });
     return worker;
   }
   $('run-ocr').addEventListener('click', async function () {
     var btn = this; btn.disabled = true;
     try {
-      $('ocr-status').textContent = 'Chargement du lecteur…';
+      say($('ocr-result'), ''); $('ocr-status').textContent = 'Chargement du lecteur…';
       var w = await engine(), faces = [];
       var list = state.sub.two_sided ? [1, 2] : [1];
       for (var i = 0; i < list.length; i++) {
@@ -182,17 +189,41 @@
         // The archive (original) is fetched and read in memory; nothing is kept.
         var r = await fetch(API + '/' + state.ref + '/faces/' + f + '/image', { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } });
         var bitmap = await createImageBitmap(await r.blob());
-        var edge = Math.min(1800, Math.max(bitmap.width, bitmap.height)), s = edge / Math.max(bitmap.width, bitmap.height);
-        var c = document.createElement('canvas'); c.width = Math.round(bitmap.width * s); c.height = Math.round(bitmap.height * s); c.getContext('2d').drawImage(bitmap, 0, 0, c.width, c.height);
-        var res = await w.recognize(c);
-        faces.push({ face: f, image_sha256: meta.sha256, text: res.data.text, confidence: res.data.confidence });
+        // Every face is read at the same size — a small photo is ENLARGED (card text is tiny), a large
+        // one reduced — in grayscale with more contrast. In memory only; the archive is untouched.
+        var s = OCR.edge / Math.max(bitmap.width, bitmap.height);
+        var c = document.createElement('canvas'); c.width = Math.round(bitmap.width * s); c.height = Math.round(bitmap.height * s);
+        var cx = c.getContext('2d'); cx.filter = OCR.filter; cx.imageSmoothingQuality = 'high'; cx.drawImage(bitmap, 0, 0, c.width, c.height);
+        var texts = [], confs = [];
+        for (var p = 0; p < OCR.passes.length; p++) {
+          $('ocr-status').textContent = 'Lecture de la face ' + f + ' (' + (p + 1) + '/' + OCR.passes.length + ')…';
+          await w.setParameters({ tessedit_pageseg_mode: OCR.passes[p] });
+          var res = await w.recognize(c);
+          texts.push(res.data.text); confs.push(res.data.confidence);
+        }
+        faces.push({ face: f, image_sha256: meta.sha256, text: texts.join('\n'), confidence: Math.round(confs.reduce(function (a, b) { return a + b; }, 0) / confs.length) });
+        texts = null;
       }
       $('ocr-status').textContent = 'Analyse…';
       var out = await call('POST', API + '/' + state.ref + '/extraction', { faces: faces });
       faces = null;
-      $('ocr-status').textContent = 'Lecture terminée : vérifiez chaque ligne.';
       render(out.submission);
-    } catch (e) { $('ocr-status').textContent = 'Lecture impossible : ' + message(e); }
+      // The reading RAN; say how much it actually READ — never « terminée » alone over empty fields.
+      var x = out.extraction || { read: 0, expected: 8, ocr_confidence: [] };
+      var conf = (x.ocr_confidence || []).filter(function (c) { return c !== null; });
+      var confTxt = conf.length ? ' (confiance OCR ' + conf.map(function (c) { return c + ' %'; }).join(' / ') + ')' : '';
+      if (x.quality === 'none') {
+        $('ocr-status').textContent = '';
+        say($('ocr-result'), 'Aucune information technique n\'a pu être lue sur ces photos' + confTxt + '. Rien n\'a été rempli. Reprenez les photos (carte à plat, bien éclairée, sans reflet, cadrée au plus près) ou saisissez chaque information depuis la carte.', 'error');
+      } else if (x.quality === 'partial') {
+        $('ocr-status').textContent = '';
+        say($('ocr-result'), 'Lecture partielle : ' + x.read + ' information(s) sur ' + x.expected + ' lue(s)' + confTxt + '. Les autres sont à saisir depuis la carte ; vérifiez aussi celles qui ont été lues.', null);
+        $('ocr-result').firstChild.className = 'ida-alert ida-alert--warning';
+      } else {
+        $('ocr-status').textContent = '';
+        say($('ocr-result'), 'Lecture terminée : ' + x.read + ' information(s) sur ' + x.expected + ' lue(s)' + confTxt + '. Vérifiez chaque ligne.', 'ok');
+      }
+    } catch (e) { $('ocr-status').textContent = ''; say($('ocr-result'), 'Lecture impossible : ' + message(e), 'error'); }
     finally { btn.disabled = closed(); }
   });
 
