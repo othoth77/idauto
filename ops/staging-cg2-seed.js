@@ -82,7 +82,7 @@ async function main() {
   for (var k of Object.keys(SEEDED)) {
     var v = SEEDED[k];
     var row = await repo.createIdentifiedVehicle({ plate: plates.parsePlate(v.plate), vin: v.vin, make: v.make, model: v.model, year: v.year }, actor,
-      { method: 'staging_seed', source: 'staging_seed', confidence: 1 }, true);
+      { method: 'admin', source: 'staging_seed', confidence: 1 }, true);
     made[k] = row.ivid;
   }
   await db.closePool();

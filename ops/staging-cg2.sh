@@ -7,6 +7,7 @@
 #   ops/staging-cg2.sh status      what runs, on which port, which database, which code commit
 #   ops/staging-cg2.sh check       prove the isolation (scratch database, own media, no production setting)
 #   ops/staging-cg2.sh reset       erase EVERYTHING staging holds (database + media) and seed it again
+#   ops/staging-cg2.sh backup-drill copy every referenced image out, verify, restore into an empty root, compare (D6)
 #   ops/staging-cg2.sh tailnet-on  OWNER STEP — publish on the tailnet: https://<host>.<tailnet>.ts.net:8443
 #   ops/staging-cg2.sh tailnet-off OWNER STEP — withdraw it (local only again)
 #
@@ -131,6 +132,9 @@ EOF
     systemctl --user start idauto-staging-api.service; wait_api
     say "ready: http://127.0.0.1:$API_PORT/login — accounts in $ACCOUNTS (0600), samples in $SAMPLES" ;;
   samples) "$NODE" "$CODE/ops/staging-cg2-samples.js" "$SAMPLES" ;;
+  backup-drill)
+    load_env; D="$STATE/backup-drills/$(date -u +%Y%m%dT%H%M%SZ)"; umask 077; mkdir -p "$D"
+    "$NODE" "$CODE/ops/staging-cg2-backup-drill.js" "$D" ;;
   start) guard; load_env; systemctl --user start idauto-staging-db.service; wait_db; systemctl --user start idauto-staging-api.service; wait_api; say "running: $IDAUTO_AUTH_BASE_URL" ;;
   stop) systemctl --user stop idauto-staging-api.service idauto-staging-db.service 2>/dev/null || true; say "stopped" ;;
   status)
@@ -170,5 +174,5 @@ EOF
     sed -i "s|^IDAUTO_AUTH_BASE_URL=.*|IDAUTO_AUTH_BASE_URL=http://127.0.0.1:$API_PORT|; s|^IDAUTO_COOKIE_SECURE=.*|IDAUTO_COOKIE_SECURE=0|" "$ENV_FILE"
     systemctl --user restart idauto-staging-api.service 2>/dev/null || true
     say "withdrawn from the tailnet; local only (http://127.0.0.1:$API_PORT)" ;;
-  *) echo "usage: $0 init|start|stop|status|check|reset --yes|samples|tailnet-on|tailnet-off"; exit 2 ;;
+  *) echo "usage: $0 init|start|stop|status|check|reset --yes|samples|backup-drill|tailnet-on|tailnet-off"; exit 2 ;;
 esac

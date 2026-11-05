@@ -292,7 +292,7 @@ async function main() {
   var codes = both.map(function (r) { return r.status; }).sort();
   var nveh = (await db.query("SELECT count(DISTINCT vehicle_id)::int n FROM idauto_plates WHERE plate_number = $1", [PL5])).rows[0].n;
   var nvin = (await db.query("SELECT count(DISTINCT vehicle_id)::int n FROM idauto_vehicle_facts WHERE fact_key = 'vin' AND fact_value = $1", [VIN5])).rows[0].n;
-  ok(JSON.stringify(codes) === '[200,409]' && nveh === 1 && nvin === 1, 'one created (200), the other refused (409); one vehicle carries the plate and the VIN');
+  ok(JSON.stringify(codes) === '[200,409]' && nveh === 1 && nvin === 1, 'one created (200), the other refused (409); one vehicle carries the plate and the VIN (' + JSON.stringify(codes) + ' ' + nveh + '/' + nvin + ' ' + both.map(function (r) { return r.body && r.body.details && r.body.details.reason; }).join(',') + ')');
 
   // No plate on the card (unreadable): only the VIN identifies it, and no database constraint makes a VIN unique —
   // the advisory lock taken on the VIN is what serialises the two decisions.
@@ -328,6 +328,12 @@ async function main() {
   var v14del = await request('DELETE', '/api/vehicles/' + encodeURIComponent(cr.body.ivid) + '/registration-document/1', { token: T.ADMIN });
   var after = await M.image(sh, 1);
   ok(v14put.status < 300 && v14del.status === 200 && after.status === 200 && Buffer.compare(after.buf, shared) === 0 && inStore(shared), 'F1: the same bytes uploaded then deleted through V14 → the CG2 original is still stored and served (' + v14put.status + '/' + v14del.status + '/' + after.status + ')');
+
+  // F1b — the observation-media failure path (writes.js) never removes a CG2 original either.
+  var obsId = (await db.query('SELECT id FROM idauto_observations ORDER BY id LIMIT 1')).rows[0];
+  var writesMod = require(path.join(BASE, 'reference', 'writes.js')), obsErr = null;
+  if (obsId) { try { await writesMod.createObservationMedia(obsId.id, shared, 'image/png', {}, null, { kind: 'admin', scopes: ['*'] }); } catch (e) { obsErr = e; } }
+  ok(obsId && obsErr && obsErr.httpStatus === 401 && inStore(shared) && (await M.image(sh, 1)).status === 200, 'F1b: an observation upload of the same bytes that fails keeps the CG2 original');
 
   // F2 — replacing a face after review invalidates every reviewed field.
   var r2 = await fullSubmission(M, await unusedPlate(), randomVin(), MAKE, 'F2');
