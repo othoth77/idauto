@@ -136,7 +136,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
 
   /* ---------- C. signed in: VIN priority through the identify route ---------- */
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/login?next=%2F' });
-  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 60000); await sleep(500);
+  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 60000); await sleep(500);
   await ev('document.querySelector("#login-email").value=' + JSON.stringify(EMAIL) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
   ok(await waitFor('location.pathname === "/" && !!document.querySelector("[data-cg-home-open]")', 30000), '22. signed in, back on the homepage');
   await sleep(500); await ev(HELPERS);

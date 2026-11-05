@@ -84,7 +84,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
     await send('Network.setExtraHTTPHeaders', { headers: { 'X-Real-IP': '10.81.' + crypto.randomInt(1, 250) + '.' + crypto.randomInt(1, 250) } });
     await send('Network.clearBrowserCookies');
     await send('Page.navigate', { url: B + '/login?next=%2Fadmin%2Fdashboard' });
-    await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 30000); await sleep(300);
+    await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 30000); await sleep(300);
     await ev('document.querySelector("#login-email").value=' + JSON.stringify(email) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
     return waitFor('location.pathname === "/admin/dashboard" && !!document.querySelector("[data-admin-sidebar] .ida-admin-nav-link")', 25000);
   }

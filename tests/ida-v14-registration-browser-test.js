@@ -61,7 +61,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
 
   // Sign in through the form.
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/login?next=%2Fatelier' });
-  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 60000); await sleep(500);
+  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 60000); await sleep(500);
   await ev('document.querySelector("#login-email").value=' + JSON.stringify(EMAIL) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
   var signedIn = await waitFor('location.pathname === "/atelier" && !!document.querySelector("#at-serie")', 30000);
   if (!signedIn) await loginDebug('v14 first login');
@@ -184,7 +184,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
   ok(face1.body.faces[1] && face1.body.faces[1].capture && /auto|manual/.test(face1.body.faces[1].capture.detection) && face1.body.faces[1].original_byte_size > face1.body.faces[1].byte_size, 'stored metadata: detection mode, and the original was larger than what is stored');
   var beforeSha = face1.body.faces[1].sha256;
   await send('Page.navigate', { url: 'http://127.0.0.1:' + PORT + '/login?next=%2Fatelier' });
-  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form")', 60000); await sleep(500);
+  await waitFor('document.readyState === "complete" && !!document.querySelector("#login-form[data-ready]")', 60000); await sleep(500);
   await ev('document.querySelector("#login-email").value=' + JSON.stringify(EMAIL) + ';document.querySelector("#login-password").value=' + JSON.stringify(PW) + ';document.querySelector("#login-submit").click()');
   await waitFor('location.pathname === "/atelier" && !!document.querySelector("#at-serie")', 20000);
   await ev('document.querySelector("#at-serie").value=' + JSON.stringify(S) + ';document.querySelector("#at-numero").value=' + JSON.stringify(N) + ';document.querySelector("[data-action=resolve-plate]").click()');

@@ -490,11 +490,11 @@ async function createObservationMedia(observationId, buffer, mimeType, body, ide
       }
     );
   } catch (err) {
-    var stillReferenced = await db.query(
-      'SELECT 1 FROM idauto_observation_media WHERE object_key = $1 LIMIT 1',
-      [stored.object_key]
-    );
-    if (stillReferenced.rows.length === 0) {
+    // Content-addressed: the same bytes may be a carte grise image (IDA-V14 document, IDA-CG2
+    // submission face) as well as an observation photo — count every table that references a key
+    // (required lazily: document-repository requires this module).
+    var references = await require('./documents/document-repository.js').referencesOfKey(stored.object_key, 0);
+    if (references === 0) {
       storage.removeUnconditionally(stored.image_hash);
     }
     throw err;

@@ -57,7 +57,11 @@ var ATELIER_ASSETS = {
   '/atelier/assets/scanic.umd.js': { root: WEB_ROOT, file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/registration-parser.js': { file: 'documents/registration-parser.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/registration-scanner.js': { root: WEB_ROOT, file: 'citizen/registration-scanner.js', contentType: 'application/javascript; charset=utf-8' },
-  '/atelier/assets/document.css': { root: WEB_ROOT, file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' }
+  '/atelier/assets/document.css': { root: WEB_ROOT, file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' },
+  // IDA-CG2 — carte grise V2 review page (behind the same session redirect as /atelier).
+  '/atelier/carte-grise': { file: 'atelier-carte-grise.html', contentType: 'text/html; charset=utf-8' },
+  '/atelier/carte-grise/': { file: 'atelier-carte-grise.html', contentType: 'text/html; charset=utf-8' },
+  '/atelier/carte-grise-ui.js': { file: 'atelier-carte-grise-ui.js', contentType: 'application/javascript; charset=utf-8' }
 };
 // The OCR engine files are the same vendored files the citizen page uses;
 // plate-scanner.js loads them from /assets/tesseract/, which api.js serves

@@ -418,3 +418,6 @@
   .ida-admin-sidebar { transition: transform var(--ida-duration-base) var(--ida-easing-standard), visibility 0s linear var(--ida-duration-base); }
   .ida-admin-shell[data-drawer="open"] .ida-admin-sidebar { transition: transform var(--ida-duration-base) var(--ida-easing-standard), visibility 0s linear 0s; }
 }
+
+/* IDA-CG2 — carte grise faces in the dossier. */
+.ida-admin-cg-image { display: block; max-width: 100%; height: auto; border-radius: var(--ida-radius-control); }

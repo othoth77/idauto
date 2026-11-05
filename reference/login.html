@@ -31,7 +31,9 @@
         <h1 id="login-title" class="ida-h2">Connexion à IDauto</h1>
       </header>
 
-      <form id="login-form" class="ida-stack" novalidate>
+      <!-- POST, never GET: a submit before the script is ready must not put the password in the URL
+           (history, logs). The script enables the button once it handles the submit itself. -->
+      <form id="login-form" class="ida-stack" method="post" action="/login" novalidate>
         <div class="ida-field">
           <label for="login-email">Identifiant (adresse e-mail)</label>
           <input class="ida-input" id="login-email" name="email" type="email" autocomplete="username" inputmode="email" required>
@@ -44,7 +46,7 @@
           <div><p class="ida-alert-title">Connexion impossible</p><p class="ida-small" id="login-error-body"></p></div>
         </div>
         <div class="ida-search-actions">
-          <button id="login-submit" type="submit" class="ida-btn ida-btn--primary">Se connecter</button>
+          <button id="login-submit" type="submit" class="ida-btn ida-btn--primary" disabled>Se connecter</button>
           <button id="login-forgot" type="button" class="ida-btn ida-btn--ghost">Mot de passe oublié</button>
         </div>
         <p class="ida-small ida-muted" id="login-help" aria-live="polite"></p>
