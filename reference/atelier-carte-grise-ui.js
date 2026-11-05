@@ -44,6 +44,11 @@
     dimensions_too_large: 'Photo trop grande (plus de 10 000 pixels de côté) : utilisez la photo normale du téléphone.',
     empty_image: 'Le fichier est vide.',
     same_image_both_faces: 'La même photo est déjà utilisée pour l\'autre face : photographiez l\'autre côté de la carte.',
+    ambiguous_match_requires_admin_acknowledgement: 'Rattachement ambigu : seul un administrateur peut le décider, après avoir coché la confirmation.',
+    vehicle_already_known: 'Ce véhicule existe déjà dans IDauto : rattachez la carte au lieu de créer un véhicule.',
+    vehicle_not_among_matches: 'Ce véhicule ne fait pas partie des résultats de la recherche : relancez la recherche.',
+    not_ready_for_decision: 'Décision impossible : chaque information doit d\'abord être vérifiée.',
+    stale_version: 'Le dossier a changé entre-temps : la page a été actualisée, recommencez l\'action.',
     ocr_for_another_image_version: 'La photo a changé pendant la lecture : relancez « Lire la carte ».' };
   function message(err) {
     var r = err && err.body && err.body.details && err.body.details.reason;
