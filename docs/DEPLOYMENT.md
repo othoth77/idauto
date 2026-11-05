@@ -67,3 +67,33 @@ Structured JSON events on stdout → journald (`SyslogIdentifier=idauto-api`). `
 `npm run test:offline` (no database) — then the live suites against a scratch database (`ops/runbooks/TEST_RUNBOOK.md`): `npm run test:db`, `npm run test:v12`, `npm run test:v13` and `npm run test:v14` (needs `IDAUTO_AUTH_SECRET` in the environment). Reference result on 2026-09-05: 29 suites, 2175 assertions, 0 failures.
 
 > **Corrected 2026-09-22.** "(no database)" was not true of `test:offline` between `4570604` and this correction: `ida-v8`, `ida-v9` and `ida-v10` had been added to it and each opens a PostgreSQL connection, so the script exited non-zero on any host without `IDAUTO_DB_*`. Those three moved to the new `test:db`. Re-measured on a clean checkout with no database: **`test:offline` = 16 suites, 1021 assertions, 0 failures**. `.github/workflows/ci.yml` runs it on every push with no database service, so the claim is now proved by the run rather than asserted here.
+
+## 8. Rolling out IDA-UI (redesign, manual registration, owner contact) — owner approval required
+
+**Prerequisites (each verified, not assumed):** the off-host backup includes the carte grise images (mythos-prod #694
+installed on the VPS, one clean nightly run whose manifest shows `source_references.vehicle_document`, one restore
+test); VPS disk ≤ 89 %; owner go.
+
+1. Read-only pre-checks on `idauto_production` (inside `idauto-postgres`):
+   - `SELECT to_regclass('public.idauto_vehicle_documents'), to_regclass('public.idauto_workshop_operations');` — both
+     must exist (IDA-V12 and IDA-V14 applied; the photos of a manual registration are V14 documents);
+   - `SELECT identification_method, count(*) FROM idauto_vehicles GROUP BY 1;` — every value must be in the new list
+     (`plate_ocr, plate_manual, vin, manual_selection, provider, import, admin, carte_grise_ocr, manual_registration`
+     or NULL), otherwise the new CHECK constraint is refused and the migration stops.
+2. Backup `idauto_production` (`pg_dump -Fc`, sha256, `pg_restore --list`) and confirm the nightly off-host backup is green.
+3. Merge; fast-forward the production checkout. No new npm dependency.
+4. Apply `database/migrations/ida-ui3-registration-maintenance.sql` **in one transaction**
+   (`psql -1 -v ON_ERROR_STOP=1`): additive, idempotent (applied twice on scratch). It creates
+   `idauto_vehicle_owner_contacts` (personal data — owner decision 2026-11-05) and adds nullable columns to
+   `idauto_workshop_operations`; no existing row changes.
+5. Environment: nothing new is required. `IDAUTO_CG_OCR_ENABLED` stays unset (the OCR routes answer 410).
+   Optional on a constrained host: `IDAUTO_DB_IDLE_TIMEOUT_MS`, `IDAUTO_DB_CONNECT_TIMEOUT_MS`.
+6. Restart `idauto-api`.
+7. Smoke: `/login` (language selector), `/atelier/tableau-de-bord` signed in (sidebar + top bar), `/atelier/vehicules/nouveau`,
+   `/api/search?q=…` 200, `/api/vehicles/:ref/registration-document/ocr` 410, an Arabic page served with `dir="rtl"`.
+
+**Rollback:** previous release + restart; **do not run the DOWN block**. The previous code was run against a database
+with this migration applied (2026-11-05, scratch: IDA-V12 125/0, IDA-V14 document 68/0, home registration 38/0): the
+new table and columns are inert for it. The DOWN block deletes the owner contacts and the part-source columns — it is
+data loss, an owner decision, and only after a dump. Restoring the pre-deploy dump goes into a NEW database first,
+never over `idauto_production` without the owner.

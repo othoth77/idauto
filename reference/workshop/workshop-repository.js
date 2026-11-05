@@ -43,12 +43,13 @@ async function visitView(row, runner) {
   }
   var cust = null;
   if (row.customer_ref_id) { var cr = await q.query('SELECT customer_ref FROM idauto_workshop_customer_refs WHERE id = $1', [row.customer_ref_id]); cust = cr.rows.length ? cr.rows[0].customer_ref : null; }
-  var ops = await q.query('SELECT id, operation_type, description, part_id, quantity, status, created_by, created_at FROM idauto_workshop_operations WHERE visit_id = $1 ORDER BY id', [row.id]);
+  var ops = await q.query('SELECT id, operation_type, description, part_id, quantity, status, created_by, created_at, part_source, part_condition, part_label, part_reference_text, performed_on, notes FROM idauto_workshop_operations WHERE visit_id = $1 ORDER BY id', [row.id]);
   var orders = await q.query('SELECT id, status, supplier_ref, created_at FROM idauto_workshop_orders WHERE visit_id = $1 ORDER BY id', [row.id]);
   return { id: row.id, org_id: row.org_id, status: row.status, vehicle: v, customer_ref: cust,
     plate_read: row.plate_read, plate_read_method: row.plate_read_method, plate_read_confidence: row.plate_read_confidence,
     identification_method: row.identification_method, reason: row.reason, opened_by: row.opened_by, opened_at: row.opened_at, closed_at: row.closed_at, updated_at: row.updated_at,
-    operations: ops.rows.map(function (o) { return { id: o.id, operation_type: o.operation_type, description: o.description, part_id: o.part_id ? 'local:' + o.part_id : null, quantity: o.quantity, status: o.status, created_by: o.created_by, created_at: o.created_at }; }),
+    operations: ops.rows.map(function (o) { return { id: o.id, operation_type: o.operation_type, description: o.description, part_id: o.part_id ? 'local:' + o.part_id : null, quantity: o.quantity, status: o.status, created_by: o.created_by, created_at: o.created_at,
+      part_source: o.part_source, part_condition: o.part_condition, part_label: o.part_label, part_reference: o.part_reference_text, performed_on: o.performed_on, notes: o.notes }; }),
     orders: orders.rows };
 }
 
@@ -102,13 +103,37 @@ async function attachVehicle(visitId, actor, vehicleRow, identMethod, body) {
 }
 
 var OP_TYPES = ['diagnosis', 'replacement', 'service', 'repair', 'inspection', 'other'];
+// IDA-UI-3 — where the part came from, as DECLARED by the technician (radio buttons).
+// 'our_shop' is a declaration, not a sale record: IDauto holds no invoice.
+var PART_SOURCES = ['our_shop', 'customer_supplied', 'external_supplier'];
+var PART_CONDITIONS = ['new', 'used'];
+function partDetails(body) {
+  var label = body.part_label ? String(body.part_label).replace(/\s+/g, ' ').trim().slice(0, 120) : null;
+  var ref = body.part_reference ? String(body.part_reference).replace(/\s+/g, ' ').trim().slice(0, 60) : null;
+  var hasPart = !!(body.part_id || label || ref);
+  var source = body.part_source || null, condition = body.part_condition || null;
+  if (hasPart && PART_SOURCES.indexOf(source) === -1) throw errors.IdautoError('VALIDATION', { field: 'part_source', reason: 'required_with_a_part', allowed: PART_SOURCES });
+  if (!hasPart && source) throw errors.IdautoError('VALIDATION', { field: 'part_source', reason: 'no_part' });
+  if (condition && PART_CONDITIONS.indexOf(condition) === -1) throw errors.IdautoError('VALIDATION', { field: 'part_condition', allowed: PART_CONDITIONS });
+  var performed = null;
+  if (body.performed_on) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(body.performed_on));
+    var d = m ? new Date(body.performed_on + 'T00:00:00Z') : null;
+    if (!d || isNaN(d) || d.toISOString().slice(0, 10) !== body.performed_on || +m[1] < 2000 || d.getTime() > Date.now() + 86400000) throw errors.IdautoError('VALIDATION', { field: 'performed_on', reason: 'invalid_date' });
+    performed = body.performed_on;
+  }
+  var notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
+  var status = body.status === 'done' ? 'done' : 'planned';
+  return { label: label, ref: ref, source: hasPart ? source : null, condition: hasPart ? condition : null, performed: performed, notes: notes, status: status };
+}
 async function addOperation(visitId, body, actor) {
   var orgId = orgFor(actor, body);
   if (OP_TYPES.indexOf(body.operation_type) === -1) throw errors.IdautoError('VALIDATION', { field: 'operation_type', allowed: OP_TYPES });
   var partId = null;
   if (body.part_id) { var m = /^local:(\d+)$/.exec(String(body.part_id)); if (!m) throw errors.IdautoError('VALIDATION', { field: 'part_id', reason: 'only local catalogue parts (local:<id>) can be attached to an operation' }); partId = parseInt(m[1], 10); }
   var qty = body.quantity !== undefined ? parseInt(body.quantity, 10) : 1;
-  if (!isFinite(qty) || qty < 1) throw errors.IdautoError('VALIDATION', { field: 'quantity' });
+  if (!isFinite(qty) || qty < 1 || qty > 999) throw errors.IdautoError('VALIDATION', { field: 'quantity' });
+  var pd = partDetails(body);
   return writes.withAudit(
     { principal: actor.principal, event_type: 'workshop.operation.create', target_type: 'idauto_workshop_operations', change_summary: body.operation_type + ' on visit ' + visitId },
     actor.identity,
@@ -118,8 +143,9 @@ async function addOperation(visitId, body, actor) {
       if (v.rows[0].status === 'closed' || v.rows[0].status === 'cancelled') throw errors.IdautoError('CONFLICT', { reason: 'visit_' + v.rows[0].status });
       if (partId) { var p = await client.query('SELECT id FROM idauto_parts WHERE id = $1 AND (org_id IS NULL OR org_id = $2)', [partId, orgId]); if (!p.rows.length) throw errors.IdautoError('NOT_FOUND', { part_id: body.part_id }); }
       var res = await client.query(
-        "INSERT INTO idauto_workshop_operations (visit_id, operation_type, description, part_id, quantity, status, created_by) VALUES ($1,$2,$3,$4,$5,'planned',$6) RETURNING id, operation_type, description, part_id, quantity, status, created_at",
-        [visitId, body.operation_type, body.description ? String(body.description).slice(0, 300) : null, partId, qty, actor.identity]);
+        'INSERT INTO idauto_workshop_operations (visit_id, operation_type, description, part_id, quantity, status, created_by, part_source, part_condition, part_label, part_reference_text, performed_on, notes) ' +
+        'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12::date, CURRENT_DATE),$13) RETURNING id, operation_type, description, part_id, quantity, status, created_at, part_source, part_condition, part_label, part_reference_text, performed_on, notes',
+        [visitId, body.operation_type, body.description ? String(body.description).slice(0, 300) : null, partId, qty, pd.status, actor.identity, pd.source, pd.condition, pd.label, pd.ref, pd.performed, pd.notes]);
       await client.query("UPDATE idauto_workshop_visits SET status = CASE WHEN status = 'open' THEN 'in_progress' ELSE status END, updated_at = NOW() WHERE id = $1", [visitId]);
       var row = res.rows[0]; row.part_id = row.part_id ? 'local:' + row.part_id : null;
       return { record: row, auditTargetRef: row.id };
@@ -204,5 +230,5 @@ async function setOrderStatus(id, status, actor, body) {
     });
 }
 
-module.exports = { orgFor: orgFor, getVisit: getVisit, listVisits: listVisits, createVisit: createVisit, attachVehicle: attachVehicle,
+module.exports = { PART_SOURCES: PART_SOURCES, orgFor: orgFor, getVisit: getVisit, listVisits: listVisits, createVisit: createVisit, attachVehicle: attachVehicle,
   addOperation: addOperation, setOperationStatus: setOperationStatus, closeVisit: closeVisit, createOrder: createOrder, getOrder: getOrder, setOrderStatus: setOrderStatus, OP_TYPES: OP_TYPES };

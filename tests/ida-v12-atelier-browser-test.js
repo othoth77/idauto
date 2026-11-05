@@ -96,7 +96,7 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   ok(/MAHLE/.test(await ev('document.querySelector("#op-part").value')), 'selecting the part fills the operation');
   await ev('document.querySelector("#at-org").value="' + process.env.UI_ORG + '";document.querySelector("#at-customer").value="CLI-E2E";document.querySelector("#at-reason").value="Vidange";document.querySelector("[data-action=visit-open]").click()'); await sleep(1500);
   ok(/Visite n°/.test(await ev('document.querySelector("[data-visit-badge]").textContent')), 'visit opened');
-  await ev('document.querySelector("#op-desc").value="Filtre à huile";document.querySelector("[data-action=op-add]").click()'); await sleep(1500);
+  await ev('document.querySelector("#op-desc").value="Filtre à huile";document.querySelector("input[name=at_part_source][value=our_shop]").click();document.querySelector("[data-action=op-add]").click()'); await sleep(1500);
   ok(await ev('document.querySelectorAll("[data-visit-ops] li").length') >= 1, 'operation added with the part');
   await ev('document.querySelector("[data-action=order-create]").click()'); await sleep(1500);
   ok(/Commande n°/.test(await ev('document.querySelector("[data-visit-status]").textContent')), 'order created from the operations');

@@ -384,20 +384,71 @@
 [dir="rtl"] .ida-admin-sidebar-collapse .ida-admin-icon { transform: scaleX(-1); }
 [dir="rtl"] .ida-admin-shell[data-sidebar="collapsed"] .ida-admin-sidebar-collapse .ida-admin-icon { transform: none; }
 
-.ida-admin-topbar { display: none; }
+/* IDA-UI-1 — the top bar, on every page and every width: breadcrumb, global
+ * search, notifications, language, profile. Below 64rem it also carries the
+ * menu button and the wordmark; below 40rem the search folds behind a button. */
+.ida-admin-topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: var(--ida-space-3);
+  min-height: 3.5rem;
+  padding: var(--ida-space-2) var(--ida-space-5, var(--ida-space-6));
+  background: var(--ida-surface-raised);
+  border-block-end: 1px solid var(--ida-border);
+}
+.ida-admin-menu-btn, .ida-app-topbar-brand, .ida-app-search-toggle { display: none; }
+.ida-admin-topbar-title { min-width: 0; font-size: var(--ida-size-14); color: var(--ida-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ida-admin-crumbs { display: flex; gap: var(--ida-space-2); margin: 0; padding: 0; list-style: none; white-space: nowrap; }
+.ida-admin-crumbs li + li::before { content: "/"; margin-inline-end: var(--ida-space-2); color: var(--ida-text-faint); }
+.ida-admin-crumbs [aria-current] { color: var(--ida-text); font-weight: var(--ida-weight-semibold); }
+.ida-app-search { position: relative; flex: 1 1 22rem; max-inline-size: 34rem; margin-inline-start: auto; }
+.ida-app-search-icon { position: absolute; inset-inline-start: var(--ida-space-3); inset-block-start: 50%; transform: translateY(-50%); color: var(--ida-text-faint); display: inline-flex; pointer-events: none; }
+.ida-app-search-input { inline-size: 100%; padding-inline-start: calc(var(--ida-space-3) * 2 + 20px); min-height: 2.5rem; }
+.ida-app-search-results {
+  position: absolute; z-index: 60; inset-inline: 0; inset-block-start: calc(100% + var(--ida-space-1));
+  max-block-size: min(70vh, 28rem); overflow-y: auto;
+  padding: var(--ida-space-2);
+  background: var(--ida-surface-raised); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); box-shadow: var(--ida-shadow-2);
+}
+.ida-app-search-results[hidden] { display: none; }
+.ida-app-search-heading { margin: var(--ida-space-2) var(--ida-space-2) var(--ida-space-1); font-size: var(--ida-size-12); font-weight: var(--ida-weight-semibold); color: var(--ida-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.ida-app-search-option { display: flex; flex-direction: column; gap: 2px; padding: var(--ida-space-2) var(--ida-space-3); border-radius: var(--ida-radius-control); color: var(--ida-text); text-decoration: none; }
+.ida-app-search-option:hover, .ida-app-search-option[aria-selected="true"] { background: var(--ida-surface-sunken); }
+.ida-app-search-option:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: -2px; }
+.ida-app-search-title { font-size: var(--ida-size-14); font-weight: var(--ida-weight-medium); }
+.ida-app-search-sub, .ida-app-search-msg { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+.ida-app-search-msg { margin: var(--ida-space-2); }
+.ida-app-actions { display: flex; align-items: center; gap: var(--ida-space-2); flex: 0 0 auto; }
+.ida-app-anchor { position: relative; }
+.ida-app-bell { position: relative; }
+.ida-app-badge { display: inline-flex; align-items: center; justify-content: center; min-inline-size: 1.25rem; block-size: 1.25rem; padding-inline: 4px; border-radius: var(--ida-radius-seal); background: var(--ida-danger); color: var(--ida-primary-contrast); font-size: 11px; font-weight: var(--ida-weight-semibold); }
+.ida-app-bell .ida-app-badge { position: absolute; inset-block-start: -6px; inset-inline-end: -6px; }
+.ida-app-badge[hidden] { display: none; }
+.ida-app-badge--inline { background: var(--ida-pending); color: var(--ida-text); }
+.ida-app-lang { min-height: 2.25rem; inline-size: auto; padding-block: var(--ida-space-1); }
+.ida-app-profile { display: inline-flex; align-items: center; gap: var(--ida-space-2); min-height: 2.25rem; padding: 2px var(--ida-space-2) 2px 2px; border: 1px solid var(--ida-border); border-radius: var(--ida-radius-seal); background: var(--ida-surface); color: var(--ida-text); font: inherit; cursor: pointer; max-inline-size: 15rem; }
+.ida-app-profile:focus-visible, .ida-app-menuitem:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+.ida-app-profile .ida-admin-identity { padding: 0; gap: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.ida-app-popover { position: absolute; z-index: 60; inset-block-start: calc(100% + var(--ida-space-2)); inset-inline-end: 0; min-inline-size: 15rem; max-inline-size: min(22rem, 90vw); padding: var(--ida-space-2); background: var(--ida-surface-raised); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); box-shadow: var(--ida-shadow-2); }
+.ida-app-popover[hidden] { display: none; }
+.ida-app-popover--end { inset-inline-end: 0; inset-inline-start: auto; }
+.ida-app-search-group + .ida-app-search-group { border-block-start: 1px solid var(--ida-border); margin-block-start: var(--ida-space-1); }
+.ida-app-popover > p { margin: var(--ida-space-2); }
+.ida-app-menuitem { display: flex; align-items: center; gap: var(--ida-space-3); inline-size: 100%; padding: var(--ida-space-2) var(--ida-space-3); border: 0; border-radius: var(--ida-radius-control); background: transparent; color: var(--ida-text); font: inherit; font-size: var(--ida-size-14); text-align: start; text-decoration: none; cursor: pointer; }
+.ida-app-menuitem:hover { background: var(--ida-surface-sunken); }
+.ida-app-menuitem[hidden] { display: none; }
+.ida-app-notif-list { list-style: none; margin: 0; padding: 0; }
+.ida-admin-nav-section + .ida-admin-nav-section { margin-block-start: var(--ida-space-3); }
+.ida-admin-nav-heading { margin: 0 var(--ida-space-3) var(--ida-space-1); font-size: 11px; font-weight: var(--ida-weight-semibold); color: var(--ida-text-faint); text-transform: uppercase; letter-spacing: 0.06em; }
+[lang="ar"] .ida-admin-nav-heading, [lang="ar"] .ida-app-search-heading { text-transform: none; letter-spacing: 0; font-size: var(--ida-size-12); }
+.ida-admin-shell[data-sidebar="collapsed"] .ida-admin-nav-heading { display: none; }
 .ida-admin-backdrop { position: fixed; inset: 0; z-index: 40; background: var(--ida-scrim); }
 .ida-admin-backdrop[hidden] { display: none; }
 
 @media (max-width: 63.99rem) {
   .ida-admin-shell, .ida-admin-shell[data-sidebar="collapsed"] { grid-template-columns: minmax(0, 1fr); }
-  .ida-admin-topbar {
-    position: sticky; top: 0; z-index: 30;
-    display: flex; align-items: center; gap: var(--ida-space-3);
-    padding: var(--ida-space-2) var(--ida-space-4);
-    background: var(--ida-surface-raised);
-    border-block-end: 1px solid var(--ida-border);
-  }
-  .ida-admin-topbar-title { margin-inline-start: auto; font-size: var(--ida-size-14); color: var(--ida-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .ida-admin-topbar { padding-inline: var(--ida-space-4); }
+  .ida-admin-menu-btn, .ida-app-topbar-brand { display: inline-flex; }
+  .ida-admin-topbar-title { display: none; }
   .ida-admin-sidebar {
     position: fixed; z-index: 50;
     inset-block: 0; inset-inline-start: 0;
@@ -411,10 +462,79 @@
   .ida-admin-shell[data-drawer="open"] .ida-admin-sidebar { transform: none; visibility: visible; }
   .ida-admin-sidebar-collapse { display: none; }
   .ida-admin-drawer-close { display: inline-flex; }
+  .ida-app-profile .ida-admin-identity-text { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .ida-app-profile { padding: 2px; }
+}
+@media (max-width: 39.99rem) {
+  .ida-admin-topbar { flex-wrap: wrap; gap: var(--ida-space-2); padding-inline: var(--ida-space-3); }
+  .ida-app-actions { margin-inline-start: auto; gap: var(--ida-space-1); }
+  .ida-app-search-toggle { display: inline-flex; }
+  .ida-app-search { display: none; order: 5; flex-basis: 100%; max-inline-size: none; }
+  .ida-admin-shell.is-searching .ida-app-search { display: block; }
+  .ida-app-lang { max-inline-size: 6.5rem; }
 }
 @media (prefers-reduced-motion: no-preference) and (max-width: 63.99rem) {
   /* Opening: visible at once (so focus can move in), then slide. Closing:
    * slide out, and only then hidden. */
   .ida-admin-sidebar { transition: transform var(--ida-duration-base) var(--ida-easing-standard), visibility 0s linear var(--ida-duration-base); }
   .ida-admin-shell[data-drawer="open"] .ida-admin-sidebar { transition: transform var(--ida-duration-base) var(--ida-easing-standard), visibility 0s linear 0s; }
+}
+
+/* =========================================================================
+ * IDA-UI-3 — workspace pages (dashboard, vehicles, registration, dossier,
+ * interventions, parts, catalogue, team, account). Logical properties only:
+ * the same rules lay out French (LTR) and Arabic (RTL).
+ * ========================================================================= */
+.ida-page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--ida-space-3) var(--ida-space-5); }
+.ida-page-head > div:first-child { min-width: 0; flex: 1 1 22rem; }
+.ida-page-head h1 { margin: 0; font-size: var(--ida-size-28); }
+.ida-page-head p { margin: var(--ida-space-1) 0 0; }
+.ida-page-actions { display: flex; flex-wrap: wrap; gap: var(--ida-space-2); }
+.ida-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--ida-space-4); }
+.ida-form-grid--wide > .ida-field { grid-column: 1 / -1; }
+.ida-form-section { display: flex; flex-direction: column; gap: var(--ida-space-4); }
+.ida-form-section > h2 { margin: 0; font-size: var(--ida-size-18); }
+.ida-form-actions { display: flex; flex-wrap: wrap; gap: var(--ida-space-2); justify-content: flex-end; border-block-start: 1px solid var(--ida-border); padding-block-start: var(--ida-space-4); }
+.ida-field-hint { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+.ida-field-error { font-size: var(--ida-size-12); color: var(--ida-danger); }
+.ida-input[aria-invalid="true"] { border-color: var(--ida-danger); }
+.ida-required::after { content: " *"; color: var(--ida-danger); }
+.ida-plate-row { display: flex; align-items: center; gap: var(--ida-space-2); direction: ltr; }
+.ida-plate-row .ida-input { inline-size: 6rem; text-align: center; }
+.ida-plate-row .ida-plate-word { font-weight: var(--ida-weight-semibold); }
+.ida-radio-group { display: flex; flex-direction: column; gap: var(--ida-space-2); border: 0; margin: 0; padding: 0; min-width: 0; }
+.ida-radio-group legend { font-size: var(--ida-size-14); font-weight: var(--ida-weight-semibold); margin-block-end: var(--ida-space-2); padding: 0; }
+.ida-radio { display: flex; align-items: flex-start; gap: var(--ida-space-2); padding: var(--ida-space-2) var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); cursor: pointer; background: var(--ida-surface); }
+.ida-radio:has(input:checked) { border-color: var(--ida-verify); background: var(--ida-verify-tint); }
+.ida-radio input { margin-block-start: 0.2rem; accent-color: var(--ida-verify-strong); }
+.ida-radio input:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+.ida-radio-inline { flex-direction: row; flex-wrap: wrap; }
+.ida-faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--ida-space-4); }
+.ida-face { display: flex; flex-direction: column; gap: var(--ida-space-2); }
+.ida-face-preview { display: flex; align-items: center; justify-content: center; min-block-size: 9rem; border: 1px dashed var(--ida-border-strong); border-radius: var(--ida-radius-card); background: var(--ida-surface-sunken); overflow: hidden; }
+.ida-face-preview img { display: block; max-inline-size: 100%; block-size: auto; }
+.ida-file-btn { position: relative; }
+.ida-file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; inline-size: 100%; }
+.ida-filter-bar { display: flex; flex-wrap: wrap; gap: var(--ida-space-2); align-items: flex-end; }
+.ida-filter-bar .ida-field { flex: 1 1 12rem; margin: 0; }
+.ida-kv { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: var(--ida-space-2) var(--ida-space-4); margin: 0; }
+.ida-kv dt { color: var(--ida-text-muted); font-size: var(--ida-size-14); }
+.ida-kv dd { margin: 0; font-weight: var(--ida-weight-medium); min-width: 0; overflow-wrap: anywhere; }
+.ida-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ida-space-2); }
+.ida-section-head h2 { margin: 0; font-size: var(--ida-size-18); }
+.ida-pager { display: flex; gap: var(--ida-space-2); justify-content: flex-end; }
+.ida-op-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ida-space-2); }
+.ida-op { display: grid; grid-template-columns: 1fr auto; gap: var(--ida-space-1) var(--ida-space-3); padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); background: var(--ida-surface); }
+.ida-op-meta { grid-column: 1 / -1; font-size: var(--ida-size-12); color: var(--ida-text-muted); display: flex; flex-wrap: wrap; gap: var(--ida-space-1) var(--ida-space-3); }
+.ida-dialog { border: 0; padding: 0; border-radius: var(--ida-radius-card); box-shadow: var(--ida-shadow-3); inline-size: min(34rem, calc(100vw - 2rem)); max-block-size: calc(100vh - 2rem); background: var(--ida-surface-raised); color: var(--ida-text); }
+.ida-dialog::backdrop { background: var(--ida-scrim); }
+.ida-dialog-body { padding: var(--ida-space-5, var(--ida-space-6)); display: flex; flex-direction: column; gap: var(--ida-space-4); }
+.ida-dialog-actions { display: flex; flex-wrap: wrap; gap: var(--ida-space-2); justify-content: flex-end; }
+.ida-table td, .ida-table th { text-align: start; }
+@media (max-width: 39.99rem) {
+  .ida-kv { grid-template-columns: 1fr; gap: 0 0; }
+  .ida-kv dd { margin-block-end: var(--ida-space-2); }
+  .ida-page-head h1 { font-size: var(--ida-size-22); }
+  .ida-form-actions { justify-content: stretch; }
+  .ida-form-actions .ida-btn { flex: 1 1 auto; }
 }

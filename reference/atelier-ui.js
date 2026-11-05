@@ -271,6 +271,10 @@
     if (!state.visit) return visitStatus('Ouvrez d\'abord la visite.');
     var body = orgBody({ operation_type: $('#op-type').value, description: $('#op-desc').value, quantity: parseInt($('#op-qty').value || '1', 10) });
     if (state.selectedPart && state.selectedPart.source === 'local') body.part_id = state.selectedPart.id;
+    // IDA-UI-3 — a part always carries its declared source (radio buttons).
+    var src = document.querySelector('input[name=at_part_source]:checked');
+    if (body.part_id && !src) return visitStatus('Choisissez la provenance de la pièce.');
+    if (body.part_id) body.part_source = src.value;
     try { await api('POST', '/api/workshop/visits/' + state.visit.id + '/operations', body); renderVisit(await api('GET', '/api/workshop/visits/' + state.visit.id + orgQuery())); visitStatus('Opération ajoutée.'); }
     catch (err) { visitStatus(err.message_fr || GENERIC_FR); }
   }
@@ -287,24 +291,16 @@
     catch (err) { visitStatus(err.message_fr || GENERIC_FR); }
   }
 
-  /* ---------------- carte grise (IDA-V14) ---------------- */
-  var cgScanner = window.IdaRegistrationScanner;
-  var cgRoot = $('[data-cg-root]');
-  if (cgScanner && cgRoot) { cgScanner.configure({ engineBase: '/atelier/assets/tesseract/', scanicUrl: '/atelier/assets/scanic.umd.js' }); cgScanner.bind(cgRoot); }
+  /* ---------------- carte grise (IDA-UI-3) ----------------
+   * The carte grise is no longer read here (OCR retired as the registration path):
+   * its photos are attached as evidence in the vehicle's dossier. */
   async function loadDocumentStatus(ivid) {
     var line = $('[data-document-status]'); if (!line) return;
+    var dl = $('[data-dossier-link]'); if (dl) dl.href = '/atelier/vehicule?ref=' + encodeURIComponent(ivid);
     try {
       var d = await api('GET', '/api/vehicles/' + encodeURIComponent(ivid) + '/registration-document');
-      line.textContent = d.has_document ? 'Carte grise enregistrée : face 1' + (d.faces[2] ? ' + face 2' : '') + (d.ocr ? ' · informations extraites (' + Math.round((d.ocr.confidence || 0) * 100) + ' %)' : '') + '.' : 'Aucune carte grise enregistrée.';
+      line.textContent = d.has_document ? 'Carte grise jointe : face 1' + (d.faces[2] ? ' + face 2' : '') + '.' : 'Aucune carte grise jointe.';
     } catch (err) { line.textContent = err.status === 403 ? '' : (err.message_fr || ''); }
-  }
-  function openRegistrationScanner() {
-    if (!state.vehicle) return ficheStatus('Identifiez d\'abord le véhicule.');
-    if (!cgScanner || !cgRoot) return ficheStatus('Scanner indisponible.');
-    cgScanner.open({ root: cgRoot, ivid: state.vehicle.id, onDone: async function (r) {
-      if (r.vehicle) { state.vehicle = r.vehicle; renderFiche(r.vehicle); ficheStatus('Carte grise enregistrée.'); }
-      else { loadDocumentStatus(state.vehicle.id); ficheStatus('Carte grise enregistrée (images).'); }
-    } });
   }
 
   /* ---------------- scanner ---------------- */
@@ -330,7 +326,6 @@
     var t = e.target.closest('[data-action]'); if (!t) return;
     var a = t.getAttribute('data-action');
     if (a === 'logout') return logout();
-    if (a === 'scan-registration') return openRegistrationScanner();
     if (a === 'scan') return openScanner();
     if (a === 'resolve-plate') return resolvePlate({ method: 'manual' });
     if (a === 'confirm-plate') return resolvePlate({ method: 'camera_ocr', confidence: state.plate ? state.plate.confidence : undefined, confirmed: true });
@@ -355,7 +350,7 @@
   var ROLE_FR = { admin: 'administrateur', manager: 'gestionnaire', technician: 'technicien' };
   async function loadSession() {
     var s = null;
-    try { var r = await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }); s = r.ok ? await r.json() : null; } catch (e) { s = null; }
+    try { s = window.IdAutoAdminShell ? await window.IdAutoAdminShell.session() : await fetch('/api/auth/get-session', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (r) { return r.ok ? r.json() : null; }); } catch (e) { s = null; }
     if (!s || !s.user) return toLogin();
     me = { name: s.user.name, email: s.user.email, role: s.user.role, org_id: s.user.org_id };
     $('[data-user-line]').textContent = 'Connecté : ' + me.name + ' · ' + (ROLE_FR[me.role] || me.role) + (me.org_id ? ' · organisation ' + me.org_id : '');

@@ -102,7 +102,7 @@ Nothing in this repository pretends to be further along than it is.
 
 | Area | State |
 |---|---|
-| PostgreSQL schema (24 tables, zero owner-PII columns) | **IMPLEMENTED** |
+| PostgreSQL schema (24 tables, zero owner-PII columns on vehicles and plates) | **IMPLEMENTED** — since IDA-UI-3 the owner's contact lives in a separate, per-workshop, audited table (`docs/PRIVACY_ARCHITECTURE.md` §1a, owner decision 2026-11-05) |
 | Read + write API, atomic audit logging | **IMPLEMENTED** (reference implementation; not deployed publicly) |
 | Content-addressed media storage | **IMPLEMENTED** |
 | Community ingestion service, rate limiting, review queue | **IMPLEMENTED** (admin-only route; no public endpoint exists) |
@@ -118,8 +118,8 @@ Nothing in this repository pretends to be further along than it is.
 | Parts: local catalogue + organisation stock, `TecDocAdapter` (IDA-V12) | **IMPLEMENTED** — TecDoc access **NOT CONFIGURED** (« Catalogue fournisseur non configuré ») |
 | Workshop: visits, operations, orders, `/atelier` page (IDA-V12) | **IMPLEMENTED** — customer identity stays in the workshop's own system (opaque reference only) |
 | Mock providers | tests only — refuse to construct in production |
-| Carte grise scanner: capture → Scanic → optimisation → face 1 / face 2 → OCR fra+ara → parser → conflicts → confirmation → passport (IDA-V14) | **IMPLEMENTED** — images in the private media store, technical fields only, retention and legal basis « à définir » (`docs/PRIVACY.md`) |
-| Homepage « Rechercher par carte grise » — same scanner in identify mode, VIN → plate → make/model, nothing stored | **IMPLEMENTED** (home search) |
+| Carte grise scanner (IDA-V14 OCR) | **RETIRED** 2026-11-05 as the registration path — UI entry points removed, OCR routes answer 410 unless `IDAUTO_CG_OCR_ENABLED=1`; the photo storage stays |
+| Application redesign (IDA-UI-1…3): one shell for every signed-in page (role-filtered sidebar, top bar with global search, notifications, language, profile), French / Arabic with RTL, manual vehicle registration with carte grise photos as evidence, vehicle dossier with maintenance history, technician interventions with the part source chosen by radio button, workshop dashboard, replaced parts, team, catalogue, account | **IMPLEMENTED** (branch `feature/ui-redesign-20261105`) — `docs/I18N.md`, `docs/API.md` « Workspace » |
 | Operator console, admin only, read only: dashboard `/admin/dashboard`, vehicle registry `/admin/vehicles` + dossier `/admin/vehicle`, maintenance history `/admin/maintenance`, ateliers & data sources `/admin/sources`, data quality `/admin/quality` (+ French review queue `/admin/review`), security & audit `/admin/security`, one shared responsive sidebar (IDA-ADMIN-1..7) | **IMPLEMENTED** — [`docs/ADMIN_CONSOLE.md`](docs/ADMIN_CONSOLE.md) |
 | Web authentication: `/login` (e-mail + password, Better Auth), server-side sessions, HttpOnly + Secure cookie, roles admin / manager / technician (IDA-V13) | **IMPLEMENTED** — the manual admin access token is gone from every web page; Bearer remains for server-to-server integrations |
 

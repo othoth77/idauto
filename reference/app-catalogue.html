@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Catalogue des pièces</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Navigation principale"></aside>
+<div class="ida-admin-main">
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-page-head">
+      <div>
+        <h1>Catalogue des pièces</h1>
+        <p class="ida-muted ida-u-maxch-52">Le catalogue local des pièces et leurs références. Une fiche du catalogue ne prouve ni un stock, ni un achat.</p>
+      </div>
+      <div class="ida-page-actions"></div>
+    </header>
+    <div id="page-status" aria-live="polite"></div>
+    <section class="ida-card ida-stack" aria-labelledby="sec-c">
+      <form class="ida-filter-bar" id="filter" role="search">
+        <div class="ida-field"><label for="f-q">Rechercher une pièce</label><input class="ida-input" id="f-q" type="search" maxlength="80" autocomplete="off" placeholder="Nom, marque, référence ou référence constructeur"></div>
+        <button type="submit" class="ida-btn ida-btn--secondary">Rechercher</button>
+      </form>
+      <h2 id="sec-c" class="ida-sr-only">Résultats</h2>
+      <div id="list" aria-live="polite"><p class="ida-muted">Saisissez au moins deux caractères.</p></div>
+    </section>
+    <section class="ida-card ida-stack" aria-labelledby="sec-add" id="add-box" hidden>
+      <h2 id="sec-add" class="ida-h3">Ajouter une pièce au catalogue</h2>
+      <form id="add-form" class="ida-stack" novalidate>
+        <div class="ida-form-grid">
+          <div class="ida-field"><label for="p-ref" class="ida-required">Référence</label><input class="ida-input" id="p-ref" maxlength="60" required autocomplete="off" dir="ltr"></div>
+          <div class="ida-field"><label for="p-brand" class="ida-required">Marque</label><input class="ida-input" id="p-brand" maxlength="80" required autocomplete="off"></div>
+          <div class="ida-field"><label for="p-name">Désignation</label><input class="ida-input" id="p-name" maxlength="200" autocomplete="off"></div>
+          <div class="ida-field"><label for="p-cat">Catégorie</label><input class="ida-input" id="p-cat" maxlength="80" autocomplete="off"></div>
+          <div class="ida-field"><label for="p-oe">Référence constructeur (OE)</label><input class="ida-input" id="p-oe" maxlength="60" autocomplete="off" dir="ltr"></div>
+        </div>
+        <div id="add-errors" aria-live="assertive"></div>
+        <div class="ida-form-actions"><button type="submit" class="ida-btn ida-btn--primary">Ajouter la pièce</button></div>
+      </form>
+    </section>
+  </div>
+</main>
+</div>
+</div>
+<script src="/atelier/i18n-catalog-ar.js"></script>
+<script src="/atelier/i18n.js"></script>
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/shell.js"></script>
+<script src="/atelier/console.js"></script>
+<script src="/atelier/app-catalogue.js"></script>
+</body>
+</html>

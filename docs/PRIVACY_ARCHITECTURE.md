@@ -1,7 +1,7 @@
 # Privacy Architecture
 
 **Status:** partly IMPLEMENTED and test-enforced, partly SPECIFIED. §9 states which.
-**Last updated:** 2026-08-18
+**Last updated:** 2026-11-05 (§1a owner contact, owner decision)
 **Predecessors:** the privacy contract established at IDA-0/IDA-1 in
 [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) and [`CAPTURE_PIPELINE.md`](CAPTURE_PIPELINE.md), which
 this document preserves rather than replaces.
@@ -23,6 +23,25 @@ implemented this way rather than as a permission rule.
 
 **Verified, not asserted:** the schema test asserts zero owner-PII columns across all
 tables, and it runs in the suite on every change.
+
+### 1a. Owner contact, per workshop (owner decision 2026-11-05, IDA-UI-3)
+
+The platform owner decided that a workshop may record **the owner's name and contact** (phone,
+e-mail, address) for a vehicle it handles, as its own client record, readable by the workshop's
+administrator, manager and technician accounts. §1 still holds for every **public** record; the
+change is exactly the "separate, access-controlled association" §2 anticipated:
+
+| Guarantee | How it is enforced | Test |
+|---|---|---|
+| No owner column on the vehicle or plate | the contact lives in `idauto_vehicle_owner_contacts` only (migration `ida-ui3-registration-maintenance.sql`) | `ida-2a` (no owner column in `schema.sql`), `ida-ui3-workspace` §1 (no owner/phone/name column on `idauto_vehicles`) |
+| Never public | the passport, the public routes, `/api/vehicles/:ref`, `/api/search/vehicles` never select it | `ida-ui3-workspace` §2 |
+| Per workshop | an organisation reads and searches only the contacts IT recorded; an admin reads all | `ida-ui3-workspace` §2, §5 |
+| Every read audited | `vehicle.owner.read` / `vehicle.owner.search` written BEFORE the data leaves (fails closed); the audit row names who and which vehicle, never the content | `ida-ui3-workspace` §2, §5 |
+| History, not overwrite | a change or a removal supersedes the row (`superseded_at`); nothing is edited in place | `ida-ui3-workspace` §2 |
+| Erasure | an erasure request deletes the contact rows of that person (operator action; the vehicle record stays whole) | procedure: §6 |
+
+Workshop tables still hold no name, phone, address or e-mail (`ida-v12` test): the workshop keeps
+its opaque `customer_ref`; the contact is attached to the vehicle, per workshop.
 
 ---
 

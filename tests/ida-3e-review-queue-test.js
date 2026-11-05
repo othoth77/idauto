@@ -130,7 +130,8 @@ async function staticCases() {
   ok(!/api\\\/review[^\n]*(?:ownerSession|OWNER_SESSION)/.test(apiSource), 'no review route was added to the owner-session grant');
   ok(!/CREATE\s+(?:TABLE|INDEX)|ALTER\s+TABLE/i.test(changedSource), 'modified sources contain no DDL');
   ok(!/DELETE\s+FROM|TRUNCATE\s|DROP\s/i.test(writesSource.slice(writesSource.indexOf('async function reviewFact'))), 'fact review path contains no destructive SQL');
-  var publicRead = /FROM idauto_vehicle_facts WHERE vehicle_id = \$1 AND access_scope != \$2 ORDER BY fact_key/.test(apiSource);
+  // IDA-UI-3: the query gained the VIN filter (vin:search only) between the scope test and ORDER BY.
+  var publicRead = /FROM idauto_vehicle_facts WHERE vehicle_id = \$1 AND access_scope != \$2' \+ vf\.sql \+ ' ORDER BY fact_key/.test(apiSource);
   ok(publicRead && !/FROM idauto_vehicle_facts WHERE vehicle_id = \$1 AND[^'\n]*verification_status/.test(apiSource), 'non-admin fact read remains scope-only with no verification-status filter');
   ok(/SELECT id, fact_key, fact_value, confidence_score, verification_status, access_scope/.test(apiSource), 'review detail includes actionable private fact fields');
   ok(!/SELECT[^;]+object_key[^;]+getReviewSubmission/.test(apiSource), 'review responses do not select media object_key');

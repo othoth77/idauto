@@ -36,6 +36,7 @@ var writes = require('./writes.js');
 var identity = require('./identity.js');
 
 var WEB_ROOT = path.join(__dirname, '..', 'web');
+var i18nServe = require('./i18n-serve.js');
 
 // The atelier page: same origin, same static discipline as /admin (a map, no
 // path concatenation), but with the citizen CSP because it runs the
@@ -57,8 +58,22 @@ var ATELIER_ASSETS = {
   '/atelier/assets/scanic.umd.js': { root: WEB_ROOT, file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/registration-parser.js': { file: 'documents/registration-parser.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/registration-scanner.js': { root: WEB_ROOT, file: 'citizen/registration-scanner.js', contentType: 'application/javascript; charset=utf-8' },
-  '/atelier/assets/document.css': { root: WEB_ROOT, file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' }
+  '/atelier/assets/document.css': { root: WEB_ROOT, file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' },
+  // IDA-UI-1/2 — the one application shell, its stylesheet and the French/Arabic layer, shared with /admin.
+  '/atelier/shell.js': { file: 'admin-shell.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/admin.css': { file: 'admin.css', contentType: 'text/css; charset=utf-8' },
+  '/atelier/console.js': { file: 'admin-console.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/i18n.js': { file: 'i18n.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/i18n-catalog-ar.js': { file: 'i18n-catalog-ar.js', contentType: 'application/javascript; charset=utf-8' }
 };
+// IDA-UI-3 — the workshop pages (static shells; every datum comes from the scoped APIs).
+[['tableau-de-bord', 'app-dashboard'], ['vehicules', 'app-vehicles'], ['vehicules/nouveau', 'app-register'], ['vehicule', 'app-dossier'],
+  ['documents', 'app-documents'], ['interventions', 'app-interventions'], ['pieces-remplacees', 'app-parts-used'], ['techniciens', 'app-technicians'],
+  ['catalogue', 'app-catalogue'], ['compte', 'app-account']].forEach(function (p) {
+  ATELIER_ASSETS['/atelier/' + p[0]] = { file: p[1] + '.html', contentType: 'text/html; charset=utf-8' };
+  ATELIER_ASSETS['/atelier/' + p[0] + '/'] = { file: p[1] + '.html', contentType: 'text/html; charset=utf-8' };
+  ATELIER_ASSETS['/atelier/' + p[1] + '.js'] = { file: p[1] + '.js', contentType: 'application/javascript; charset=utf-8' };
+});
 // The OCR engine files are the same vendored files the citizen page uses;
 // plate-scanner.js loads them from /assets/tesseract/, which api.js serves
 // only in the PUBLIC phase. The atelier page passes its own engine base so
@@ -99,11 +114,13 @@ function createV12(ctx) {
 
   // Serves the atelier page and its assets. Called before requireAuth() —
   // static shells only; every data call the page makes carries a Bearer.
+  function isAtelierPage(pathname) { var a = ATELIER_ASSETS[pathname]; return !!a && /^text\/html/.test(a.contentType); }
   function serveAtelierAsset(req, res, pathname) {
     var asset = ATELIER_ASSETS[pathname];
     if (!asset || (req.method !== 'GET' && req.method !== 'HEAD')) return false;
     fs.readFile(path.join(asset.root || __dirname, asset.file), function (err, content) {
       if (err) return sendJson(res, 500, { error: 'atelier UI unavailable' });
+      content = i18nServe.localize(content, asset.contentType, req);
       res.writeHead(200, { 'Content-Type': asset.contentType, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': ATELIER_CSP, 'Content-Length': content.length });
       res.end(req.method === 'HEAD' ? undefined : content);
     });
@@ -290,7 +307,7 @@ function createV12(ctx) {
     { method: 'POST', pattern: /^\/api\/workshop\/orders\/([^/]+)\/status$/, handler: guard(postOrderStatus) }
   ];
 
-  return { routes: routes, scopes: scopes, serveAtelierAsset: serveAtelierAsset, resolver: resolver, catalog: catalog, workshop: workshop, observability: obs };
+  return { routes: routes, scopes: scopes, serveAtelierAsset: serveAtelierAsset, isAtelierPage: isAtelierPage, resolver: resolver, catalog: catalog, workshop: workshop, observability: obs };
 }
 
 module.exports = { createV12: createV12, ATELIER_ASSETS: ATELIER_ASSETS, ATELIER_CSP: ATELIER_CSP };

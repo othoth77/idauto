@@ -50,9 +50,9 @@ Roles: **admin** (everything, may act for an organisation by naming `org_id`), *
 | `PUT …/registration-document/:face/thumbnail` | `document:write` | ≤ 512 KB |
 | `GET …/registration-document/:face/image?variant=thumb` | `document:read` | the bytes, `Cache-Control: private, no-store` · 404 when absent or another organisation's |
 | `DELETE …/registration-document/:face` | `document:delete` | manager / admin |
-| `POST …/registration-document/ocr` | `document:write` | `{ faces:[{ face, text, confidence }] }` → `{ fields[], candidate, comparison:{ items[{ key, proposed, current, status: same|new|conflict }], conflicts }, requires_confirmation:true }` — text parsed in memory, never stored |
-| `POST /api/identify/registration-document` | `vehicle:resolve` | homepage « Rechercher par carte grise »: `{ faces:[{ face, text, confidence }] }` (face 1 mandatory, face 2 optional) → `{ status: found|not_found, identified_by: vin|plate|make_model|null, vehicle, ocr (technical only), options }`. Order: valid 17-char VIN (only with `vin:search`, audited), then plate, then exact make/model match. **Writes nothing** — no document stored, no vehicle created. Anonymous visitors use the plate read through `GET /public/plates/:plate` instead. |
-| `POST …/registration-document/confirm` | `vehicle:write` | `{ candidate, plate?, vin?, confidence }` → `resolver.confirm()` with method/source `carte_grise_ocr` |
+| `POST …/registration-document/ocr` *(retired: 410 unless `IDAUTO_CG_OCR_ENABLED=1`)* | `document:write` | `{ faces:[{ face, text, confidence }] }` → `{ fields[], candidate, comparison:{ items[{ key, proposed, current, status: same|new|conflict }], conflicts }, requires_confirmation:true }` — text parsed in memory, never stored |
+| `POST /api/identify/registration-document` *(retired: 410 unless `IDAUTO_CG_OCR_ENABLED=1`)* | `vehicle:resolve` | former homepage « Rechercher par carte grise »: `{ faces:[{ face, text, confidence }] }` (face 1 mandatory, face 2 optional) → `{ status: found|not_found, identified_by: vin|plate|make_model|null, vehicle, ocr (technical only), options }`. Order: valid 17-char VIN (only with `vin:search`, audited), then plate, then exact make/model match. **Writes nothing** — no document stored, no vehicle created. Anonymous visitors use the plate read through `GET /public/plates/:plate` instead. |
+| `POST …/registration-document/confirm` *(retired: 410 unless `IDAUTO_CG_OCR_ENABLED=1`)* | `vehicle:write` | `{ candidate, plate?, vin?, confidence }` → `resolver.confirm()` with method/source `carte_grise_ocr` |
 
 Uploads and OCR runs: 60 per user per 10 minutes.
 
@@ -73,18 +73,42 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 
 | Route | Scope | Notes |
 |---|---|---|
-| `POST /api/workshop/visits` | `workshop:write` | `{ plate? | vin? | selection?, plate_read_method?, ocr_confidence?, plate_confirmed?, customer_ref?, reason?, org_id? (admin) }` → 201 `{ visit, identification }` — identification runs inline; the visit gets its vehicle only when `resolved` |
+| `POST /api/workshop/visits` | `workshop:write` | `{ vehicle_ref? (a vehicle chosen in IDauto: opened from its dossier) | plate? | vin? | selection?, plate_read_method?, ocr_confidence?, plate_confirmed?, customer_ref?, reason?, org_id? (admin) }` → 201 `{ visit, identification }` — identification runs inline; the visit gets its vehicle only when `resolved` |
 | `GET /api/workshop/visits?vehicle_ref=&status=` | `workshop:read` | the organisation's visits |
 | `GET /api/workshop/visits/:id` | `workshop:read` | visit + operations + orders; 404 for another organisation's visit |
 | `POST /api/workshop/visits/:id/identification` | `workshop:write` + `vehicle:write` | same body as `/api/resolve/confirm`; attaches the confirmed vehicle |
 | `GET /api/workshop/visits/:id/parts?category=` | `workshop:read` | parts compatible with the visit's vehicle |
-| `POST /api/workshop/visits/:id/operations` | `workshop:write` | `{ operation_type: diagnosis|replacement|service|repair|inspection|other, description?, part_id?: 'local:<n>', quantity? }` |
+| `POST /api/workshop/visits/:id/operations` | `workshop:write` | `{ operation_type: diagnosis|replacement|service|repair|inspection|other, description?, part_id?: 'local:<n>', part_label?, part_reference?, quantity? (1–999), part_source: our_shop|customer_supplied|external_supplier (required with a part), part_condition?: new|used, performed_on?: YYYY-MM-DD (not in the future), notes?, status?: planned|done }` — the source is DECLARED by the technician, not proven (no invoice is held) |
 | `POST /api/workshop/visits/:id/operations/:opId/status` | `workshop:write` | `{ status: planned|done|cancelled }` |
 | `POST /api/workshop/visits/:id/close` · `/cancel` | `workshop:write` | 409 if not open |
 | `POST /api/workshop/orders` | `workshop:write` | `{ visit_id?, supplier_ref?, lines:[{ part_id:'local:<n>', quantity, unit_price_millimes? }] }` → 201 draft |
 | `GET /api/workshop/orders/:id` · `POST …/status` | `workshop:read` / `workshop:write` | `draft|placed|received|cancelled` |
 
 `customer_ref` is an opaque identifier of the workshop's own customer record (1–64 chars, no spaces); a value that looks like a name or phone is refused.
+
+## Workspace (IDA-UI-3) — registration, dossier, owner, search
+
+Every route filters by organisation in SQL: an organisation sees the shared registry (identity, plates) plus only
+ITS OWN interventions, documents and owner contacts; an admin sees everything.
+
+| Route | Scope | Notes |
+|---|---|---|
+| `POST /api/vehicles/register` | `vehicle:write` | manual registration from the carte grise: `{ plate: {type:'TU'\|'RS', series, number} (« 123 TU 4567 », « 123 RS 4567 ») \| "123 TU 4567", vin?, make (required), model?, variant?, year?, fuel_type?: petrol\|diesel\|lpg\|electric\|hybrid\|other, engine_cc?, seats?, gross_weight_kg?, category_code?, body_type?, colour?, engine_code?, owner?: {full_name, phone?, email?, address?} }` — a plate or a VIN is required. One transaction (plate/VIN locked): vehicle, IVID, plate, VIN, owner. 409 `vehicle_already_registered`: the IVID is given for a plate only with `plate:read`, for a VIN only with `vin:search`; a VIN conflict is a VIN lookup and is audited (`vehicle.search.vin`, digest only) even though the registration rolls back. 30 attempts/min per account (429). Photos then go to `PUT …/registration-document/:face`. |
+| `GET /api/vehicles/:ref/dossier` | `vehicle:read` | `{ vehicle (VIN only with vin:search — audited), plates, documents{faces, can_upload, can_delete}, owner{recorded, can_read, can_write}, maintenance[interventions with operations, parts, source, technician], identification, scope }` |
+| `GET /api/vehicles/:ref/owner` | `owner:read` | `{ contacts[] }` — this workshop's contact (admin: all); **every read audited** (`vehicle.owner.read`, no personal data in the row) |
+| `PUT /api/vehicles/:ref/owner` · `DELETE` | `owner:write` | `{ full_name (required), phone?, email?, address?, notes? }` — supersedes the previous row (history kept); delete supersedes too |
+| `GET /api/workspace/vehicles?q&page` | `vehicle:read` | the workshop's vehicles (visited, registered, documented or with an owner contact); admin: all |
+| `GET /api/workspace/documents?page` | `document:read` | vehicles with carte grise photos |
+| `GET /api/workspace/interventions?status&id&vehicle` | `workshop:read` | interventions with their operations |
+| `GET /api/workspace/parts-used?source` | `workshop:read` | replaced/repaired parts with their declared source |
+| `GET /api/workspace/technicians` | `team:read` (manager, admin) | the workshop's accounts and their recorded activity |
+| `GET /api/workspace/overview` | `vehicle:read` | dashboard counts (own workshop; admin: platform) |
+| `GET /api/notifications` | `vehicle:read` | real counts, each with the page that lists them |
+| `GET /api/search?q=` | `vehicle:read` | `{ groups: [vehicles, owners, interventions, parts] }`, ≥ 2 characters; the vehicles group needs `vehicle:search` and is the shared registry (identity only, as `/api/search/vehicles`), 30 searches/min per account; owners only with `owner:read` (own workshop, audited), VIN only with `vin:search` (audited), interventions of the own workshop |
+| `GET /api/admin/roles` | admin | the role → scope matrix the server applies |
+
+Security fix (2026-11-05): `GET /api/vehicles/:ref/facts` and `GET /api/passport/:ivid` no longer return the VIN fact
+without `vin:search`; when they do, the disclosure is audited (`vehicle.vin.read`).
 
 ## Error codes (V12)
 

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Ajouter un véhicule</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Navigation principale"></aside>
+<div class="ida-admin-main">
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-page-head">
+      <div>
+        <h1>Ajouter un véhicule</h1>
+        <p class="ida-muted ida-u-maxch-52">Saisissez les informations de la carte grise. Les photos de la carte sont jointes au dossier comme pièces justificatives ; rien n&#x27;est lu automatiquement.</p>
+      </div>
+      <div class="ida-page-actions"></div>
+    </header>
+    <div id="page-status" aria-live="polite"></div>
+    <form id="register-form" class="ida-stack-lg" novalidate>
+      <section class="ida-card ida-form-section" aria-labelledby="sec-ident">
+        <h2 id="sec-ident">Identification</h2>
+        <fieldset class="ida-radio-group ida-radio-inline">
+          <legend>Type d'immatriculation</legend>
+          <label class="ida-radio"><input type="radio" name="plate_type" value="TU" checked> Série tunisienne (TU)</label>
+          <label class="ida-radio"><input type="radio" name="plate_type" value="RS"> Régime suspensif (RS)</label>
+        </fieldset>
+        <div class="ida-form-grid">
+          <div class="ida-field">
+            <label for="f-plate-series" id="lbl-plate">Immatriculation</label>
+            <div class="ida-plate-row">
+              <input class="ida-input ida-id" id="f-plate-series" name="plate_series" inputmode="numeric" maxlength="3" autocomplete="off" aria-label="Série (3 chiffres au plus)" aria-describedby="hint-plate">
+              <span class="ida-plate-word ida-id" aria-hidden="true" data-plate-word>TU</span>
+              <input class="ida-input ida-id" id="f-plate-number" name="plate_number" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Numéro (4 chiffres au plus)" aria-describedby="hint-plate">
+            </div>
+            <p class="ida-field-hint" id="hint-plate">Comme sur la plaque : série et numéro. L'immatriculation ou le numéro de châssis est obligatoire.</p>
+          </div>
+          <div class="ida-field">
+            <label for="f-vin">Numéro de châssis (VIN)</label>
+            <input class="ida-input" id="f-vin" name="vin" maxlength="17" autocomplete="off" spellcheck="false" dir="ltr" aria-describedby="hint-vin">
+            <p class="ida-field-hint" id="hint-vin">17 caractères, sans I, O ni Q.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="ida-card ida-form-section" aria-labelledby="sec-vehicle">
+        <h2 id="sec-vehicle">Véhicule</h2>
+        <div class="ida-form-grid">
+          <div class="ida-field"><label for="f-make" class="ida-required">Marque</label><input class="ida-input" id="f-make" name="make" maxlength="80" required autocomplete="off"></div>
+          <div class="ida-field"><label for="f-model">Modèle</label><input class="ida-input" id="f-model" name="model" maxlength="80" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-variant">Version</label><input class="ida-input" id="f-variant" name="variant" maxlength="80" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-year">Année</label><input class="ida-input" id="f-year" name="year" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-fuel">Énergie</label>
+            <select class="ida-input" id="f-fuel" name="fuel_type">
+              <option value="">—</option><option value="petrol">Essence</option><option value="diesel">Diesel</option><option value="lpg">GPL</option>
+              <option value="electric">Électrique</option><option value="hybrid">Hybride</option><option value="other">Autre</option>
+            </select></div>
+          <div class="ida-field"><label for="f-cc">Cylindrée (cm³)</label><input class="ida-input" id="f-cc" name="engine_cc" inputmode="numeric" maxlength="5" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-seats">Places</label><input class="ida-input" id="f-seats" name="seats" inputmode="numeric" maxlength="2" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-weight">Poids total autorisé (kg)</label><input class="ida-input" id="f-weight" name="gross_weight_kg" inputmode="numeric" maxlength="5" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-category">Catégorie</label><input class="ida-input" id="f-category" name="category_code" maxlength="4" autocomplete="off" placeholder="M1, N1…"></div>
+          <div class="ida-field"><label for="f-body">Carrosserie</label><input class="ida-input" id="f-body" name="body_type" maxlength="40" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-colour">Couleur</label><input class="ida-input" id="f-colour" name="colour" maxlength="40" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-engine">Code moteur</label><input class="ida-input" id="f-engine" name="engine_code" maxlength="30" autocomplete="off" dir="ltr"></div>
+        </div>
+      </section>
+
+      <section class="ida-card ida-form-section" aria-labelledby="sec-owner">
+        <h2 id="sec-owner">Propriétaire</h2>
+        <p class="ida-small ida-muted">Coordonnées privées : visibles uniquement par votre atelier et les administrateurs, jamais sur le passeport ni dans une page publique. Chaque consultation est enregistrée au journal.</p>
+        <div class="ida-form-grid">
+          <div class="ida-field"><label for="f-owner-name">Nom et prénom</label><input class="ida-input" id="f-owner-name" name="owner_full_name" maxlength="120" autocomplete="off"></div>
+          <div class="ida-field"><label for="f-owner-phone">Téléphone</label><input class="ida-input" id="f-owner-phone" name="owner_phone" type="tel" maxlength="30" autocomplete="off" dir="ltr" placeholder="+216 …"></div>
+          <div class="ida-field"><label for="f-owner-email">E-mail</label><input class="ida-input" id="f-owner-email" name="owner_email" type="email" maxlength="160" autocomplete="off" dir="ltr"></div>
+          <div class="ida-field"><label for="f-owner-address">Adresse</label><input class="ida-input" id="f-owner-address" name="owner_address" maxlength="240" autocomplete="off"></div>
+        </div>
+      </section>
+
+      <section class="ida-card ida-form-section" aria-labelledby="sec-docs">
+        <h2 id="sec-docs">Carte grise</h2>
+        <p class="ida-small ida-muted">Photos jointes comme pièces justificatives (JPEG, PNG ou WebP, 6 Mo au plus). Elles sont conservées dans un stockage privé et ne sont pas lues automatiquement.</p>
+        <div class="ida-faces">
+          <div class="ida-face">
+            <p class="ida-label">Face 1 — recto</p>
+            <div class="ida-face-preview" data-preview="1"><span class="ida-muted">Aucune photo</span></div>
+            <label class="ida-btn ida-btn--secondary ida-btn--sm ida-file-btn">Choisir ou prendre la photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-file="1"></label>
+            <p class="ida-field-hint" data-face-msg="1"></p>
+          </div>
+          <div class="ida-face">
+            <p class="ida-label">Face 2 — verso</p>
+            <div class="ida-face-preview" data-preview="2"><span class="ida-muted">Aucune photo</span></div>
+            <label class="ida-btn ida-btn--secondary ida-btn--sm ida-file-btn">Choisir ou prendre la photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-file="2"></label>
+            <p class="ida-field-hint" data-face-msg="2"></p>
+          </div>
+        </div>
+      </section>
+
+      <div id="form-errors" aria-live="assertive"></div>
+      <div class="ida-form-actions">
+        <a class="ida-btn ida-btn--ghost" href="/atelier/vehicules">Annuler</a>
+        <button type="submit" class="ida-btn ida-btn--primary" id="register-submit">Enregistrer le véhicule</button>
+      </div>
+    </form>
+  </div>
+</main>
+</div>
+</div>
+<script src="/atelier/i18n-catalog-ar.js"></script>
+<script src="/atelier/i18n.js"></script>
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/shell.js"></script>
+<script src="/atelier/console.js"></script>
+<script src="/atelier/app-register.js"></script>
+</body>
+</html>

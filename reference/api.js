@@ -65,6 +65,7 @@ var v12Routes = require('./v12-routes.js');
 var plateNormalizer = require('./vehicle/plate-normalizer.js');
 var sessionAuth = require('./auth/principal.js');
 var v14Routes = require('./v14-routes.js');
+var workspaceRoutes = require('./workspace-routes.js');
 var adminRoutes = require('./admin-routes.js');
 var observability = require('./observability.js');
 
@@ -388,6 +389,7 @@ function decodePathSegment(segment) {
  *
  * Still a map, still GET-only, still no concatenation of request input into a
  * path — the traversal properties are unchanged. */
+var i18nServe = require('./i18n-serve.js');
 var WEB_ROOT = path.join(__dirname, '..', 'web');
 
 var ADMIN_ASSETS = {
@@ -439,7 +441,19 @@ var ADMIN_ASSETS = {
   '/admin/assets/base.css': { root: WEB_ROOT, file: 'design-system/css/base.css', contentType: 'text/css; charset=utf-8' },
   '/admin/assets/components.css': { root: WEB_ROOT, file: 'design-system/css/components.css', contentType: 'text/css; charset=utf-8' },
   '/admin/assets/ui.js': { root: WEB_ROOT, file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
-  '/admin/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' }
+  '/admin/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
+  // IDA-UI-3 — platform accounts and the role matrix (admin; data from /api/admin/accounts, /api/admin/roles).
+  '/admin/utilisateurs': { file: 'admin-users.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/utilisateurs/': { file: 'admin-users.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/users-ui.js': { file: 'admin-users-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/roles': { file: 'admin-roles.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/roles/': { file: 'admin-roles.html', contentType: 'text/html; charset=utf-8' },
+  '/admin/roles-ui.js': { file: 'admin-roles-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  // IDA-UI-2 — French/Arabic (the same two files on every surface).
+  '/admin/i18n.js': { file: 'i18n.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/i18n-catalog-ar.js': { file: 'i18n-catalog-ar.js', contentType: 'application/javascript; charset=utf-8' },
+  '/login/i18n.js': { file: 'i18n.js', contentType: 'application/javascript; charset=utf-8' },
+  '/login/i18n-catalog-ar.js': { file: 'i18n-catalog-ar.js', contentType: 'application/javascript; charset=utf-8' }
 };
 
 // The admin shell contains no data or credentials. API calls made by the
@@ -450,6 +464,7 @@ function serveAdminAsset(req, res, pathname) {
   if (!asset || req.method !== 'GET') return false;
   fs.readFile(path.join(asset.root || __dirname, asset.file), function (err, content) {
     if (err) return sendJson(res, 500, { error: 'admin UI unavailable' });
+    content = i18nServe.localize(content, asset.contentType, req);
     res.writeHead(200, {
       'Content-Type': asset.contentType,
       'Cache-Control': 'no-store',
@@ -493,6 +508,8 @@ var CITIZEN_ASSETS = {
   '/assets/components.css': { file: 'design-system/css/components.css', contentType: 'text/css; charset=utf-8' },
   '/assets/plate.js': { file: 'design-system/js/plate.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/ui.js': { file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/i18n.js': { root: __dirname, file: 'i18n.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/i18n-catalog-ar.js': { root: __dirname, file: 'i18n-catalog-ar.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/ivid-client.js': { file: 'design-system/js/ivid-client.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/qrcodegen.js': { file: 'vendor/qrcodegen.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/passport-render.js': { file: 'citizen/passport-render.js', contentType: 'application/javascript; charset=utf-8' },
@@ -564,8 +581,9 @@ function serveCitizenAsset(req, res, pathname) {
   // PHASE GATE before anything else — PRIVATE phase means this surface
   // does not exist; fall through to the pre-existing dispatch unchanged.
   if (!loadPublicResolutionConfig().enabled) return false;
-  fs.readFile(path.join(CITIZEN_WEB_ROOT, asset.file), function (err, content) {
+  fs.readFile(path.join(asset.root || CITIZEN_WEB_ROOT, asset.file), function (err, content) {
     if (err) return sendJson(res, 500, { error: 'citizen UI unavailable' });
+    content = i18nServe.localize(content, asset.contentType, req);
     res.writeHead(200, {
       'Content-Type': asset.contentType,
       'Cache-Control': 'no-store',
@@ -1544,7 +1562,7 @@ async function getPlate(res, plateNumber) {
 // original comment here miscited it. The A5-PLATE ruling does not need
 // restricted facts to satisfy its plate-display requirement: plates
 // live in idauto_plates, entirely independent of a fact's access_scope.
-async function getPrivatePassport(res, rawIvid) {
+async function getPrivatePassport(req, res, rawIvid) {
   if (!ivid.validate(rawIvid).ok) return notFound(res);
 
   var vehicleResult = await db.query(
@@ -1569,10 +1587,11 @@ async function getPrivatePassport(res, rawIvid) {
   var factsResult = await db.query(
     'SELECT id, fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, access_scope ' +
     'FROM idauto_vehicle_facts WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ' +
-    'AND access_scope != $2 AND is_active = TRUE ' +
+    'AND access_scope != $2 AND is_active = TRUE' + (await vinFactFilter(req)).sql + ' ' +
     'ORDER BY fact_key',
     [rawIvid, 'mythos_private']
   );
+  await auditVinIfShown(req, rawIvid, factsResult.rows);
 
   // Plate records — the PRIVATE-phase half of the A5-PLATE ruling in
   // effect: idauto_plates.vehicle_id is a direct FK to idauto_vehicles,
@@ -1639,18 +1658,33 @@ async function getObservation(req, res, id) {
 // on getVehicle() above. vehicle_internal_ref in the response is the
 // RESOLVED internal_ref, never the string the caller sent, so a caller that
 // asked by IVID is told which record answered.
-async function getFactsForVehicle(res, internalRef) {
+// IDA-UI-3 security fix (2026-11-05): the VIN fact is 'professional' scope, so the
+// != 'mythos_private' filter alone returned it to any fact:read / passport:read
+// holder — technicians included, who have no vin:search — with no audit row.
+// The VIN now needs vin:search, and its disclosure is audited first, exactly as
+// the vehicle fiche does (writes.recordVinDisclosureAudit).
+async function vinFactFilter(req, ivid) {
+  var allowed = !!(req && identity.principalHasScope(req.principal, 'vin:search'));
+  return { allowed: allowed, sql: allowed ? '' : " AND lower(trim(fact_key)) <> 'vin'" };
+}
+async function auditVinIfShown(req, ivid, rows) {
+  if (rows.some(function (r) { return String(r.fact_key).trim().toLowerCase() === 'vin'; })) await writes.recordVinDisclosureAudit(req.principal, req.mythosIdentity, ivid);
+}
+
+async function getFactsForVehicle(req, res, internalRef) {
   var vehicle = await db.query(
-    'SELECT id, internal_ref FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1',
+    'SELECT id, internal_ref, ivid FROM idauto_vehicles WHERE internal_ref = $1 OR ivid = $1',
     [internalRef]
   );
   if (vehicle.rows.length === 0) return notFound(res);
+  var vf = await vinFactFilter(req);
   var result = await db.query(
     'SELECT fact_key, fact_value, fact_value_normalized, confidence_score, verification_status, ' +
     'access_scope, is_active, first_seen_at, last_seen_at ' +
-    'FROM idauto_vehicle_facts WHERE vehicle_id = $1 AND access_scope != $2 ORDER BY fact_key',
+    'FROM idauto_vehicle_facts WHERE vehicle_id = $1 AND access_scope != $2' + vf.sql + ' ORDER BY fact_key',
     [vehicle.rows[0].id, 'mythos_private']
   );
+  await auditVinIfShown(req, vehicle.rows[0].ivid || vehicle.rows[0].internal_ref, result.rows);
   sendJson(res, 200, { vehicle_internal_ref: vehicle.rows[0].internal_ref, facts: result.rows });
 }
 
@@ -2089,7 +2123,8 @@ var v14 = v14Routes.createV14({ sendJson: sendJson, readJsonBody: readJsonBody, 
 // ALL_ROUTE_SCOPES: absent from the table means admin-only (see the gate in
 // createServer()), and admin-routes.js checks the admin scope again.
 var adminConsole = adminRoutes.createAdminRoutes({ sendJson: sendJson, decodePathSegment: decodePathSegment, resolver: v12.resolver, catalog: v12.catalog });
-var ALL_ROUTE_SCOPES = ROUTE_SCOPES.concat(v12.scopes, v14.scopes);
+var workspace = workspaceRoutes.createWorkspace({ sendJson: sendJson, readJsonBody: readJsonBody, decodePathSegment: decodePathSegment });
+var ALL_ROUTE_SCOPES = workspace.scopes.concat(ROUTE_SCOPES, v12.scopes, v14.scopes);
 
 function scopeForRoute(method, pathname) {
   for (var i = 0; i < ALL_ROUTE_SCOPES.length; i++) {
@@ -2107,7 +2142,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/review\/submissions$/, handler: function (req, res) { return getReviewSubmissions(res); } },
   { method: 'GET', pattern: /^\/api\/review\/submissions\/([^/]+)$/, handler: function (req, res, m) { return getReviewSubmission(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/review\/facts\/([^/]+)\/decision$/, handler: function (req, res, m) { return postFactReviewDecision(req, res, decodePathSegment(m[1])); } },
-  { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/facts$/, handler: function (req, res, m) { return getFactsForVehicle(res, decodePathSegment(m[1])); } },
+  { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/facts$/, handler: function (req, res, m) { return getFactsForVehicle(req, res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/facts$/, handler: function (req, res, m) { return postFact(req, res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)$/, handler: function (req, res, m) { return getVehicle(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/vehicles$/, handler: function (req, res) { return postVehicle(req, res); } },
@@ -2116,7 +2151,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/resolve$/, handler: function (req, res, m) { return getVehicleResolve(res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/plates\/([^/]+)$/, handler: function (req, res, m) { return getPlate(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/plates$/, handler: function (req, res) { return postPlate(req, res); } },
-  { method: 'GET', pattern: /^\/api\/passport\/([^/]+)$/, handler: function (req, res, m) { return getPrivatePassport(res, decodePathSegment(m[1])); } },
+  { method: 'GET', pattern: /^\/api\/passport\/([^/]+)$/, handler: function (req, res, m) { return getPrivatePassport(req, res, decodePathSegment(m[1])); } },
   { method: 'GET', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return getObservationMedia(res, decodePathSegment(m[1])); } },
   { method: 'POST', pattern: /^\/api\/ingest\/observations$/, handler: function (req, res) { return postIngestObservation(req, res); } },
   { method: 'POST', pattern: /^\/api\/observations\/([^/]+)\/media$/, handler: function (req, res, m) { return postObservationMedia(req, res, decodePathSegment(m[1])); } },
@@ -2125,7 +2160,7 @@ var ROUTES = [
   { method: 'GET', pattern: /^\/api\/facts\/([^/]+)\/evidence$/, handler: function (req, res, m) { return getEvidenceForFact(res, decodePathSegment(m[1])); } }
 ];
 
-var ALL_ROUTES = ROUTES.concat(v14.routes, v12.routes, adminConsole.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
+var ALL_ROUTES = workspace.routes.concat(ROUTES, v14.routes, v12.routes, adminConsole.routes);   // v14 first: its longer /registration-document patterns must win over /api/vehicles/:ref
 
 function createServer() {
   return http.createServer(function (req, res) {
@@ -2138,10 +2173,11 @@ function createServer() {
       // IDA-V13 — /atelier is a signed-in surface: no session → /login. The
       // page's assets stay static (they carry no data), and every data call
       // the page makes is authenticated below.
-      if (pathname === '/atelier' || pathname === '/atelier/') {
+      // IDA-UI-3 — every workshop PAGE (not its scripts and styles) is behind the same gate.
+      if (v12.isAtelierPage(pathname)) {
         var pageSession = await sessionAuth.resolveUserSession(req);
         if (!pageSession || !pageSession.user) {
-          res.writeHead(302, { 'Location': '/login?next=' + encodeURIComponent('/atelier'), 'Cache-Control': 'no-store' });
+          res.writeHead(302, { 'Location': '/login?next=' + encodeURIComponent(pathname + (parsed.search || '')), 'Cache-Control': 'no-store' });
           return res.end();
         }
       }

@@ -31,10 +31,13 @@ var SESSION_HEADER = 'x-idauto-session';
 
 var MANAGER_SCOPES = ['vehicle:read', 'vehicle:write', 'vehicle:search', 'vehicle:resolve', 'vin:search', 'plate:read', 'fact:read', 'fact:write',
   'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'parts:write', 'stock:write', 'workshop:read', 'workshop:write',
-  'document:read', 'document:write', 'document:delete'];
+  'document:read', 'document:write', 'document:delete',
+  // IDA-UI-3 (owner decision 2026-11-05): the owner's contact (own organisation only, audited) and the team list.
+  'owner:read', 'owner:write', 'team:read'];
 var TECHNICIAN_SCOPES = ['vehicle:read', 'vehicle:write', 'vehicle:search', 'vehicle:resolve', 'plate:read', 'fact:read',
   'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'workshop:read', 'workshop:write',
-  'document:read', 'document:write'];   // a technician may scan and replace, not delete
+  'document:read', 'document:write',   // a technician may photograph and replace, not delete
+  'owner:read', 'owner:write'];        // IDA-UI-3: the owner's contact of their own workshop (owner decision 2026-11-05)
 
 // The exact Better Auth routes the web UI may reach. Everything else under
 // /api/auth (sign-up, social, password reset by e-mail, …) is 404.

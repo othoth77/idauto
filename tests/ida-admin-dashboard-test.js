@@ -108,11 +108,11 @@ async function main() {
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-dashboard.html'), 'utf8');
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
   var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
-  ok(shellNav.locate('/admin/dashboard').module.href === '/admin/dashboard' && shellNav.locate('/admin/dashboard').page.href === '/admin/dashboard', 'the shared sidebar marks /admin/dashboard as the current module and page');
+  ok(shellNav.locate('/admin/dashboard').item.admin === '/admin/dashboard', 'the shared sidebar marks /admin/dashboard as the current module and page');
   var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];
 ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1 && (h.match(/<script src="\/admin\/shell\.js"><\/script>/g) || []).length === 1 && !/ida-nav-links|aria-current=/.test(h); }),
     'all ' + pages.length + ' console pages carry the one shared sidebar slot and load the shell once, with no menu of their own');
-  ok(shellNav.NAV[0].href === '/admin/dashboard' && shellNav.NAV[0].label === 'Tableau de bord', 'the shared navigation opens with the dashboard');
+  ok(shellNav.NAV[0].admin === '/admin/dashboard' && shellNav.NAV[0].label === 'Tableau de bord', 'the shared navigation opens with the dashboard');
 
   /* ===================================================================== */
   say('\n1. ACCESS');

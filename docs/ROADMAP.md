@@ -42,6 +42,7 @@ anywhere.
 | IDA-8 | Blockchain anchoring / Merkle proofs | **SPECIFIED** |
 | IDA-9 | Open protocol, ecosystem, internationalisation | **PLANNED** |
 | IDA-V1…V11 | idauto.tn: owner session, public plate resolution, unknown-vehicle handoff, verification scopes, merge/split, organisation auth, search, plate scanner | ✅ **IMPLEMENTED / DEPLOYED** (2026-08-27 → 28) |
+| IDA-UI-1…3 | Application redesign: shell, French/Arabic RTL, global search, manual registration (OCR retired), private owner contact, dossier, interventions with part source, dashboard | ✅ **IMPLEMENTED** (2026-11-05, branch `feature/ui-redesign-20261105`) — **future, not built:** Piece.Autos / Casse.Autos integration (a catalogue entry proves no sale), invoice-backed part provenance, user management from the web (accounts stay on the operator CLI), cross-workshop maintenance history |
 | IDA-V12 | Vehicle identification (`VehicleResolver`), parts catalogue (`TecDocAdapter`), workshop (`/atelier`) | ✅ **IMPLEMENTED** (2026-09-05) — external plate→vehicle provider and TecDoc licence **NOT CONFIGURED** (see `VEHICLE_RESOLUTION.md` §3, `TECDOC.md`) |
 
 > **2026-09-05 note.** "Nothing in this repository is DEPLOYED" above is historical: idauto.tn has served `main` since 2026-08-27 (`PRODUCTION_RUNBOOK.md`, host record). The IDA-4 row's "blocked on IDA-2E" predates the owner's V-series decisions (public plate resolution, owner session).

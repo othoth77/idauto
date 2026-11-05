@@ -300,3 +300,14 @@ structure checks moved from each page's HTML to the shell's single definition (`
 `ida-admin-dashboard`, `ida-admin-quality`, `ida-admin-security`, `ida-admin-sources`, `ida-admin-registry`): each page
 must carry the slot and load the shell exactly once, with no menu of its own (mutation-checked: a page without the
 shell, two modules swapped).
+
+## 14. One application shell (IDA-UI-1, 2026-11-05)
+
+The console and the workshop share one shell (`reference/admin-shell.js`, served as `/admin/shell.js` and `/atelier/shell.js`):
+sections Vue générale · Gestion des véhicules · Carte grise · Maintenance · Ateliers · Catalogue · Administration · Sécurité ·
+Configuration, filtered by role (presentation only — every API checks the role). The top bar carries the breadcrumb, the
+global search (`/api/search`), notifications (`/api/notifications`, real counts), the FR/ع language selector and the profile
+menu (Mon compte, theme, sign-out). New admin pages: `/admin/utilisateurs` (accounts, read-only — accounts stay on
+`ops/auth-users.js`) and `/admin/roles` (the role → scope matrix the server applies). `/admin` (technical entry) now sends a
+workshop account to the manual registration page.
+

@@ -58,4 +58,10 @@
     clearError();
     help.textContent = "La réinitialisation se fait par l'administrateur IDauto : contactez-le pour recevoir un nouveau mot de passe.";
   });
+  // IDA-UI-2 — language, chosen before signing in and kept after (cookie, i18n.js).
+  var langSel = document.getElementById("login-lang");
+  if (langSel && window.IdAutoI18n) { langSel.value = window.IdAutoI18n.lang(); langSel.addEventListener("change", function () { window.IdAutoI18n.setLanguage(langSel.value); }); }
+  // Ready: the submit is now handled here (POST /api/auth/sign-in/email), never by the browser's form.
+  submit.disabled = false;
+  form.setAttribute("data-ready", "1");
 })();

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Dossier du véhicule</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Navigation principale"></aside>
+<div class="ida-admin-main">
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-page-head">
+      <div>
+        <h1>Dossier du véhicule</h1>
+        <p class="ida-muted ida-u-maxch-52">Identité, propriétaire, carte grise et historique d&#x27;entretien du véhicule.</p>
+      </div>
+      <div class="ida-page-actions"><a class="ida-btn ida-btn--primary" id="act-intervention" href="/atelier/interventions?new=1">Nouvelle intervention</a></div>
+    </header>
+    <div id="page-status" aria-live="polite"></div>
+    <div id="dossier" class="ida-stack-lg" aria-busy="true">
+      <p class="ida-muted">Chargement du dossier…</p>
+    </div>
+
+    <dialog class="ida-dialog" id="owner-dialog" aria-labelledby="owner-dialog-title">
+      <form method="dialog" class="ida-dialog-body" id="owner-form" novalidate>
+        <h2 id="owner-dialog-title" class="ida-h3">Coordonnées du propriétaire</h2>
+        <p class="ida-small ida-muted">Visibles uniquement par votre atelier et les administrateurs. La version précédente est conservée dans l'historique.</p>
+        <div class="ida-field"><label for="o-name" class="ida-required">Nom et prénom</label><input class="ida-input" id="o-name" maxlength="120" required autocomplete="off"></div>
+        <div class="ida-field"><label for="o-phone">Téléphone</label><input class="ida-input" id="o-phone" type="tel" maxlength="30" autocomplete="off" dir="ltr"></div>
+        <div class="ida-field"><label for="o-email">E-mail</label><input class="ida-input" id="o-email" type="email" maxlength="160" autocomplete="off" dir="ltr"></div>
+        <div class="ida-field"><label for="o-address">Adresse</label><input class="ida-input" id="o-address" maxlength="240" autocomplete="off"></div>
+        <div class="ida-field"><label for="o-notes">Remarques</label><input class="ida-input" id="o-notes" maxlength="300" autocomplete="off"></div>
+        <div id="owner-errors" aria-live="assertive"></div>
+        <div class="ida-dialog-actions">
+          <button type="button" class="ida-btn ida-btn--ghost" data-close>Annuler</button>
+          <button type="submit" class="ida-btn ida-btn--primary" value="save">Enregistrer</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="ida-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+      <form method="dialog" class="ida-dialog-body">
+        <h2 id="confirm-title" class="ida-h3">Confirmer</h2>
+        <p id="confirm-text"></p>
+        <div class="ida-dialog-actions">
+          <button type="button" class="ida-btn ida-btn--ghost" data-close>Annuler</button>
+          <button type="submit" class="ida-btn ida-btn--danger" value="yes" id="confirm-yes">Confirmer</button>
+        </div>
+      </form>
+    </dialog>
+  </div>
+</main>
+</div>
+</div>
+<script src="/atelier/i18n-catalog-ar.js"></script>
+<script src="/atelier/i18n.js"></script>
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/shell.js"></script>
+<script src="/atelier/console.js"></script>
+<script src="/atelier/app-dossier.js"></script>
+</body>
+</html>

@@ -46,6 +46,13 @@ function createWorkshopVehicleService(deps) {
 
   // 1–5: open a visit and attempt identification in one call.
   async function arrive(input, actor, opts) {
+    // IDA-UI-3 — an intervention opened FROM a vehicle's dossier names the vehicle directly.
+    if (input && input.vehicle_ref) {
+      var chosen = await repository.findByRef(String(input.vehicle_ref));
+      if (!chosen) throw errors.IdautoError('VEHICLE_NOT_FOUND');
+      var v1 = await repo.createVisit({ org_id: input.org_id, customer_ref: input.customer_ref, reason: input.reason, plate_read_method: 'none', identification_method: 'manual_selection' }, actor, chosen);
+      return { visit: v1, identification: { status: 'resolved', method: 'manual_selection', vehicle: { id: chosen.ivid } } };
+    }
     var identification = await identify(input, opts);
     var vehicleRow = identification.status === 'resolved' ? await repository.findByRef(identification.vehicle.id) : null;
     var visit = await repo.createVisit({

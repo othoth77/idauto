@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Véhicules</title>
+  <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
+  <link rel="stylesheet" href="/atelier/assets/tokens.css">
+  <link rel="stylesheet" href="/atelier/assets/base.css">
+  <link rel="stylesheet" href="/atelier/assets/components.css">
+  <link rel="stylesheet" href="/atelier/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Navigation principale"></aside>
+<div class="ida-admin-main">
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+    <header class="ida-page-head">
+      <div>
+        <h1>Véhicules</h1>
+        <p class="ida-muted ida-u-maxch-52">Les véhicules que votre atelier a enregistrés, documentés ou entretenus.</p>
+      </div>
+      <div class="ida-page-actions"><a class="ida-btn ida-btn--primary" href="/atelier/vehicules/nouveau">Ajouter un véhicule</a></div>
+    </header>
+    <div id="page-status" aria-live="polite"></div>
+    <section class="ida-card ida-stack" aria-labelledby="sec-v">
+      <form class="ida-filter-bar" id="filter" role="search">
+        <div class="ida-field"><label for="f-q">Rechercher</label><input class="ida-input" id="f-q" type="search" maxlength="60" autocomplete="off" placeholder="Immatriculation, marque, modèle ou identifiant"></div>
+        <button type="submit" class="ida-btn ida-btn--secondary">Rechercher</button>
+      </form>
+      <h2 id="sec-v" class="ida-sr-only">Liste des véhicules</h2>
+      <div id="list" aria-live="polite" aria-busy="true"><p class="ida-muted">Chargement…</p></div>
+      <div class="ida-pager" id="pager"></div>
+    </section>
+  </div>
+</main>
+</div>
+</div>
+<script src="/atelier/i18n-catalog-ar.js"></script>
+<script src="/atelier/i18n.js"></script>
+<script src="/atelier/assets/ui.js"></script>
+<script src="/atelier/shell.js"></script>
+<script src="/atelier/console.js"></script>
+<script src="/atelier/app-vehicles.js"></script>
+</body>
+</html>

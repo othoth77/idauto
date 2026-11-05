@@ -1,4 +1,6 @@
 'use strict';
+// IDA-UI-3: the carte grise OCR routes are retired by default (410); this suite keeps testing that legacy path.
+process.env.IDAUTO_CG_OCR_ENABLED = '1';
 /* IDA-V14 (home search) — « Rechercher par carte grise » on the homepage:
  * the shared identification layer registration-document → vehicle.
  *   POST /api/identify/registration-document  (vehicle:resolve)
@@ -89,8 +91,14 @@ async function main() {
 
   say('\n4. HOMEPAGE STRUCTURE AND ASSETS');
   var home = await request('GET', '/');
-  ok(home.status === 200 && home.raw.indexOf('Rechercher par carte grise') !== -1 && home.raw.indexOf('data-cg-home-open') !== -1, '1. the homepage carries « Rechercher par carte grise » with its button');
-  ok(home.raw.indexOf('data-cg-root') !== -1 && home.raw.indexOf('registration-scanner.js') !== -1 && home.raw.indexOf('home-registration.js') !== -1, 'the shared scanner module and the page script are loaded');
+  // IDA-UI-3 (owner decision 2026-11-05): the carte grise scanner is retired from the homepage;
+  // the API behind it answers 410 unless IDAUTO_CG_OCR_ENABLED=1 (this suite sets it to keep testing it).
+  ok(home.status === 200 && home.raw.indexOf('Rechercher par carte grise') === -1 && home.raw.indexOf('data-cg-home-open') === -1, '1. the homepage no longer offers « Rechercher par carte grise » (retired)');
+  ok(home.raw.indexOf('data-cg-root') === -1 && home.raw.indexOf('registration-scanner.js') === -1 && home.raw.indexOf('home-registration.js') === -1, 'the scanner module and its page script are no longer loaded');
+  delete process.env.IDAUTO_CG_OCR_ENABLED;
+  var retired = await request('POST', ID, { cookie: MGR, body: { faces: [{ face: 1, text: 'x' }] } });
+  ok(retired.status === 410 && retired.body.error === 'RETIRED', 'without the flag the OCR identify route answers 410 RETIRED');
+  process.env.IDAUTO_CG_OCR_ENABLED = '1';
   ok(!/<script>|onclick=|style="/.test(home.raw), 'no inline script on the homepage');
   ok(/'wasm-unsafe-eval'/.test(home.headers['content-security-policy']) && /connect-src 'self'/.test(home.headers['content-security-policy']), 'the citizen CSP (wasm for the OCR engine, connect-src self) is unchanged');
   for (var i = 0, assets = ['/assets/scanic.umd.js', '/assets/registration-scanner.js', '/assets/home-registration.js', '/assets/document.css', '/assets/tesseract/fra.traineddata.gz', '/assets/tesseract/ara.traineddata.gz']; i < assets.length; i++) ok((await request('GET', assets[i])).status === 200, 'asset served: ' + assets[i]);
