@@ -75,7 +75,7 @@
     }
     var remove = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm ida-part-remove' }, t('Retirer'));
     var row = el('div', { class: 'ida-part-row', 'data-part': '', 'data-id': p.id ? String(p.id) : null }, [
-      el('div', { class: 'ida-field' }, [el('label', { for: 'p-label-' + n, class: 'ida-required' }, t('Pièce')), el('input', { class: 'ida-input', id: 'p-label-' + n, 'data-f': 'label', maxlength: '120', autocomplete: 'off', value: p.label || '' })]),
+      el('div', { class: 'ida-field' }, [el('label', { for: 'p-label-' + n, class: 'ida-required' }, t('Pièce')), el('input', { class: 'ida-input', id: 'p-label-' + n, 'data-f': 'label', maxlength: '120', autocomplete: 'off', dir: 'auto', value: p.label || '' })]),
       el('div', { class: 'ida-field' }, [el('label', { for: 'p-ref-' + n }, t('Référence')), el('input', { class: 'ida-input', id: 'p-ref-' + n, 'data-f': 'reference', maxlength: '60', autocomplete: 'off', dir: 'ltr', value: p.reference || '' })]),
       el('div', { class: 'ida-field' }, [el('label', { for: 'p-qty-' + n }, t('Quantité')), el('input', { class: 'ida-input', id: 'p-qty-' + n, 'data-f': 'quantity', inputmode: 'numeric', maxlength: '3', value: String(p.quantity || 1) })]),
       el('fieldset', { class: 'ida-radio-group ida-radio-inline', 'data-source': '' }, [el('legend', { class: 'ida-label' }, t('Provenance')), radio('our_shop', 'Achetée chez nous'), radio('customer_supplied', 'Fournie par le client')]),
@@ -121,8 +121,11 @@
     await Promise.all([loadTechnicians(existing ? existing.technician_ref : null), loadOrgs(existing ? existing.org.id : null)]);
     if (existing) {
       document.getElementById('sec-form').textContent = t('Intervention du') + ' ' + C.date(existing.date);
-      document.getElementById('vehicle-field').hidden = true;
+      // The vehicle of a recorded intervention is fixed: shown, not searched.
       chosen = existing.vehicle;
+      var vf = document.getElementById('vehicle-field'); clear(vf);
+      vf.appendChild(el('p', { class: 'ida-label' }, t('Véhicule')));
+      vf.appendChild(existing.vehicle ? el('p', { id: 'vehicle-chosen' }, el('a', { href: '/atelier/vehicule?ref=' + enc(existing.vehicle.ivid) }, [C.plate(existing.vehicle.plate, existing.vehicle.plate), ' ', [existing.vehicle.make, existing.vehicle.model].filter(Boolean).join(' ')])) : el('p', { id: 'vehicle-chosen' }, t('Véhicule non identifié')));
       document.getElementById('f-date').value = String(existing.performed_on || existing.opened_at).slice(0, 10);
       document.getElementById('f-km').value = existing.odometer_km === null || existing.odometer_km === undefined ? '' : existing.odometer_km;
       document.getElementById('f-desc').value = existing.reason || '';
@@ -172,7 +175,6 @@
   }
 
   var newBtn = document.getElementById('act-new-intervention');
-  if (newBtn) newBtn.addEventListener('click', function () { location.href = '/atelier/interventions?new=1'; });
 
   (async function () {
     me = await C.sessionLine(null, location.pathname + location.search); if (!me) return;
@@ -185,7 +187,7 @@
         if (iv.status === 'cancelled') say('info', t('Cette intervention est annulée.'));
         await openForm(iv);
       } catch (e) { say('danger', C.errorText(e)); }
-    } else if (NEW) await openForm(null);
+    } else if (NEW) { if (newBtn) newBtn.hidden = true; await openForm(null); }
     else loadList();
   }());
 }());

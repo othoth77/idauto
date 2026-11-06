@@ -94,7 +94,7 @@
     box.appendChild(el('ol', { class: 'ida-timeline' }, data.maintenance.map(function (iv) {
       var parts = iv.operations.filter(function (o) { return o.part; });
       return el('li', { class: 'ida-event ida-event--verified' }, el('div', { class: 'ida-stack' }, [
-        el('div', { class: 'ida-section-head' }, [el('p', { class: 'ida-label' }, [C.date(iv.date), iv.odometer_km !== null && iv.odometer_km !== undefined ? ' · ' + C.km(iv.odometer_km) : '', data.scope === 'all_workshops' && iv.org.name ? ' · ' + iv.org.name : '']),
+        el('div', { class: 'ida-section-head' }, [el('p', { class: 'ida-label' }, [C.date(iv.date), iv.odometer_km !== null && iv.odometer_km !== undefined ? [' · ', C.km(iv.odometer_km)] : '', data.scope === 'all_workshops' && iv.org.name ? ' · ' + iv.org.name : '']),
           el('a', { class: 'ida-small', href: '/atelier/interventions?id=' + iv.id }, t('Voir / modifier'))]),
         iv.reason ? el('p', { class: 'ida-pre', translate: 'no' }, iv.reason) : null,
         parts.length ? el('ul', { class: 'ida-op-list' }, parts.map(function (o) {

@@ -22,7 +22,7 @@
         <h1>Interventions</h1>
         <p class="ida-muted ida-u-maxch-52">Les travaux effectués sur les véhicules, avec les pièces utilisées et leur provenance.</p>
       </div>
-      <div class="ida-page-actions"><a class="ida-btn ida-btn--primary" href="/atelier/interventions?new=1">Nouvelle intervention</a></div>
+      <div class="ida-page-actions"><a class="ida-btn ida-btn--primary" id="act-new-intervention" href="/atelier/interventions?new=1">Nouvelle intervention</a></div>
     </header>
     <div id="page-status" aria-live="polite"></div>
     <section class="ida-card ida-stack" aria-labelledby="sec-list" id="list-box">
@@ -53,7 +53,7 @@
           <div class="ida-field"><label for="f-km">Kilométrage (km)</label><input class="ida-input" id="f-km" inputmode="numeric" maxlength="9" autocomplete="off" dir="ltr"></div>
           <div class="ida-field" id="tech-field" hidden><label for="f-tech">Technicien</label><select class="ida-input" id="f-tech"></select></div>
         </div>
-        <div class="ida-field"><label for="f-desc" class="ida-required">Description du travail effectué</label><textarea class="ida-input" id="f-desc" rows="3" maxlength="1000"></textarea></div>
+        <div class="ida-field"><label for="f-desc" class="ida-required">Description du travail effectué</label><textarea class="ida-input" id="f-desc" rows="3" maxlength="1000" dir="auto"></textarea></div>
       </section>
 
       <section class="ida-card ida-form-section ida-stack" aria-labelledby="sec-parts">

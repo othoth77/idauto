@@ -62,7 +62,7 @@ PAGES = [
    '<a class="ida-btn ida-btn--primary" id="act-intervention" href="/atelier/interventions?new=1">Nouvelle intervention</a>'),
   ('app-documents.html', 'atelier', 'Cartes grises', 'Cartes grises', 'Les cartes grises jointes aux dossiers des véhicules (faces 1 et 2), documents privés.', 'documents', '/atelier/app-documents.js'),
   ('app-interventions.html', 'atelier', 'Interventions', 'Interventions', 'Les travaux effectués sur les véhicules, avec les pièces utilisées et leur provenance.', 'interventions', '/atelier/app-interventions.js',
-   '<a class="ida-btn ida-btn--primary" href="/atelier/interventions?new=1">Nouvelle intervention</a>'),
+   '<a class="ida-btn ida-btn--primary" id="act-new-intervention" href="/atelier/interventions?new=1">Nouvelle intervention</a>'),
   ('app-parts-used.html', 'atelier', 'Pièces', 'Pièces', 'Les pièces utilisées lors des interventions et leur provenance déclarée.', 'parts-used', '/atelier/app-parts-used.js'),
   ('app-technicians.html', 'atelier', 'Techniciens', 'Techniciens', 'Les comptes de votre atelier et leur activité enregistrée.', 'technicians', '/atelier/app-technicians.js'),
   ('app-catalogue.html', 'atelier', 'Catalogue des pièces', 'Catalogue des pièces', 'Le catalogue local des pièces et leurs références. Une fiche du catalogue ne prouve ni un stock, ni un achat.', 'catalogue', '/atelier/app-catalogue.js'),
