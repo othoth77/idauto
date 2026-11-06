@@ -169,7 +169,7 @@
   // ---- top bar: title, search, notifications, language, profile ------------
   var menuBtn = el('button', { type: 'button', class: 'ida-admin-menu-btn', 'aria-controls': 'admin-sidebar', 'aria-expanded': 'false', 'aria-label': 'Ouvrir le menu' }, icon('menu'));
   var crumbs = el('nav', { class: 'ida-admin-topbar-title', 'aria-label': 'Fil d’Ariane' }, here.item
-    ? el('ol', { class: 'ida-admin-crumbs' }, [el('li', null, here.section), el('li', { 'aria-current': 'page' }, here.item.label)])
+    ? el('ol', { class: 'ida-admin-crumbs' }, (here.section === here.item.label ? [] : [el('li', null, here.section)]).concat([el('li', { 'aria-current': 'page' }, here.item.label)]))
     : el('span', null, document.title.replace(/^IDauto\s*[—-]\s*/, '')));
 
   // Global search (server-side: /api/search; every result is filtered by the server for this account).

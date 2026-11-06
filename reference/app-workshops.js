@@ -55,5 +55,9 @@
       }
     } catch (e) { C.state(ident, 'error', C.errorText(e)); }
   }
-  (async function () { if (await C.sessionLine(null, location.pathname + location.search)) { if (id) showOne(); else showList(); } }());
+  (async function () {
+    var me = await C.sessionLine(null, location.pathname + location.search); if (!me) return;
+    if (me.role !== 'admin') document.getElementById('back-link').hidden = true;  // a workshop account sees only its own
+    if (id) showOne(); else showList();
+  }());
 }());

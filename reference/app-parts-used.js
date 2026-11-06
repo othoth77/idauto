@@ -22,11 +22,11 @@
       });
       if (!out.parts.length) { list.appendChild(el('p', { class: 'ida-empty' }, t('Aucune pièce enregistrée pour ce filtre.'))); return; }
       list.appendChild(el('div', { class: 'ida-table-wrap' }, el('table', { class: 'ida-table' }, [
-        el('thead', null, el('tr', null, ['Date', 'Pièce', 'Référence', 'Quantité', 'Véhicule', 'Intervention', 'Atelier', 'Provenance', 'État', 'Technicien'].map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
+        el('thead', null, el('tr', null, ['Date · intervention', 'Pièce · référence', 'Quantité', 'Véhicule', 'Atelier', 'Provenance', 'État', 'Technicien'].map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
         el('tbody', null, out.parts.map(function (p) {
-          return el('tr', null, [el('td', null, C.date(p.performed_on || p.at)), el('td', null, C.text(p.label)), el('td', null, p.reference ? el('bdi', { dir: 'ltr' }, p.reference) : '—'), el('td', null, String(p.quantity)),
+          return el('tr', null, [el('td', null, [C.date(p.performed_on || p.at), el('br'), el('a', { class: 'ida-small', href: '/atelier/interventions?id=' + p.intervention }, t('Intervention') + ' #' + p.intervention)]),
+            el('td', null, [C.text(p.label), p.reference ? el('span', { class: 'ida-small ida-muted ida-u-block' }, el('bdi', { dir: 'ltr' }, p.reference)) : '']), el('td', null, String(p.quantity)),
             el('td', null, p.vehicle ? el('a', { href: '/atelier/vehicule?ref=' + encodeURIComponent(p.vehicle.ivid) }, [C.plate(p.vehicle.plate, p.vehicle.plate), ' ', [p.vehicle.make, p.vehicle.model].filter(Boolean).join(' ')]) : '—'),
-            el('td', null, el('a', { href: '/atelier/interventions?id=' + p.intervention }, '#' + p.intervention)),
             el('td', null, p.org_id ? el('a', { href: '/atelier/ateliers?id=' + p.org_id }, C.text(p.org)) : C.text(p.org)),
             el('td', null, sourceOf(p)), el('td', null, C.label('part_condition', p.condition)), el('td', null, p.technician ? p.technician.name : '—')]);
         }))])));
