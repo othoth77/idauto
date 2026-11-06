@@ -546,6 +546,6 @@
 .ida-part-rows { display: grid; gap: var(--ida-space-3); }
 .ida-part-row { display: grid; grid-template-columns: minmax(10rem, 2fr) minmax(6rem, 1fr) 5rem auto auto; gap: var(--ida-space-3); align-items: end; padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); background: var(--ida-surface-sunken); }
 .ida-part-row fieldset { border: 0; margin: 0; padding: 0; display: flex; gap: var(--ida-space-3); flex-wrap: wrap; }
-@media (max-width: 47.99rem) { .ida-part-row { grid-template-columns: 1fr 1fr; } .ida-part-row fieldset, .ida-part-row .ida-part-remove { grid-column: 1 / -1; } }
+@media (max-width: 47.99rem) { .ida-part-row { grid-template-columns: 1fr 1fr; } .ida-part-row > .ida-field:first-child, .ida-part-row fieldset, .ida-part-row .ida-part-remove { grid-column: 1 / -1; } }
 .ida-field--grow { flex: 1 1 16rem; }
 #vehicle-field .ida-filter-bar .ida-input { flex: 1 1 16rem; }
