@@ -12,7 +12,7 @@ each part used was bought from us or supplied by the customer. This replaces the
 | Menu | Content |
 |---|---|
 | Tableau de bord | Five database counts, each opening its list: vehicles, interventions, parts used, parts « achetées chez nous », parts « fournies par le client » |
-| Véhicules | The list, with a search by registration number, make or model, and the « Ajouter un véhicule » button. A vehicle file can be opened and edited (« Modifier ») |
+| Véhicules | The list, with a search by registration number, make or model, and the « Ajouter un véhicule » button. A vehicle file can be opened, edited (« Modifier ») and deleted (« Supprimer le véhicule »: manager and admin, §4) |
 | Interventions | The list with a search, and one form (described below). An intervention opens for editing, or to cancel it |
 | Pièces | Part, reference, vehicle, date and declared source. Filter by source, and a search |
 | Paramètres | Mon compte (profile, password), Langue, and for an administrator: Gestion des utilisateurs, Rôles et permissions |
@@ -39,8 +39,8 @@ this version. It is therefore displayed as « … (déclarée) ». The rule « n
 kept.
 
 **Design:**
-- one **light** theme, pinned on every page of the application (`<html data-theme="light">`); the dark switch is
-  removed;
+- one **light** theme, pinned on every page, public pages included (`<html data-theme="light">`): a browser set to dark
+  mode sees the same light design on staging and in production; the dark switches are removed;
 - a cool palette (neutral greys and a blue accent), defined in the design tokens and so shared by staging and
   production;
 - the top bar keeps search, language and profile; the notification bell is removed;
@@ -75,6 +75,7 @@ could not hold:
 
 | Route | Scope | Notes |
 |---|---|---|
+| `DELETE /api/vehicles/:ref` | `vehicle:delete` (manager, admin) | **deletes = archives** a record entered by mistake. Nothing is erased: `fiche_status` becomes `archived` (an existing status), the plates `cancelled` and the VIN fact inactive, so the plate can be registered again. Lists, counts, search and the file skip it. Refused (409) when an intervention is recorded on it (`vehicle_has_interventions`: the history is kept) and, for a manager, when another workshop holds data on it (`vehicle_used_by_another_workshop`). Audited (`vehicle.archive`) |
 | `PUT /api/vehicles/:ref/details` | `vehicle:write` | make, model, year, mileage, the workshop's note. Plate and VIN are not edited here. Another workshop's vehicle → 404. Audited, with field names only |
 | `POST /api/workspace/interventions` | `workshop:write` | one transaction: the intervention and its parts. An admin names `org_id` when there are several workshops |
 | `PUT /api/workspace/interventions/:id` | `workshop:write` | edits it. A listed part id is updated; an unlisted part is **cancelled (kept)**; a part without id is added |
@@ -100,5 +101,8 @@ with no source, stay as recorded. The parts filter offers them only when such re
 - **Billing:** no billing, sale, stock, supplier or catalogue management.
 - **Identity fields:** plate and VIN are not edited from the vehicle form. They are the vehicle's identity; changing
   them goes through the existing admin tools.
+- **Password recovery:** there is no e-mail service in IDauto, and adding one would be a new external service. « Mot
+  de passe oublié » says that the administrator resets it (`ops/auth-users.js set-password`, which closes the account's
+  sessions). Each user changes their own password in Paramètres.
 - **User management:** it stays on the operator CLI (`ops/auth-users.js`), because a password never crosses a web
   page. The « Gestion des utilisateurs » page lists the accounts.
