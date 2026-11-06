@@ -155,7 +155,29 @@ var PARTS = "(op.part_id IS NOT NULL OR op.part_label IS NOT NULL OR op.part_ref
   ok((await db.query('SELECT count(*)::int n FROM idauto_workshop_operations WHERE visit_id = $1', [IV])).rows[0].n === 3, 'nothing was deleted');
   ok((await request('PUT', '/api/workspace/interventions/' + IV, T.TECH, base)).body.details.reason === 'intervention_cancelled', 'a cancelled intervention is no longer edited');
 
-  say('\n5. ADMIN, MENU, PAGES');
+  say('\n5. DELETE A VEHICLE (archive: nothing erased)');
+  var V1 = r1.body.ivid;
+  ok((await request('DELETE', '/api/vehicles/' + encodeURIComponent(V1), T.TECH)).status === 403, 'a technician cannot delete a vehicle (403)');
+  ok((await request('DELETE', '/api/vehicles/' + encodeURIComponent(V2), T.MGR)).body.details.reason === 'vehicle_has_interventions', 'a vehicle with interventions is never deleted (its history is kept)');
+  ok((await request('DELETE', '/api/vehicles/' + encodeURIComponent(V1), T.OTHER)).status === 404, 'another workshop cannot delete it (404)');
+  var before = (await request('GET', '/api/workspace/overview', T.MGR)).body.vehicles;
+  var del = await request('DELETE', '/api/vehicles/' + encodeURIComponent(V1), T.MGR);
+  ok(del.status === 200 && del.body.archived === true, 'the manager deletes a record entered by mistake');
+  ok((await request('GET', '/api/vehicles/' + encodeURIComponent(V1) + '/dossier', T.MGR)).status === 404, 'its file no longer opens');
+  ok((await request('GET', '/api/workspace/overview', T.MGR)).body.vehicles === before - 1 && !(await request('GET', '/api/workspace/vehicles', T.MGR)).body.vehicles.some(function (v) { return v.ivid === V1; }), 'it leaves the list and the count');
+  var kept = (await db.query("SELECT v.fiche_status, (SELECT count(*)::int FROM idauto_plates p WHERE p.vehicle_id = v.id) AS plates FROM idauto_vehicles v WHERE v.ivid = $1", [V1])).rows[0];
+  ok(kept && kept.fiche_status === 'archived' && kept.plates === 1, 'nothing is erased: the record is archived, its plate kept (cancelled)');
+  ok((await db.query("SELECT count(*)::int n FROM idauto_audit_log WHERE event_type = 'vehicle.archive' AND target_ref = $1", [V1])).rows[0].n === 1, 'the deletion is audited');
+  var again = await request('POST', '/api/vehicles/register', T.TECH, { plate: P1 });
+  ok(again.status === 201 && again.body.ivid !== V1, 'the same plate can be registered again as a new vehicle');
+  ok((await request('DELETE', '/api/vehicles/' + encodeURIComponent(V1), T.MGR)).status === 404, 'deleting twice → 404');
+  var P3 = await freePlate(), V3 = (await request('POST', '/api/vehicles/register', T.MGR, { plate: P3 })).body.ivid;
+  await request('PUT', '/api/vehicles/' + encodeURIComponent(V3) + '/owner', T.OTHER, { full_name: 'Client B ' + run, phone: '+216 20 111 222' });
+  ok((await request('DELETE', '/api/vehicles/' + encodeURIComponent(V3), T.MGR)).body.details.reason === 'vehicle_used_by_another_workshop', 'another workshop holds data on it → the manager cannot delete it');
+  ok((await request('DELETE', '/api/vehicles/' + encodeURIComponent(V3), T.ADMIN)).status === 200, 'an administrator can');
+  ok((await request('GET', '/api/search?q=' + encodeURIComponent(P3.series + 'TU' + P3.number), T.ADMIN)).raw.indexOf(V3) === -1, 'a deleted vehicle is not found by the search');
+
+  say('\n6. ADMIN, MENU, PAGES');
   var adminNoOrg = await request('POST', '/api/workspace/interventions', T.ADMIN, { vehicle_ref: V2, description: 'Admin ' + run });
   ok(adminNoOrg.status === 400 && adminNoOrg.body.details.field === 'org_id', 'an admin with several workshops names the workshop');
   ok((await request('POST', '/api/workspace/interventions', T.ADMIN, { vehicle_ref: V2, description: 'Admin ' + run, org_id: orgA })).status === 201, 'and then records it for that workshop');

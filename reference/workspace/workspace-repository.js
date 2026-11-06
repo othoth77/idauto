@@ -84,6 +84,7 @@ async function interventionsFor(where, params, limit) {
 
 async function dossier(ref, actor) {
   var v = await vehicleOr404(ref);
+  if ((await db.query('SELECT fiche_status FROM idauto_vehicles WHERE id = $1', [v.id])).rows[0].fiche_status === 'archived') throw errors.IdautoError('VEHICLE_NOT_FOUND');  // deleted (archived)
   var rec = await repository.record(v, { includeVin: false });
   var vinOnRecord = await repository.vinOf(v.id);
   var vin = null;
@@ -104,7 +105,7 @@ async function dossier(ref, actor) {
     vehicle: { ivid: rec.id, internal_ref: rec.internal_ref, plate: rec.plate, plate_display: rec.plate_display, make: rec.manufacturer, model: rec.model, variant: rec.version,
       year: rec.year, fuel_type: rec.fuel_type, engine_cc: rec.engine_cc, seats: rec.seats, gross_weight_kg: rec.gross_weight_kg, category_code: rec.category_code, body_type: rec.body_type,
       engine_code: rec.engine_code, colour: v.colour || null,
-      odometer_km: odo.odometer_km, odometer_at: odo.odometer_at, notes: await details.notesOf(v.id, actor), can_edit: can(actor, 'vehicle:write'), fiche_status: rec.fiche_status, verified: rec.verified, verification_method: rec.verification_method, created_at: rec.created_at,
+      odometer_km: odo.odometer_km, odometer_at: odo.odometer_at, notes: await details.notesOf(v.id, actor), can_edit: can(actor, 'vehicle:write'), can_delete: can(actor, 'vehicle:delete'), fiche_status: rec.fiche_status, verified: rec.verified, verification_method: rec.verification_method, created_at: rec.created_at,
       vin_present: !!vinOnRecord, vin: vin },
     plates: plates,
     documents: { faces: docs.map(function (d) { return { face: d.face, mime_type: d.mime_type, byte_size: d.byte_size, width: d.width, height: d.height, at: d.updated_at || d.created_at }; }),
@@ -122,7 +123,7 @@ function page(opts) { var p = Math.max(1, parseInt(opts && opts.page, 10) || 1);
 
 async function listVehicles(actor, opts) {
   opts = opts || {};
-  var pg = page(opts), params = [], where = ['v.merged_into_id IS NULL'];
+  var pg = page(opts), params = [], where = ['v.merged_into_id IS NULL', "v.fiche_status <> 'archived'"];
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push(orgVehicleClause('v', params.length)); }
   var q = String(opts.q || '').trim();
   if (q) {
@@ -215,7 +216,7 @@ async function count(sql, params) { return (await db.query(sql, params || [])).r
 // plus the most recent vehicle records. Admin: every workshop; manager / technician: their workshop only.
 async function overview(actor) {
   var admin = isAdmin(actor), org = orgOf(actor), p = admin ? [] : [org];
-  var vScope = admin ? 'v.merged_into_id IS NULL' : 'v.merged_into_id IS NULL AND ' + orgVehicleClause('v', 1);
+  var vScope = (admin ? 'v.merged_into_id IS NULL' : 'v.merged_into_id IS NULL AND ' + orgVehicleClause('v', 1)) + " AND v.fiche_status <> 'archived'";
   var wScope = admin ? 'TRUE' : 'w.org_id = $1';
   var parts = 'SELECT count(*)::int n FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE ' + PART_WHERE + ' AND ' + wScope;
   return { scope: admin ? 'all_workshops' : 'own_workshop',
@@ -267,7 +268,7 @@ async function search(q, actor) {
       await writes.recordVinSearchAudit(actor.principal, actor.identity, vin.vin, first ? first.ivid : null);
       params.push(holders.length ? holders : [-1]); conds.push('v.id = ANY($' + params.length + '::int[])');
     }
-    var vw = 'v.merged_into_id IS NULL AND (' + conds.join(' OR ') + ')';
+    var vw = "v.merged_into_id IS NULL AND v.fiche_status <> 'archived' AND (" + conds.join(' OR ') + ')';
     var rows = (await db.query('SELECT v.ivid, v.make, v.model, v.year, ' +
       "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate " +
       'FROM idauto_vehicles v WHERE ' + vw + ' ORDER BY v.updated_at DESC NULLS LAST LIMIT 9', params)).rows;

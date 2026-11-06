@@ -23,6 +23,7 @@
 //   GET    /api/workspace/parts-used?source&q&org workshop:read fitted parts, declared source, totals per source
 //   GET    /api/workspace/technicians           team:read        the workshop's people (manager, admin)
 //   PUT    /api/vehicles/:ref/details           vehicle:write    edit make, model, year, mileage, the workshop's note (IDA-UI-4)
+//   DELETE /api/vehicles/:ref                   vehicle:delete   delete = archive a record entered by mistake (kept; refused with interventions)
 //   POST   /api/workspace/interventions         workshop:write   record an intervention with its parts, one transaction (IDA-UI-4)
 //   PUT    /api/workspace/interventions/:id     workshop:write   edit it (parts: update / cancel / add)
 //   DELETE /api/workspace/interventions/:id     workshop:write   cancel it (the record is kept)
@@ -79,6 +80,7 @@ function createWorkspace(ctx) {
   async function getDocuments(req, res) { sendJson(res, 200, await repo.listDocuments(actorOf(req), { page: query(req).get('page') })); }
   async function getInterventions(req, res) { var q = query(req); sendJson(res, 200, await repo.listInterventions(actorOf(req), { status: q.get('status'), vehicle: q.get('vehicle'), org_id: q.get('org_id'), id: q.get('id'), q: q.get('q') })); }
   async function getPartsUsed(req, res) { var q = query(req); sendJson(res, 200, await repo.listPartsUsed(actorOf(req), { source: q.get('source'), org_id: q.get('org'), q: q.get('q') })); }
+  async function deleteVehicle(req, res, m) { sendJson(res, 200, await details.remove(decode(m[1]), actorOf(req))); }
   async function putDetails(req, res, m) { sendJson(res, 200, await details.update(decode(m[1]), await readJsonBody(req), actorOf(req))); }
   async function postIntervention(req, res) { sendJson(res, 201, await interventions.create(await readJsonBody(req), actorOf(req))); }
   async function putIntervention(req, res, m) { sendJson(res, 200, await interventions.update(decode(m[1]), await readJsonBody(req), actorOf(req))); }
@@ -108,6 +110,7 @@ function createWorkspace(ctx) {
     { method: 'GET', pattern: /^\/api\/workspace\/parts-used$/, handler: guard(getPartsUsed) },
     { method: 'GET', pattern: /^\/api\/workspace\/technicians$/, handler: guard(getTechnicians) },
     { method: 'PUT', pattern: new RegExp('^' + VEH + '\\/details$'), handler: guard(putDetails) },
+    { method: 'DELETE', pattern: new RegExp('^' + VEH + '$'), handler: guard(deleteVehicle) },
     { method: 'POST', pattern: /^\/api\/workspace\/interventions$/, handler: guard(postIntervention) },
     { method: 'PUT', pattern: /^\/api\/workspace\/interventions\/(\d{1,9})$/, handler: guard(putIntervention) },
     { method: 'DELETE', pattern: /^\/api\/workspace\/interventions\/(\d{1,9})$/, handler: guard(deleteIntervention) },
@@ -128,6 +131,7 @@ function createWorkspace(ctx) {
     { method: 'GET', pattern: /^\/api\/workspace\/parts-used$/, scope: 'workshop:read' },
     { method: 'GET', pattern: /^\/api\/workspace\/technicians$/, scope: 'team:read' },
     { method: 'PUT', pattern: /^\/api\/vehicles\/[^/]+\/details$/, scope: 'vehicle:write' },
+    { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+$/, scope: 'vehicle:delete' },
     { method: 'POST', pattern: /^\/api\/workspace\/interventions$/, scope: 'workshop:write' },
     { method: 'PUT', pattern: /^\/api\/workspace\/interventions\/\d{1,9}$/, scope: 'workshop:write' },
     { method: 'DELETE', pattern: /^\/api\/workspace\/interventions\/\d{1,9}$/, scope: 'workshop:write' }

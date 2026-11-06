@@ -174,6 +174,8 @@
     if (pm) msg += ' — ' + 'Pièce ' + (Number(pm[1]) + 1) + ' : ' + (PART_FIELD[pm[2]] || pm[2]);
     if (d && d.reason === 'choose_source') msg = 'Choisissez la provenance de chaque pièce.' + (pm ? ' (Pièce ' + (Number(pm[1]) + 1) + ')' : '');
     if (d && d.reason === 'plate_required') msg = 'L\'immatriculation est obligatoire.';
+    if (d && d.reason === 'vehicle_has_interventions') msg = 'Ce véhicule a des interventions enregistrées : il ne peut pas être supprimé (son historique est conservé).';
+    if (d && d.reason === 'vehicle_used_by_another_workshop') msg = 'Un autre atelier a des données sur ce véhicule : seul un administrateur peut le supprimer.';
     return msg;
   }
 

@@ -112,6 +112,12 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   ok(await ev('document.querySelector("[data-plate-word]").textContent === "RS"'), 'RS chosen: the plate reads series RS number');
   await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(RS_S) + ';f.plate_number.value=' + JSON.stringify(RS_N) + ';document.getElementById("register-submit").click();true');
   ok(await waitFor('location.pathname === "/atelier/vehicule" && /created=1/.test(location.search)', 30000), 'a vehicle registers with its registration number alone (RS)');
+  ok(await waitFor('!!document.getElementById("vehicle-delete")', 15000), 'the manager sees « Supprimer le véhicule »');
+  await ev('document.getElementById("vehicle-delete").click();true');
+  await waitFor('document.getElementById("confirm-dialog").open', 5000);
+  await ev('document.getElementById("confirm-yes").click();true');
+  ok(await waitFor('location.pathname === "/atelier/vehicules" && /supprimé/.test(document.getElementById("page-status").textContent)', 15000), 'deleted after confirmation → back to the list');
+  ok((await db.query("SELECT fiche_status FROM idauto_vehicles v JOIN idauto_plates p ON p.vehicle_id = v.id WHERE p.plate_number = $1", [RS_S + ' RS ' + RS_N])).rows[0].fiche_status === 'archived', 'archived in the database, not erased');
   await go('/atelier/vehicules?q=' + encodeURIComponent('208 GT'), 'document.querySelectorAll("#list tbody tr").length >= 1');
   ok(await ev('document.getElementById("list").textContent.indexOf(' + JSON.stringify(MAKE) + ') !== -1 && /85\\s?000/.test(document.getElementById("list").textContent)'), 'the vehicle list finds it by model, with its mileage');
 
@@ -149,8 +155,20 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   ok(await waitFor('document.querySelectorAll("#app-search-results [role=option]").length >= 1 && /Véhicules/.test(document.getElementById("app-search-results").textContent)', 10000), 'typing the plate without spaces → grouped results');
 
   console.log('\n== ROLES');
-  ok(await signIn('technician', '/atelier/tableau-de-bord'), 'the technician signs in');
+  // Password recovery: the sign-in page says the administrator resets it; the operator tool does, and the new password works.
+  await send('Network.clearBrowserCookies');
+  await go('/login', '!!document.querySelector("#login-form[data-ready]")');
+  await ev('document.getElementById("login-forgot").click();true');
+  ok(await waitFor('/administrateur/.test(document.body.textContent)', 5000), '« Mot de passe oublié » explains that the administrator resets it');
+  var NEWPW = 'Reset-' + crypto.randomBytes(6).toString('hex') + '-9';
+  var cli = cp.spawnSync(process.execPath, [path.join(BASE, 'ops', 'auth-users.js'), 'set-password', '--email', U.technician], { env: Object.assign({}, process.env, { IDAUTO_NEW_PASSWORD: NEWPW }), encoding: 'utf8' });
+  ok(cli.status === 0, 'the administrator resets the password (ops/auth-users.js set-password)');
+  var oldPW = PW; PW = NEWPW;
+  ok(await signIn('technician', '/atelier/tableau-de-bord'), 'the technician signs in with the new password');
+  PW = oldPW;
+  cp.spawnSync(process.execPath, [path.join(BASE, 'ops', 'auth-users.js'), 'set-password', '--email', U.technician], { env: Object.assign({}, process.env, { IDAUTO_NEW_PASSWORD: PW }), encoding: 'utf8' });  // back to the test password
   ok(JSON.stringify(await ev(NAVLABELS)) === JSON.stringify(['Tableau de bord', 'Véhicules', 'Interventions', 'Pièces', 'Paramètres']), 'technician: the same five links');
+  ok(await signIn('technician', '/atelier/tableau-de-bord'), 'the password is set back (the reset closes the sessions) and the technician signs in again');
   await go('/atelier/compte', '!!document.getElementById("profile") && !/Chargement/.test(document.getElementById("profile").textContent)');
   ok(await ev('document.getElementById("admin-box").hidden'), 'technician: no user or role management in Paramètres');
   await go('/atelier/vehicule?ref=' + encodeURIComponent(IVID), '!!document.getElementById("owner-show")');

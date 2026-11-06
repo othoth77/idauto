@@ -37,7 +37,9 @@
     var ni = document.getElementById('act-intervention'); if (ni) ni.setAttribute('href', '/atelier/interventions?new=1&vehicle=' + enc(v.ivid));
     if (params.get('created')) say('success', t('Véhicule enregistré.'));
     // Identity — the fields of the simplified form first; any other technical field the record holds is shown too.
-    var idActions = v.can_edit ? [el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', id: 'details-edit' }, t('Modifier'))] : null;
+    var idActions = [];
+    if (v.can_edit) idActions.push(el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', id: 'details-edit' }, t('Modifier')));
+    if (v.can_delete) idActions.push(el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm', id: 'vehicle-delete' }, t('Supprimer le véhicule')));
     root.appendChild(section('sec-identity', t('Véhicule'), idActions, kv([
       [t('Immatriculation'), C.plate(v.plate_display, v.plate)],
       [t('Marque'), C.text(v.make)], [t('Modèle'), C.text(v.model)], [t('Année'), C.text(v.year)],
@@ -49,6 +51,7 @@
       [t('Informations complémentaires'), v.notes ? el('span', { class: 'ida-pre', translate: 'no' }, v.notes.text) : '—']
     ])));
     var de = document.getElementById('details-edit'); if (de) de.addEventListener('click', editDetails);
+    var vd = document.getElementById('vehicle-delete'); if (vd) vd.addEventListener('click', deleteVehicle);
     // Owner
     var ownerBody = el('div', { class: 'ida-stack', id: 'owner-body' });
     var ownerActions = [];
@@ -126,6 +129,13 @@
   async function removeFace(f) {
     if (!(await confirmAction(t('Supprimer la photo de la face ' + f + ' ? L\'opération est enregistrée au journal.')))) return;
     try { await C.send('DELETE', '/api/vehicles/' + enc(data.vehicle.ivid) + '/registration-document/' + f); say('success', t('Photo supprimée.')); await load(); }
+    catch (e) { say('danger', C.errorText(e)); }
+  }
+
+  // ---- delete (archive): a record entered by mistake; refused when work is recorded on it ----
+  async function deleteVehicle() {
+    if (!(await confirmAction(t('Supprimer ce véhicule ? Il disparaît des listes ; rien n\'est effacé de la base et l\'opération est enregistrée au journal.')))) return;
+    try { await C.send('DELETE', '/api/vehicles/' + enc(data.vehicle.ivid)); window.location.assign('/atelier/vehicules?deleted=1'); }
     catch (e) { say('danger', C.errorText(e)); }
   }
 

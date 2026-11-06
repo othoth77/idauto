@@ -98,4 +98,34 @@ async function update(ref, body, actor) {
   return { ivid: v.ivid, fields_changed: changed };
 }
 
-module.exports = { cleanNotes: cleanNotes, notesOf: notesOf, upsertNotesWith: upsertNotesWith, inScope: inScope, update: update };
+// DELETE /api/vehicles/:ref — « supprimer » a vehicle record entered by mistake. Nothing is erased: the
+// record is ARCHIVED (fiche_status 'archived', an existing status), its plates are cancelled and its VIN
+// fact deactivated, so the same plate / VIN can be registered again; lists, counts and search skip it.
+// Refused when work is recorded on it (an intervention of any workshop: the maintenance history is kept),
+// and, for a manager, when another workshop holds anything about it. Scope vehicle:delete (manager, admin).
+async function remove(ref, actor) {
+  var v = await repository.findByRef(String(ref || ''));
+  if (!v || !(await inScope(v.id, actor))) throw errors.IdautoError('VEHICLE_NOT_FOUND');
+  return writes.withAudit({ principal: actor.principal, event_type: 'vehicle.archive', target_type: 'idauto_vehicles', change_summary: 'Vehicle record deleted (archived, data kept)' },
+    actor.identity, async function (client) {
+      var row = (await client.query('SELECT id, fiche_status FROM idauto_vehicles WHERE id = $1 FOR UPDATE', [v.id])).rows[0];
+      if (!row || row.fiche_status === 'archived') throw errors.IdautoError('VEHICLE_NOT_FOUND');
+      var work = (await client.query("SELECT count(*)::int n FROM idauto_workshop_visits WHERE vehicle_id = $1 AND status <> 'cancelled'", [v.id])).rows[0].n;
+      if (work) throw errors.IdautoError('CONFLICT', { reason: 'vehicle_has_interventions', count: work });
+      if (!isAdmin(actor)) {
+        var org = orgOf(actor);
+        var others = (await client.query(
+          'SELECT (SELECT count(*) FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND org_id IS DISTINCT FROM $2) + ' +
+          '(SELECT count(*) FROM idauto_vehicle_owner_contacts WHERE vehicle_id = $1 AND superseded_at IS NULL AND org_id IS DISTINCT FROM $2) + ' +
+          '(SELECT count(*) FROM idauto_vehicle_notes WHERE vehicle_id = $1 AND org_id IS DISTINCT FROM $2) + ' +
+          '(SELECT count(*) FROM idauto_vehicle_identification_history WHERE vehicle_id = $1 AND org_id IS NOT NULL AND org_id <> $2) AS n', [v.id, org])).rows[0].n;
+        if (Number(others)) throw errors.IdautoError('CONFLICT', { reason: 'vehicle_used_by_another_workshop' });
+      }
+      await client.query("UPDATE idauto_vehicles SET fiche_status = 'archived', updated_at = NOW() WHERE id = $1", [v.id]);
+      await client.query("UPDATE idauto_plates SET status = 'cancelled' WHERE vehicle_id = $1 AND status = 'active'", [v.id]);
+      await client.query("UPDATE idauto_vehicle_facts SET is_active = FALSE WHERE vehicle_id = $1 AND lower(trim(fact_key)) = 'vin' AND is_active", [v.id]);
+      return { record: { ivid: v.ivid, archived: true }, auditTargetRef: v.ivid };
+    });
+}
+
+module.exports = { cleanNotes: cleanNotes, notesOf: notesOf, upsertNotesWith: upsertNotesWith, inScope: inScope, update: update, remove: remove };

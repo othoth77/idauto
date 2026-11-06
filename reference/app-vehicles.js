@@ -6,6 +6,7 @@
   var params = new URLSearchParams(location.search), page = parseInt(params.get('page'), 10) || 1;
   function link(p) { var x = []; if (p > 1) x.push('page=' + p); if (q.value.trim()) x.push('q=' + encodeURIComponent(q.value.trim())); return x.length ? '?' + x.join('&') : location.pathname; }
   q.value = params.get('q') || '';
+  if (params.get('deleted')) { var st = document.getElementById('page-status'); if (st) st.appendChild(el('p', { class: 'ida-alert ida-alert--success' }, t('Véhicule supprimé.'))); }
   async function load() {
     list.setAttribute('aria-busy', 'true');
     try {

@@ -69,5 +69,10 @@
  "Les comptes et leur rôle.": "الحسابات وأدوارها.",
  "Ce que chaque rôle peut faire.": "ما يمكن لكل دور فعله.",
  "Choisissez la provenance de chaque pièce.": "اختر مصدر كل قطعة.",
- "Description du travail": "وصف العمل"
+ "Description du travail": "وصف العمل",
+ "Supprimer le véhicule": "حذف المركبة",
+ "Supprimer ce véhicule ? Il disparaît des listes ; rien n'est effacé de la base et l'opération est enregistrée au journal.": "حذف هذه المركبة؟ تختفي من القوائم؛ لا يُمحى شيء من قاعدة البيانات وتُسجَّل العملية في السجل.",
+ "Véhicule supprimé.": "تم حذف المركبة.",
+ "Ce véhicule a des interventions enregistrées : il ne peut pas être supprimé (son historique est conservé).": "لهذه المركبة تدخلات مسجّلة: لا يمكن حذفها (يُحتفظ بسجلها).",
+ "Un autre atelier a des données sur ce véhicule : seul un administrateur peut le supprimer.": "لورشة أخرى بيانات عن هذه المركبة: وحده المشرف يمكنه حذفها."
 }
