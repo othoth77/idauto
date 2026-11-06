@@ -1,12 +1,14 @@
     <section class="ida-card ida-stack" aria-labelledby="sec-p">
+      <h2 id="sec-p" class="ida-sr-only">Pièces posées</h2>
+      <div id="totals" class="ida-admin-stats" aria-live="polite"></div>
       <div class="ida-filter-bar">
         <div class="ida-field"><label for="f-source">Provenance</label>
           <select class="ida-input" id="f-source">
             <option value="">Toutes</option><option value="our_shop">Pièce achetée auprès de notre établissement</option>
             <option value="customer_supplied">Pièce fournie par le client</option><option value="external_supplier">Pièce achetée auprès d'un fournisseur externe</option>
+            <option value="unknown">Provenance non renseignée</option>
           </select></div>
       </div>
-      <p class="ida-small ida-muted">La provenance est déclarée par le technicien. Une pièce « achetée auprès de notre établissement » n'est pas une vente prouvée : IDauto ne détient pas la facture.</p>
-      <h2 id="sec-p" class="ida-sr-only">Pièces remplacées</h2>
+      <p class="ida-small ida-muted">La provenance est celle déclarée par le technicien à l'intervention. IDauto ne détient ni vente ni facture : « achetée auprès de notre établissement » n'est pas une vente prouvée, et aucun prix n'est enregistré pour une pièce posée. Une fiche du catalogue n'est ni un achat ni une pose.</p>
       <div id="list" aria-live="polite" aria-busy="true"><p class="ida-muted">Chargement…</p></div>
     </section>

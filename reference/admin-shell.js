@@ -20,33 +20,34 @@
   var ALL = ['admin', 'manager', 'technician'], ADMIN = ['admin'], MANAGE = ['admin', 'manager'];
   // Sections in order. An item may have a different page for the admin (`admin`)
   // and for a workshop account (`href`). `match` lists the pages that belong to it.
+  // Five sections (client restructuring 2026-11-06): Tableau de bord · Véhicules · Ateliers · Pièces · Paramètres.
+  // Every page that existed keeps its entry, under the section it belongs to; nothing new besides « Ateliers ».
   var SECTIONS = [
-    { label: 'Vue générale', items: [
-      { label: 'Tableau de bord', icon: 'dashboard', roles: ALL, href: '/atelier/tableau-de-bord', admin: '/admin/dashboard', match: ['/admin/dashboard', '/atelier/tableau-de-bord'] }] },
-    { label: 'Gestion des véhicules', items: [
-      { label: 'Véhicules', icon: 'car', roles: ALL, href: '/atelier/vehicules', admin: '/admin/vehicles', match: ['/admin/vehicles', '/atelier/vehicules', '/atelier/vehicule', '/admin/vehicle'] },
-      { label: 'Ajouter un véhicule', icon: 'plus', roles: ALL, href: '/atelier/vehicules/nouveau', match: ['/atelier/vehicules/nouveau'] }] },
-    { label: 'Carte grise', items: [
-      { label: 'Documents et pièces jointes', icon: 'file', roles: ALL, href: '/atelier/documents', match: ['/atelier/documents'] }] },
-    { label: 'Maintenance', items: [
-      { label: 'Interventions', icon: 'wrench', roles: ALL, href: '/atelier/interventions', match: ['/atelier/interventions', '/atelier/intervention', '/atelier'] },
-      { label: 'Pièces remplacées', icon: 'part', roles: ALL, href: '/atelier/pieces-remplacees', match: ['/atelier/pieces-remplacees'] },
-      { label: 'Historique de maintenance', icon: 'history', roles: ADMIN, href: '/admin/maintenance', match: ['/admin/maintenance'] }] },
-    { label: 'Ateliers', items: [
-      { label: 'Liste des ateliers', icon: 'building', roles: ADMIN, href: '/admin/sources', match: ['/admin/sources'] },
-      { label: 'Techniciens', icon: 'users', roles: MANAGE, href: '/atelier/techniciens', match: ['/atelier/techniciens'] }] },
-    { label: 'Catalogue', items: [
-      { label: 'Catalogue des pièces', icon: 'box', roles: ALL, href: '/atelier/catalogue', match: ['/atelier/catalogue'] }] },
-    { label: 'Administration', items: [
-      { label: 'Utilisateurs', icon: 'users', roles: ADMIN, href: '/admin/utilisateurs', match: ['/admin/utilisateurs'] },
-      { label: 'Rôles et permissions', icon: 'key', roles: ADMIN, href: '/admin/roles', match: ['/admin/roles'] },
+    { label: 'Tableau de bord', items: [
+      { label: 'Tableau de bord', icon: 'dashboard', roles: ALL, href: '/atelier/tableau-de-bord', match: ['/atelier/tableau-de-bord'] }] },
+    { label: 'Véhicules', items: [
+      { label: 'Véhicules', icon: 'car', roles: ALL, href: '/atelier/vehicules', match: ['/atelier/vehicules', '/atelier/vehicule'] },
+      { label: 'Ajouter un véhicule', icon: 'plus', roles: ALL, href: '/atelier/vehicules/nouveau', match: ['/atelier/vehicules/nouveau'] },
+      { label: 'Cartes grises', icon: 'file', roles: ALL, href: '/atelier/documents', match: ['/atelier/documents'] },
+      { label: 'Registre (console)', icon: 'history', roles: ADMIN, href: '/admin/vehicles', match: ['/admin/vehicles', '/admin/vehicle'] },
       { label: 'Qualité des données', icon: 'check', roles: ADMIN, href: '/admin/quality', match: ['/admin/quality'] },
       { label: 'Vérification et validation', icon: 'inbox', roles: ADMIN, href: '/admin/review', match: ['/admin/review'] },
       { label: 'Saisie technique (avancée)', icon: 'edit', roles: ADMIN, href: '/admin', match: ['/admin'] }] },
-    { label: 'Sécurité', items: [
-      { label: 'Journal d’activité et audit', icon: 'shield', roles: ADMIN, href: '/admin/security', match: ['/admin/security'] }] },
-    { label: 'Configuration', items: [
-      { label: 'Mon compte', icon: 'user', roles: ALL, href: '/atelier/compte', match: ['/atelier/compte'] }] }
+    { label: 'Ateliers', items: [
+      { label: 'Ateliers', icon: 'building', roles: ALL, href: '/atelier/ateliers', match: ['/atelier/ateliers'] },
+      { label: 'Interventions', icon: 'wrench', roles: ALL, href: '/atelier/interventions', match: ['/atelier/interventions', '/atelier/intervention', '/atelier'] },
+      { label: 'Techniciens', icon: 'users', roles: MANAGE, href: '/atelier/techniciens', match: ['/atelier/techniciens'] },
+      { label: 'Historique de maintenance (console)', icon: 'history', roles: ADMIN, href: '/admin/maintenance', match: ['/admin/maintenance'] }] },
+    { label: 'Pièces', items: [
+      { label: 'Pièces posées', icon: 'part', roles: ALL, href: '/atelier/pieces-remplacees', match: ['/atelier/pieces-remplacees'] },
+      { label: 'Catalogue des pièces', icon: 'box', roles: ALL, href: '/atelier/catalogue', match: ['/atelier/catalogue'] }] },
+    { label: 'Paramètres', items: [
+      { label: 'Mon compte', icon: 'user', roles: ALL, href: '/atelier/compte', match: ['/atelier/compte'] },
+      { label: 'Utilisateurs', icon: 'users', roles: ADMIN, href: '/admin/utilisateurs', match: ['/admin/utilisateurs'] },
+      { label: 'Rôles et permissions', icon: 'key', roles: ADMIN, href: '/admin/roles', match: ['/admin/roles'] },
+      { label: 'Journal d’activité et audit', icon: 'shield', roles: ADMIN, href: '/admin/security', match: ['/admin/security'] },
+      { label: 'Sources de données', icon: 'building', roles: ADMIN, href: '/admin/sources', match: ['/admin/sources'] },
+      { label: 'Indicateurs de la console', icon: 'dashboard', roles: ADMIN, href: '/admin/dashboard', match: ['/admin/dashboard'] }] }
   ];
   // Flat list (tests, page titles): every item once.
   var NAV = [];

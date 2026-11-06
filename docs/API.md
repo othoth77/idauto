@@ -97,12 +97,14 @@ ITS OWN interventions, documents and owner contacts; an admin sees everything.
 | `GET /api/vehicles/:ref/dossier` | `vehicle:read` | `{ vehicle (VIN only with vin:search — audited), plates, documents{faces, can_upload, can_delete}, owner{recorded, can_read, can_write}, maintenance[interventions with operations, parts, source, technician], identification, scope }` |
 | `GET /api/vehicles/:ref/owner` | `owner:read` | `{ contacts[] }` — this workshop's contact (admin: all); **every read audited** (`vehicle.owner.read`, no personal data in the row) |
 | `PUT /api/vehicles/:ref/owner` · `DELETE` | `owner:write` | `{ full_name (required), phone?, email?, address?, notes? }` — supersedes the previous row (history kept); delete supersedes too |
-| `GET /api/workspace/vehicles?q&page` | `vehicle:read` | the workshop's vehicles (visited, registered, documented or with an owner contact); admin: all |
+| `GET /api/workspace/vehicles?q&page&with_data=1` | `vehicle:read` | the workshop's vehicles (visited, registered, documented or with an owner contact); admin: all. `total` = rows matching the filter; `with_data=1` keeps vehicles « with available data » (RESTRUCTURE_2026-11 §2) |
 | `GET /api/workspace/documents?page` | `document:read` | vehicles with carte grise photos |
 | `GET /api/workspace/interventions?status&id&vehicle` | `workshop:read` | interventions with their operations |
-| `GET /api/workspace/parts-used?source` | `workshop:read` | replaced/repaired parts with their declared source |
+| `GET /api/workspace/parts-used?source&org` | `workshop:read` | parts fitted at interventions with their **declared** source; `source` = `our_shop`\|`customer_supplied`\|`external_supplier`\|`unknown` (not recorded); `totals` per source and `total` over the scope (before the source filter); `org` narrows an admin to one workshop (ignored for others). No price: none is recorded for a fitted part |
 | `GET /api/workspace/technicians` | `team:read` (manager, admin) | the workshop's accounts and their recorded activity |
-| `GET /api/workspace/overview` | `vehicle:read` | dashboard counts (own workshop; admin: platform) |
+| `GET /api/workspace/overview` | `vehicle:read` | the dashboard: `vehicles`, `vehicles_with_data`, `workshops`, `interventions`, `parts`, `recent_vehicles` — each number is the total of the list it links to (own workshop; admin: platform) |
+| `GET /api/workspace/workshops` | `workshop:read` | workshops: admin every one not cancelled, others their own — name, type, status, city, governorate, `contact_email_present` (never the address itself), accounts, vehicles, interventions, last intervention |
+| `GET /api/workspace/workshops/:id` | `workshop:read` | one workshop: the same identity, `vehicles` it worked on (interventions, last date), `interventions` with operations and parts, `technicians` (only with `team:read`, else `null`). Another workshop's id → 404 |
 | `GET /api/notifications` | `vehicle:read` | real counts, each with the page that lists them |
 | `GET /api/search?q=` | `vehicle:read` | `{ groups: [vehicles, owners, interventions, parts] }`, ≥ 2 characters; the vehicles group needs `vehicle:search` and is the shared registry (identity only, as `/api/search/vehicles`), 30 searches/min per account; owners only with `owner:read` (own workshop, audited), VIN only with `vin:search` (audited), interventions of the own workshop |
 | `GET /api/admin/roles` | admin | the role → scope matrix the server applies |

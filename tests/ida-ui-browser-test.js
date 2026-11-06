@@ -71,6 +71,9 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   ok(await ev('!!document.querySelector("[data-app-topbar] #app-search") && !!document.querySelector("[data-app-lang]") && !!document.querySelector(".ida-app-bell") && !!document.querySelector(".ida-app-profile")'), 'top bar: search, notifications, language, profile');
   ok(await ev('document.querySelector(".ida-admin-nav-link.is-active").getAttribute("aria-current") === "page" && /Tableau de bord/.test(document.querySelector(".ida-admin-nav-link.is-active").textContent)'), 'the current page is marked (aria-current)');
   ok(await waitFor('/\\d/.test(document.getElementById("stats").textContent)', 20000), 'dashboard: real counts');
+  ok(await ev('JSON.stringify(Array.from(document.querySelectorAll("#stats a")).map(function(a){return a.getAttribute("href")})) === JSON.stringify(["/atelier/vehicules","/atelier/vehicules?with_data=1","/atelier/ateliers","/atelier/interventions","/atelier/pieces-remplacees"])'), 'dashboard: exactly the five numbers, each linked to its list');
+  ok(await ev('fetch("/api/workspace/overview",{credentials:"same-origin",headers:{"X-IDauto-Session":"1"}}).then(function(r){return r.json()}).then(function(o){var v=Array.from(document.querySelectorAll("#stats .ida-admin-stat-value")).map(function(x){return Number(x.textContent)});return JSON.stringify(v)===JSON.stringify([o.vehicles,o.vehicles_with_data,o.workshops,o.interventions,o.parts])})'), 'dashboard: the numbers shown are the database counts');
+  ok(await ev('JSON.stringify(Array.from(document.querySelectorAll(".ida-admin-nav-heading")).map(function(x){return x.textContent.trim()})) === JSON.stringify(["Tableau de bord","Véhicules","Ateliers","Pièces","Paramètres"])'), 'menu: the five sections, in order');
 
   console.log('\n== MANUAL REGISTRATION');
   await go('/atelier/vehicules/nouveau', '!!document.getElementById("register-form")');
@@ -126,7 +129,14 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   var op = (await db.query("SELECT op.part_source, op.part_condition, op.status, op.created_by FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id JOIN idauto_vehicles v ON v.id = w.vehicle_id WHERE v.ivid = $1", [IVID])).rows[0];
   ok(op && op.part_source === 'customer_supplied' && op.part_condition === 'new' && op.status === 'done' && /^user:/.test(op.created_by), 'stored: source, condition, done, the technician\'s identity');
   await go('/atelier/pieces-remplacees', '/FILTRE A HUILE/.test(document.getElementById("list").textContent)');
-  ok(await ev('/fournie par le client/.test(document.getElementById("list").textContent)'), '« Pièces remplacées » lists it with its source');
+  ok(await ev('/fournie par le client/.test(document.getElementById("list").textContent)'), '« Pièces posées » lists it with its source');
+  ok(await ev('/\\(déclarée\\)/.test(document.getElementById("list").textContent) && document.querySelectorAll("#totals a").length >= 4'), 'shown as a declaration, with the totals per source');
+
+  console.log('\n== WORKSHOP PAGE');
+  await go('/atelier/ateliers', '/[?&]id=/.test(location.search) && !document.getElementById("detail-box").hidden && document.querySelectorAll("#vehicles tbody tr").length >= 1');
+  ok(await ev('/[?&]id=' + ORG + '(&|$)/.test(location.search)'), 'a manager opening « Ateliers » lands on its own workshop');
+  ok(await ev('document.getElementById("vehicles").textContent.indexOf(' + JSON.stringify(MAKE) + ') !== -1 && /ENTRETIEN/.test(document.getElementById("repairs").textContent) && /FILTRE A HUILE/.test(document.getElementById("repairs").textContent)'), 'it shows the vehicle worked on and the repair, with its part');
+  ok(await ev('!document.getElementById("tech-box").hidden'), 'and, for a manager, its technicians');
   await go('/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/FILTRE A HUILE/.test(document.getElementById("sec-history-box").textContent)');
   ok(await ev('/Technicien/.test(document.getElementById("sec-history-box").textContent)'), 'the dossier\'s history shows the operation and its technician');
 
@@ -160,7 +170,7 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   LANG_NOW = 'ar';
   ok(await waitFor('/لوحة القيادة/.test(document.querySelector("h1").textContent)', 10000), 'the page is in Arabic');
   var LEFT = '(function(){var SKIP="script,style,code,bdi,kbd,samp,.ida-plate,.ida-ivid,[translate=no],[data-i18n-skip],option[lang]";var out=[];var tw=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),n;while((n=tw.nextNode())){var v=n.nodeValue.replace(/\\s+/g," ").trim();if(!/\\b[a-zàâçéèêëîïôûùüÿœ]{3,}\\b[^]*\\b[a-zàâçéèêëîïôûùüÿœ]{3,}\\b/.test(v))continue;var e=n.parentElement;if(!e||e.closest(SKIP)||e.closest("[hidden]"))continue;out.push(v.slice(0,80));}return out;})()';
-  var pagesAr = ['/atelier/tableau-de-bord', '/atelier/vehicules', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/pieces-remplacees', '/atelier/documents', '/atelier/techniciens', '/atelier/catalogue', '/atelier/compte', '/atelier'];
+  var pagesAr = ['/atelier/tableau-de-bord', '/atelier/vehicules', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/pieces-remplacees', '/atelier/documents', '/atelier/techniciens', '/atelier/catalogue', '/atelier/compte', '/atelier/ateliers?id=' + ORG, '/atelier'];
   var leftovers = [];
   for (var pa of pagesAr) { await go(pa); await sleep(1800); var l = await ev(LEFT); if (l.length) leftovers.push(pa + ': ' + l.slice(0, 3).join(' | ')); ok(await ev('document.documentElement.dir === "rtl"'), 'Arabic persists on ' + pa.split('?')[0]); }
   ok(leftovers.length === 0, 'no interface text left in French on ' + pagesAr.length + ' pages' + (leftovers.length ? ' — ' + leftovers.join(' ; ') : ''));
@@ -169,7 +179,7 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   ok(await waitFor('document.documentElement.lang === "fr" && document.documentElement.dir !== "rtl" && /Mon compte/.test(document.querySelector("h1").textContent)', 15000), 'back to French from « Mon compte »');
 
   console.log('\n== RESPONSIVE (FR and AR)');
-  var widths = [1920, 1440, 1366, 1024, 768, 390, 375], pagesR = ['/atelier/tableau-de-bord', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/pieces-remplacees'];
+  var widths = [1920, 1440, 1366, 1024, 768, 390, 375], pagesR = ['/atelier/tableau-de-bord', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/pieces-remplacees', '/atelier/ateliers?id=' + ORG];
   var over = [], wrongPage = [], measured = 0;
   for (var lang of ['fr', 'ar']) {
     await send('Network.setCookie', { name: 'ida_lang', value: lang, url: B });

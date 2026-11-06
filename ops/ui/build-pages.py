@@ -53,17 +53,18 @@ def frag(name):
     with open(os.path.join(os.path.dirname(__file__), 'fragments', name + '.html'), encoding='utf-8') as f: return f.read().rstrip('\n')
 
 PAGES = [
-  ('app-dashboard.html', 'atelier', 'Tableau de bord', 'Tableau de bord', "L'activité de votre atelier, comptée dans la base au chargement de la page.", 'dashboard', '/atelier/app-dashboard.js',
+  ('app-dashboard.html', 'atelier', 'Tableau de bord', 'Tableau de bord', "L'état réel de la base des véhicules, compté au chargement de la page.", 'dashboard', '/atelier/app-dashboard.js',
    '<a class="ida-btn ida-btn--secondary" href="/atelier/interventions?new=1">Nouvelle intervention</a><a class="ida-btn ida-btn--primary" href="/atelier/vehicules/nouveau">Ajouter un véhicule</a>'),
   ('app-vehicles.html', 'atelier', 'Véhicules', 'Véhicules', 'Les véhicules que votre atelier a enregistrés, documentés ou entretenus.', 'vehicles', '/atelier/app-vehicles.js',
    '<a class="ida-btn ida-btn--primary" href="/atelier/vehicules/nouveau">Ajouter un véhicule</a>'),
   ('app-register.html', 'atelier', 'Ajouter un véhicule', 'Ajouter un véhicule', 'Saisissez les informations de la carte grise. Les photos de la carte sont jointes au dossier comme pièces justificatives ; rien n\'est lu automatiquement.', 'register', '/atelier/app-register.js'),
   ('app-dossier.html', 'atelier', 'Dossier du véhicule', 'Dossier du véhicule', 'Identité, propriétaire, carte grise et historique d\'entretien du véhicule.', 'dossier', '/atelier/app-dossier.js',
    '<a class="ida-btn ida-btn--primary" id="act-intervention" href="/atelier/interventions?new=1">Nouvelle intervention</a>'),
-  ('app-documents.html', 'atelier', 'Documents et pièces jointes', 'Documents et pièces jointes', 'Les cartes grises jointes aux dossiers de vos véhicules (faces 1 et 2).', 'documents', '/atelier/app-documents.js'),
+  ('app-documents.html', 'atelier', 'Cartes grises', 'Cartes grises', 'Les cartes grises jointes aux dossiers des véhicules (faces 1 et 2), documents privés.', 'documents', '/atelier/app-documents.js'),
   ('app-interventions.html', 'atelier', 'Interventions', 'Interventions', 'Les interventions de votre atelier : ce qui a été fait, avec quelles pièces, et leur provenance.', 'interventions', '/atelier/app-interventions.js',
    '<a class="ida-btn ida-btn--secondary" href="/atelier">Identifier par la plaque</a><button type="button" class="ida-btn ida-btn--primary" id="act-new-intervention">Nouvelle intervention</button>'),
-  ('app-parts-used.html', 'atelier', 'Pièces remplacées', 'Pièces remplacées', 'Chaque pièce remplacée ou réparée, avec la provenance déclarée par le technicien.', 'parts-used', '/atelier/app-parts-used.js'),
+  ('app-parts-used.html', 'atelier', 'Pièces posées', 'Pièces posées', 'Chaque pièce posée ou réparée lors d\'une intervention, avec sa provenance telle que déclarée.', 'parts-used', '/atelier/app-parts-used.js'),
+  ('app-workshops.html', 'atelier', 'Ateliers', 'Ateliers', 'Chaque atelier, les véhicules sur lesquels il a travaillé et les interventions qu\'il a enregistrées.', 'workshops', '/atelier/app-workshops.js'),
   ('app-technicians.html', 'atelier', 'Techniciens', 'Techniciens', 'Les comptes de votre atelier et leur activité enregistrée.', 'technicians', '/atelier/app-technicians.js'),
   ('app-catalogue.html', 'atelier', 'Catalogue des pièces', 'Catalogue des pièces', 'Le catalogue local des pièces et leurs références. Une fiche du catalogue ne prouve ni un stock, ni un achat.', 'catalogue', '/atelier/app-catalogue.js'),
   ('app-account.html', 'atelier', 'Mon compte', 'Mon compte', 'Votre profil, votre langue, votre mot de passe et vos sessions.', 'account', '/atelier/app-account.js'),
