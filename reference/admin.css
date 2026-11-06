@@ -251,6 +251,7 @@
 }
 .ida-admin-stat--link:hover { border-color: var(--ida-border-strong); background: var(--ida-surface-sunken); }
 .ida-admin-stat--link:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+.ida-admin-stat--link.is-active { border-color: var(--ida-verify-strong); background: var(--ida-surface-sunken); }
 .ida-admin-stat--attention { border-inline-start: 4px solid var(--ida-pending); }
 .ida-admin-group-head {
   display: flex;
@@ -520,6 +521,7 @@
 .ida-kv { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: var(--ida-space-2) var(--ida-space-4); margin: 0; }
 .ida-kv dt { color: var(--ida-text-muted); font-size: var(--ida-size-14); }
 .ida-kv dd { margin: 0; font-weight: var(--ida-weight-medium); min-width: 0; overflow-wrap: anywhere; }
+.ida-plain-list { margin: 0; padding-inline-start: var(--ida-space-4); }
 .ida-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ida-space-2); }
 .ida-section-head h2 { margin: 0; font-size: var(--ida-size-18); }
 .ida-pager { display: flex; gap: var(--ida-space-2); justify-content: flex-end; }

@@ -164,7 +164,7 @@ async function freePlate() {
   ok(team.status === 403, 'a technician cannot list the team (team:read is manager / admin)');
   ok((await request('GET', '/api/workspace/technicians', T.MGR)).status === 200, 'a manager can');
   var ov = await request('GET', '/api/workspace/overview', T.MGR);
-  ok(ov.status === 200 && ov.body.scope === 'own_workshop' && ov.body.vehicles >= 1 && ov.body.interventions_open >= 1, 'overview: real counts for the workshop');
+  ok(ov.status === 200 && ov.body.scope === 'own_workshop' && ov.body.vehicles >= 1 && ov.body.interventions >= 1 && ov.body.parts >= 2 && ov.body.workshops === 1, 'overview: real counts for the workshop');
   var ovAdm = await request('GET', '/api/workspace/overview', T.ADMIN);
   ok(ovAdm.body.scope === 'all_workshops' && ovAdm.body.vehicles >= ov.body.vehicles, 'overview: platform-wide for an admin');
   var notif = await request('GET', '/api/notifications', T.MGR);

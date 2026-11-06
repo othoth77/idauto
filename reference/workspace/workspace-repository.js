@@ -35,6 +35,20 @@ function orgVehicleClause(alias, p) {
     ' OR EXISTS (SELECT 1 FROM idauto_vehicle_owner_contacts c WHERE c.vehicle_id = ' + alias + '.id AND c.org_id = $' + p + ' AND c.superseded_at IS NULL))';
 }
 
+// A vehicle "with available data" (client restructuring 2026-11-06, dashboard): its record holds at least one
+// identification or technical field beyond the plate, an active fact, a carte grise photo or a workshop
+// intervention. Photos and interventions count only when the account may see them (own workshop; admin: all).
+// IDauto had no such notion before; this definition is documented in docs/RESTRUCTURE_2026-11.md §2.
+function vehicleDataClause(alias, orgParam) {
+  var scoped = function (col) { return orgParam ? ' AND ' + col + ' = $' + orgParam : ''; };
+  return '(' + ['make', 'model', 'variant', 'year', 'body_type', 'fuel_type', 'seats', 'gross_weight_kg', 'engine_cc', 'category_code']
+    .map(function (c) { return alias + '.' + c + ' IS NOT NULL'; }).join(' OR ') +
+    ' OR EXISTS (SELECT 1 FROM idauto_vehicle_facts f WHERE f.vehicle_id = ' + alias + '.id AND f.is_active)' +
+    ' OR EXISTS (SELECT 1 FROM idauto_vehicle_documents d WHERE d.vehicle_id = ' + alias + '.id' + scoped('d.org_id') + ')' +
+    ' OR EXISTS (SELECT 1 FROM idauto_workshop_visits w WHERE w.vehicle_id = ' + alias + '.id' + scoped('w.org_id') + '))';
+}
+var PART_WHERE = '(op.part_id IS NOT NULL OR op.part_label IS NOT NULL OR op.part_reference_text IS NOT NULL)';
+
 // Display names of the people behind actor references ('user:<id>'), never their e-mail.
 async function namesOf(refs) {
   var ids = refs.filter(function (r) { return typeof r === 'string' && /^user:/.test(r); }).map(function (r) { return r.slice(5); });
@@ -116,6 +130,7 @@ async function listVehicles(actor, opts) {
   opts = opts || {};
   var pg = page(opts), params = [], where = ['v.merged_into_id IS NULL'];
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push(orgVehicleClause('v', params.length)); }
+  if (opts.with_data === '1' || opts.with_data === true) where.push(vehicleDataClause('v', isAdmin(actor) ? null : 1));
   var q = String(opts.q || '').trim();
   if (q) {
     var pp = plateNormalizer.parsePlate(q), cond = [];
@@ -131,7 +146,8 @@ async function listVehicles(actor, opts) {
     '(SELECT max(w.opened_at) FROM idauto_workshop_visits w WHERE w.vehicle_id = v.id' + (isAdmin(actor) ? '' : ' AND w.org_id = $1') + ') AS last_intervention_at ' +
     'FROM idauto_vehicles v WHERE ' + where.join(' AND ') + ' ORDER BY v.created_at DESC LIMIT ' + (pg.limit + 1) + ' OFFSET ' + pg.offset;
   var rows = (await db.query(sql, params)).rows;
-  return { page: pg.page, has_more: rows.length > pg.limit, vehicles: rows.slice(0, pg.limit).map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, variant: r.variant, year: r.year, fuel_type: r.fuel_type, documents: r.faces, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; }) };
+  var total = (await db.query('SELECT count(*)::int n FROM idauto_vehicles v WHERE ' + where.join(' AND '), params)).rows[0].n;
+  return { page: pg.page, has_more: rows.length > pg.limit, total: total, with_data: opts.with_data === '1' || opts.with_data === true, vehicles: rows.slice(0, pg.limit).map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, variant: r.variant, year: r.year, fuel_type: r.fuel_type, documents: r.faces, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; }) };
 }
 
 async function listDocuments(actor, opts) {
@@ -156,23 +172,31 @@ async function listInterventions(actor, opts) {
 
 async function listPartsUsed(actor, opts) {
   opts = opts || {};
-  var params = [], where = ['(op.part_id IS NOT NULL OR op.part_label IS NOT NULL OR op.part_reference_text IS NOT NULL)'];
+  var params = [], where = [PART_WHERE];
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push('w.org_id = $' + params.length); }
+  else if (opts.org_id && /^\d{1,9}$/.test(String(opts.org_id))) { params.push(parseInt(opts.org_id, 10)); where.push('w.org_id = $' + params.length); }
+  // Totals per source over the same scope, before the source filter: what the page says is what the database holds.
+  var totals = { our_shop: 0, customer_supplied: 0, external_supplier: 0, unknown: 0 };
+  (await db.query('SELECT coalesce(op.part_source, \'unknown\') AS k, count(*)::int AS n FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE ' + where.join(' AND ') + ' GROUP BY 1', params)).rows
+    .forEach(function (r) { if (r.k in totals) totals[r.k] = r.n; });
   if (['our_shop', 'customer_supplied', 'external_supplier'].indexOf(opts.source) !== -1) { params.push(opts.source); where.push('op.part_source = $' + params.length); }
+  else if (opts.source === 'unknown') where.push('op.part_source IS NULL');
   var rows = (await db.query('SELECT op.id, op.visit_id, op.operation_type, op.quantity, op.status, op.part_source, op.part_condition, op.part_label, op.part_reference_text, op.performed_on, op.created_at, op.created_by, ' +
-    'pt.reference AS part_reference, pt.name AS part_catalogue_name, pt.brand, v.ivid, v.make, v.model, o.name AS org_name, ' +
+    'pt.reference AS part_reference, pt.name AS part_catalogue_name, pt.brand, v.ivid, v.make, v.model, o.name AS org_name, w.org_id, ' +
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = w.vehicle_id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate " +
     'FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id LEFT JOIN idauto_parts pt ON pt.id = op.part_id ' +
     'LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id LEFT JOIN idauto_organizations o ON o.id = w.org_id WHERE ' + where.join(' AND ') + ' ORDER BY coalesce(op.performed_on, op.created_at::date) DESC, op.id DESC LIMIT 100', params)).rows;
   var names = await namesOf(rows.map(function (r) { return r.created_by; }));
-  return { parts: rows.map(function (r) { return { id: r.id, intervention: r.visit_id, type: r.operation_type, quantity: r.quantity, status: r.status, source: r.part_source, condition: r.part_condition,
+  return { totals: totals, total: totals.our_shop + totals.customer_supplied + totals.external_supplier + totals.unknown, shown_limit: 100,
+    parts: rows.map(function (r) { return { id: r.id, intervention: r.visit_id, type: r.operation_type, quantity: r.quantity, status: r.status, source: r.part_source, condition: r.part_condition,
     label: r.part_label || r.part_catalogue_name, reference: r.part_reference_text || r.part_reference, brand: r.brand, from_catalogue: !!r.part_reference, performed_on: r.performed_on, at: r.created_at,
-    technician: who(names, r.created_by), vehicle: r.ivid ? { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model } : null, org: r.org_name }; }) };
+    technician: who(names, r.created_by), vehicle: r.ivid ? { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model } : null, org: r.org_name, org_id: r.org_id }; }) };
 }
 
-async function listTechnicians(actor) {
+async function listTechnicians(actor, orgId) {
   var params = [], where = ['u."role" IN (\'manager\', \'technician\')'];
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push('u."org_id" = $' + params.length); }
+  else if (orgId) { params.push(orgId); where.push('u."org_id" = $' + params.length); }
   var rows = (await db.query('SELECT u."id", u."name", u."role", u."org_id", u."createdAt", o.name AS org_name, ' +
     '(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.opened_by = \'user:\' || u."id") AS interventions, ' +
     '(SELECT count(*)::int FROM idauto_workshop_operations op WHERE op.created_by = \'user:\' || u."id") AS operations, ' +
@@ -183,27 +207,52 @@ async function listTechnicians(actor) {
 
 // ---- overview + notifications ---------------------------------------------------
 async function count(sql, params) { return (await db.query(sql, params || [])).rows[0].n; }
+// The dashboard (client restructuring 2026-11-06): five numbers, each the count of the list it links to,
+// plus the most recent vehicle records. Admin: every workshop; manager / technician: their workshop only.
 async function overview(actor) {
-  if (isAdmin(actor)) {
-    return { scope: 'all_workshops',
-      vehicles: await count('SELECT count(*)::int n FROM idauto_vehicles WHERE merged_into_id IS NULL'),
-      registered_30d: await count("SELECT count(*)::int n FROM idauto_vehicles WHERE merged_into_id IS NULL AND created_at > NOW() - INTERVAL '30 days'"),
-      interventions_open: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE status IN ('open','in_progress')"),
-      interventions_30d: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE opened_at > NOW() - INTERVAL '30 days'"),
-      workshops_active: await count("SELECT count(*)::int n FROM idauto_organizations WHERE status = 'active'"),
-      technicians: await count('SELECT count(*)::int n FROM idauto_auth_user WHERE "role" IN (\'manager\', \'technician\')'),
-      recent_vehicles: (await listVehicles(actor, {})).vehicles.slice(0, 6),
-      recent_interventions: (await interventionsFor('TRUE', [], 6)) };
-  }
-  var org = orgOf(actor);
-  return { scope: 'own_workshop',
-    vehicles: await count('SELECT count(*)::int n FROM idauto_vehicles v WHERE v.merged_into_id IS NULL AND ' + orgVehicleClause('v', 1), [org]),
-    registered_30d: await count("SELECT count(DISTINCT h.vehicle_id)::int n FROM idauto_vehicle_identification_history h WHERE h.org_id = $1 AND h.method = 'manual_registration' AND h.changed_at > NOW() - INTERVAL '30 days'", [org]),
-    interventions_open: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE org_id = $1 AND status IN ('open','in_progress')", [org]),
-    interventions_30d: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE org_id = $1 AND opened_at > NOW() - INTERVAL '30 days'", [org]),
-    technicians: await count('SELECT count(*)::int n FROM idauto_auth_user WHERE "org_id" = $1', [org]),
-    recent_vehicles: (await listVehicles(actor, {})).vehicles.slice(0, 6),
-    recent_interventions: await interventionsFor('w.org_id = $1', [org], 6) };
+  var admin = isAdmin(actor), org = orgOf(actor), p = admin ? [] : [org];
+  var vScope = admin ? 'v.merged_into_id IS NULL' : 'v.merged_into_id IS NULL AND ' + orgVehicleClause('v', 1);
+  var wScope = admin ? 'TRUE' : 'w.org_id = $1';
+  return { scope: admin ? 'all_workshops' : 'own_workshop',
+    vehicles: await count('SELECT count(*)::int n FROM idauto_vehicles v WHERE ' + vScope, p),
+    vehicles_with_data: await count('SELECT count(*)::int n FROM idauto_vehicles v WHERE ' + vScope + ' AND ' + vehicleDataClause('v', admin ? null : 1), p),
+    workshops: admin ? await count("SELECT count(*)::int n FROM idauto_organizations WHERE status <> 'cancelled'") : (org ? 1 : 0),
+    interventions: await count('SELECT count(*)::int n FROM idauto_workshop_visits w WHERE ' + wScope, p),
+    parts: await count('SELECT count(*)::int n FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE ' + PART_WHERE + ' AND ' + wScope, p),
+    recent_vehicles: (await listVehicles(actor, {})).vehicles.slice(0, 6) };
+}
+
+// ---- workshops (client restructuring 2026-11-06) ----------------------------------------
+// The organisation records and their recorded work. Admin: every workshop that is not cancelled; manager /
+// technician: their own only (any other id answers 404, like every other cross-workshop read). The workshop's
+// contact e-mail and tax id are NOT returned (IDA-ADMIN-3 rule: presence flags only) — see RESTRUCTURE §4.
+async function workshopRows(where, params) {
+  return (await db.query('SELECT o.id, o.name, o.org_type, o.status, o.address_city, g.name_fr AS governorate, o.created_at, ' +
+    '(o.contact_email IS NOT NULL AND o.contact_email <> \'\') AS contact_email_present, ' +
+    '(SELECT count(*)::int FROM idauto_auth_user u WHERE u."org_id" = o.id AND u."role" IN (\'manager\', \'technician\')) AS accounts, ' +
+    '(SELECT count(DISTINCT w.vehicle_id)::int FROM idauto_workshop_visits w WHERE w.org_id = o.id AND w.vehicle_id IS NOT NULL) AS vehicles, ' +
+    '(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.org_id = o.id) AS interventions, ' +
+    '(SELECT max(w.opened_at) FROM idauto_workshop_visits w WHERE w.org_id = o.id) AS last_intervention_at ' +
+    'FROM idauto_organizations o LEFT JOIN idauto_governorates g ON g.id = o.governorate_id WHERE ' + where + ' ORDER BY o.name', params)).rows
+    .map(function (r) { return { id: r.id, name: r.name, type: r.org_type, status: r.status, city: r.address_city, governorate: r.governorate, contact_email_present: r.contact_email_present,
+      accounts: r.accounts, vehicles: r.vehicles, interventions: r.interventions, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; });
+}
+async function listWorkshops(actor) {
+  if (isAdmin(actor)) return { scope: 'all_workshops', workshops: await workshopRows("o.status <> 'cancelled'", []) };
+  return { scope: 'own_workshop', workshops: orgOf(actor) ? await workshopRows('o.id = $1', [orgOf(actor)]) : [] };
+}
+async function workshop(id, actor) {
+  var n = /^\d{1,9}$/.test(String(id)) ? parseInt(id, 10) : -1;
+  if (!isAdmin(actor) && n !== orgOf(actor)) throw errors.IdautoError('NOT_FOUND');
+  var rows = await workshopRows('o.id = $1', [n]);
+  if (!rows.length) throw errors.IdautoError('NOT_FOUND');
+  var vehicles = (await db.query('SELECT v.ivid, v.make, v.model, v.year, count(w.id)::int AS interventions, max(w.opened_at) AS last_intervention_at, ' +
+    "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate " +
+    'FROM idauto_workshop_visits w JOIN idauto_vehicles v ON v.id = w.vehicle_id WHERE w.org_id = $1 GROUP BY v.id ORDER BY max(w.opened_at) DESC LIMIT 200', [n])).rows;
+  return { workshop: rows[0],
+    technicians: can(actor, 'team:read') ? (await listTechnicians(actor, n)).people : null,
+    vehicles: vehicles.map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, year: r.year, interventions: r.interventions, last_intervention_at: r.last_intervention_at }; }),
+    interventions: await interventionsFor('w.org_id = $1', [n], 200) };
 }
 
 async function notifications(actor) {
@@ -286,5 +335,5 @@ async function search(q, actor) {
   return out;
 }
 
-module.exports = { dossier: dossier, listVehicles: listVehicles, listDocuments: listDocuments, listInterventions: listInterventions, listPartsUsed: listPartsUsed,
+module.exports = { listWorkshops: listWorkshops, workshop: workshop, vehicleDataClause: vehicleDataClause, dossier: dossier, listVehicles: listVehicles, listDocuments: listDocuments, listInterventions: listInterventions, listPartsUsed: listPartsUsed,
   listTechnicians: listTechnicians, overview: overview, notifications: notifications, search: search, vehicleOr404: vehicleOr404 };

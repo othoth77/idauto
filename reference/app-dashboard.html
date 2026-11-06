@@ -20,22 +20,17 @@
     <header class="ida-page-head">
       <div>
         <h1>Tableau de bord</h1>
-        <p class="ida-muted ida-u-maxch-52">L&#x27;activité de votre atelier, comptée dans la base au chargement de la page.</p>
+        <p class="ida-muted ida-u-maxch-52">L&#x27;état réel de la base des véhicules, compté au chargement de la page.</p>
       </div>
       <div class="ida-page-actions"><a class="ida-btn ida-btn--secondary" href="/atelier/interventions?new=1">Nouvelle intervention</a><a class="ida-btn ida-btn--primary" href="/atelier/vehicules/nouveau">Ajouter un véhicule</a></div>
     </header>
     <div id="page-status" aria-live="polite"></div>
     <div id="stats" class="ida-admin-stats" aria-live="polite" aria-busy="true"><p class="ida-muted">Chargement…</p></div>
-    <div class="ida-admin-grid">
-      <section class="ida-card ida-stack" aria-labelledby="sec-recent-v">
-        <div class="ida-section-head"><h2 id="sec-recent-v">Véhicules récents</h2><a class="ida-small" href="/atelier/vehicules">Tous les véhicules</a></div>
-        <div id="recent-vehicles"></div>
-      </section>
-      <section class="ida-card ida-stack" aria-labelledby="sec-recent-i">
-        <div class="ida-section-head"><h2 id="sec-recent-i">Interventions récentes</h2><a class="ida-small" href="/atelier/interventions">Toutes les interventions</a></div>
-        <div id="recent-interventions"></div>
-      </section>
-    </div>
+    <p class="ida-small ida-muted" id="stats-scope"></p>
+    <section class="ida-card ida-stack" aria-labelledby="sec-recent-v">
+      <div class="ida-section-head"><h2 id="sec-recent-v">Véhicules récents</h2><a class="ida-small" href="/atelier/vehicules">Tous les véhicules</a></div>
+      <div id="recent-vehicles"></div>
+    </section>
   </div>
 </main>
 </div>

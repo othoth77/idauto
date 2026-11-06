@@ -3,13 +3,15 @@
 (function () {
   var C = window.IdAutoConsole, el = C.el, clear = C.clear, t = (window.IdAutoI18n || { t: function (s) { return s; } }).t;
   var list = document.getElementById('list'), pager = document.getElementById('pager'), q = document.getElementById('f-q');
-  var params = new URLSearchParams(location.search), page = parseInt(params.get('page'), 10) || 1;
+  var params = new URLSearchParams(location.search), page = parseInt(params.get('page'), 10) || 1, withData = params.get('with_data') === '1';
+  function link(p) { var x = []; if (p > 1) x.push('page=' + p); if (q.value.trim()) x.push('q=' + encodeURIComponent(q.value.trim())); if (withData) x.push('with_data=1'); return x.length ? '?' + x.join('&') : location.pathname; }
   q.value = params.get('q') || '';
   async function load() {
     list.setAttribute('aria-busy', 'true');
     try {
-      var out = await C.api('/api/workspace/vehicles?page=' + page + (q.value.trim() ? '&q=' + encodeURIComponent(q.value.trim()) : ''));
+      var out = await C.api('/api/workspace/vehicles?page=' + page + (q.value.trim() ? '&q=' + encodeURIComponent(q.value.trim()) : '') + (withData ? '&with_data=1' : ''));
       list.setAttribute('aria-busy', 'false'); clear(list); clear(pager);
+      list.appendChild(el('p', { class: 'ida-small ida-muted', id: 'list-total' }, [t('# véhicule(s)').replace('#', String(out.total)), withData ? ' · ' : '', withData ? el('span', null, [t('avec données'), ' — ', el('a', { href: '/atelier/vehicules' }, t('voir tous les véhicules'))]) : '']));
       if (!out.vehicles.length) { list.appendChild(el('p', { class: 'ida-empty' }, [q.value ? t('Aucun véhicule ne correspond.') : t('Aucun véhicule pour le moment.'), ' ', el('a', { href: '/atelier/vehicules/nouveau' }, t('Ajouter un véhicule'))])); return; }
       list.appendChild(el('div', { class: 'ida-table-wrap' }, el('table', { class: 'ida-table' }, [
         el('thead', null, el('tr', null, ['Immatriculation', 'Véhicule', 'Année', 'Énergie', 'Carte grise', 'Dernière intervention'].map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
@@ -20,10 +22,10 @@
             el('td', null, v.documents >= 2 ? el('span', { class: 'ida-status ida-status--verified' }, t('2 faces')) : v.documents === 1 ? el('span', { class: 'ida-status ida-status--pending' }, t('Face 1 seule')) : el('span', { class: 'ida-status ida-status--neutral' }, t('Aucune photo'))),
             el('td', null, v.last_intervention_at ? C.date(v.last_intervention_at) : '—')]);
         }))])));
-      if (page > 1) pager.appendChild(el('a', { class: 'ida-btn ida-btn--secondary ida-btn--sm', href: '?page=' + (page - 1) + (q.value ? '&q=' + encodeURIComponent(q.value) : '') }, t('Page précédente')));
-      if (out.has_more) pager.appendChild(el('a', { class: 'ida-btn ida-btn--secondary ida-btn--sm', href: '?page=' + (page + 1) + (q.value ? '&q=' + encodeURIComponent(q.value) : '') }, t('Page suivante')));
+      if (page > 1) pager.appendChild(el('a', { class: 'ida-btn ida-btn--secondary ida-btn--sm', href: link(page - 1) }, t('Page précédente')));
+      if (out.has_more) pager.appendChild(el('a', { class: 'ida-btn ida-btn--secondary ida-btn--sm', href: link(page + 1) }, t('Page suivante')));
     } catch (e) { list.setAttribute('aria-busy', 'false'); C.state(list, 'error', C.errorText(e)); }
   }
-  document.getElementById('filter').addEventListener('submit', function (e) { e.preventDefault(); page = 1; history.replaceState(null, '', q.value.trim() ? '?q=' + encodeURIComponent(q.value.trim()) : location.pathname); load(); });
+  document.getElementById('filter').addEventListener('submit', function (e) { e.preventDefault(); page = 1; history.replaceState(null, '', link(1)); load(); });
   (async function () { if (await C.sessionLine(null, location.pathname + location.search)) load(); }());
 }());
