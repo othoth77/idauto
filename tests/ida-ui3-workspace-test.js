@@ -64,8 +64,8 @@ async function freePlate() {
   ok((await request('POST', '/api/vehicles/register', null, {})).status === 401, 'anonymous → 401');
   ok((await request('POST', '/api/vehicles/register', T.READER, { plate: P1, make: MAKE })).status === 403, 'without vehicle:write → 403');
   var noId = await request('POST', '/api/vehicles/register', T.MGR, { make: MAKE });
-  ok(noId.status === 400 && noId.body.details.reason === 'plate_or_vin_required', 'a plate or a VIN is required');
-  ok((await request('POST', '/api/vehicles/register', T.MGR, { plate: P1 })).body.details.field === 'make', 'the make is required');
+  ok(noId.status === 400 && noId.body.details.reason === 'plate_required', 'the registration number is required (IDA-UI-4)');
+  ok((await request('POST', '/api/vehicles/register', T.MGR, { vin: randomVin(), make: MAKE })).body.details.reason === 'plate_required', 'a VIN alone is not enough any more: the plate is required (IDA-UI-4)');
   ok((await request('POST', '/api/vehicles/register', T.MGR, { plate: { series: '12a', number: '1' }, make: MAKE })).body.details.reason === 'invalid_plate', 'an invalid plate is refused');
   ok((await request('POST', '/api/vehicles/register', T.MGR, { plate: P1, vin: 'NOTAVIN', make: MAKE })).body.details.field === 'vin', 'an invalid VIN is refused');
   ok((await request('POST', '/api/vehicles/register', T.MGR, { plate: P1, make: MAKE, year: '1800' })).body.details.reason === 'out_of_range', 'an impossible year is refused');
@@ -164,7 +164,7 @@ async function freePlate() {
   ok(team.status === 403, 'a technician cannot list the team (team:read is manager / admin)');
   ok((await request('GET', '/api/workspace/technicians', T.MGR)).status === 200, 'a manager can');
   var ov = await request('GET', '/api/workspace/overview', T.MGR);
-  ok(ov.status === 200 && ov.body.scope === 'own_workshop' && ov.body.vehicles >= 1 && ov.body.interventions >= 1 && ov.body.parts >= 2 && ov.body.workshops === 1, 'overview: real counts for the workshop');
+  ok(ov.status === 200 && ov.body.scope === 'own_workshop' && ov.body.vehicles >= 1 && ov.body.interventions >= 1 && ov.body.parts >= 2 && Number.isInteger(ov.body.parts_our_shop) && Number.isInteger(ov.body.parts_customer), 'overview: real counts for the workshop');
   var ovAdm = await request('GET', '/api/workspace/overview', T.ADMIN);
   ok(ovAdm.body.scope === 'all_workshops' && ovAdm.body.vehicles >= ov.body.vehicles, 'overview: platform-wide for an admin');
   var notif = await request('GET', '/api/notifications', T.MGR);

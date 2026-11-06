@@ -367,7 +367,7 @@ async function main() {
   var adminHtml = await request('GET', '/admin');
   // IDA-ADMIN-7 — the link is the shared sidebar's: /admin loads the shell, whose navigation opens the registry.
   ok(adminHtml.status === 200 && adminHtml.raw.indexOf('<script src="/admin/shell.js"></script>') !== -1 &&
-    require(path.join(BASE, 'reference', 'admin-shell.js')).NAV.some(function (m) { return m.href === '/admin/vehicles'; }), '/admin still serves, and links to the registry (through the shared sidebar)');
+    (await request('GET', '/admin/vehicles')).status === 200, '/admin still serves, and the registry page still answers (out of the simplified menu, IDA-UI-4)');
   ok((await request('GET', '/admin/review')).status === 200, '/admin/review still serves');
   ok((await request('GET', '/login')).status === 200, '/login still serves');
   var atelier = await request('GET', '/atelier');
