@@ -113,6 +113,8 @@
     // Shown as a DECLARATION wherever it is displayed: IDauto holds no sale or invoice, so « notre établissement »
     // is never presented as a proven purchase (client rule 2026-11-06). The radio buttons keep the plain wording.
     part_source: { our_shop: 'Pièce achetée auprès de notre établissement (déclarée)', customer_supplied: 'Pièce fournie par le client (déclarée)', external_supplier: 'Pièce achetée auprès d\'un fournisseur externe (déclarée)', unknown: 'Provenance non renseignée' },
+    // Same declarations, short, for table cells.
+    part_source_short: { our_shop: 'Notre établissement (déclarée)', customer_supplied: 'Fournie par le client (déclarée)', external_supplier: 'Autre fournisseur (déclarée)', unknown: 'Non renseignée' },
     part_condition: { new: 'Neuve', used: 'Occasion' },
     fuel_type: { petrol: 'Essence', diesel: 'Diesel', lpg: 'GPL', electric: 'Électrique', hybrid: 'Hybride', other: 'Autre' },
     role: { admin: 'Administrateur', manager: 'Gestionnaire', technician: 'Technicien' }

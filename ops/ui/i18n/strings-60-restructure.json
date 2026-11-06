@@ -44,5 +44,8 @@
  "voir tous les véhicules": "عرض كل المركبات",
  "Date · intervention": "التاريخ · التدخل",
  "Pièce · référence": "القطعة · المرجع",
- "Intervention": "التدخل"
+ "Intervention": "التدخل",
+ "Notre établissement (déclarée)": "مؤسستنا (مصرّح بها)",
+ "Fournie par le client (déclarée)": "قدّمها الحريف (مصرّح بها)",
+ "Autre fournisseur (déclarée)": "مزوّد آخر (مصرّح بها)"
 }

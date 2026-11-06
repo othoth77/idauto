@@ -124,7 +124,7 @@ async function main() {
   var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];
   ok(pages.every(function (f) { var h = fs.readFileSync(path.join(BASE, 'reference', f), 'utf8'); return (h.match(/<aside class="ida-admin-sidebar" data-admin-sidebar /g) || []).length === 1 && (h.match(/<script src="\/admin\/shell\.js"><\/script>/g) || []).length === 1 && !/ida-nav-links|aria-current=/.test(h); }),
     'all ' + pages.length + ' console pages carry the one shared sidebar slot and load the shell once, with no menu of their own');
-  ok(shellNav.locate('/admin/review').item.label === 'Vérification et validation' && shellNav.locate('/admin/review').item.section === 'Administration', 'the review queue is its own item, « Vérification et validation », under Administration');
+  ok(shellNav.locate('/admin/review').item.label === 'Vérification et validation' && shellNav.locate('/admin/review').item.section === 'Véhicules', 'the review queue is its own item, « Vérification et validation », under Véhicules (admin only)');
   var review = fs.readFileSync(path.join(BASE, 'reference', 'review.html'), 'utf8');
   var reviewUi = strip(fs.readFileSync(path.join(BASE, 'reference', 'review-ui.js'), 'utf8'));
   ok(/lang="fr"/.test(review) && review.indexOf('File de revue') !== -1 && !/Review queue|Load queue|Pending observations|Select an observation|Skip to content/.test(review), 'the review page is French');

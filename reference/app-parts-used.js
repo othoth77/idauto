@@ -8,7 +8,8 @@
   var params = new URLSearchParams(location.search), org = params.get('org') || '';
   source.value = params.get('source') || '';
   function qs(src) { var p = []; if (src) p.push('source=' + encodeURIComponent(src)); if (org) p.push('org=' + encodeURIComponent(org)); return p.length ? '?' + p.join('&') : ''; }
-  function sourceOf(p) { return C.label('part_source', p.source || 'unknown'); }
+  function sourceOf(p) { return C.label('part_source_short', p.source || 'unknown'); }
+  var admin = false;
   async function load() {
     list.setAttribute('aria-busy', 'true');
     try {
@@ -22,17 +23,17 @@
       });
       if (!out.parts.length) { list.appendChild(el('p', { class: 'ida-empty' }, t('Aucune pièce enregistrée pour ce filtre.'))); return; }
       list.appendChild(el('div', { class: 'ida-table-wrap' }, el('table', { class: 'ida-table' }, [
-        el('thead', null, el('tr', null, ['Date · intervention', 'Pièce · référence', 'Quantité', 'Véhicule', 'Atelier', 'Provenance', 'État', 'Technicien'].map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
+        el('thead', null, el('tr', null, ['Date · intervention', 'Pièce · référence', 'Quantité', 'Véhicule'].concat(admin ? ['Atelier'] : []).concat(['Provenance', 'État', 'Technicien']).map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
         el('tbody', null, out.parts.map(function (p) {
           return el('tr', null, [el('td', null, [C.date(p.performed_on || p.at), el('br'), el('a', { class: 'ida-small', href: '/atelier/interventions?id=' + p.intervention }, t('Intervention') + ' #' + p.intervention)]),
             el('td', null, [C.text(p.label), p.reference ? el('span', { class: 'ida-small ida-muted ida-u-block' }, el('bdi', { dir: 'ltr' }, p.reference)) : '']), el('td', null, String(p.quantity)),
             el('td', null, p.vehicle ? el('a', { href: '/atelier/vehicule?ref=' + encodeURIComponent(p.vehicle.ivid) }, [C.plate(p.vehicle.plate, p.vehicle.plate), ' ', [p.vehicle.make, p.vehicle.model].filter(Boolean).join(' ')]) : '—'),
-            el('td', null, p.org_id ? el('a', { href: '/atelier/ateliers?id=' + p.org_id }, C.text(p.org)) : C.text(p.org)),
-            el('td', null, sourceOf(p)), el('td', null, C.label('part_condition', p.condition)), el('td', null, p.technician ? p.technician.name : '—')]);
+          ].concat(admin ? [el('td', null, p.org_id ? el('a', { href: '/atelier/ateliers?id=' + p.org_id }, C.text(p.org)) : C.text(p.org))] : []).concat([
+            el('td', null, sourceOf(p)), el('td', null, C.label('part_condition', p.condition)), el('td', null, p.technician ? p.technician.name : '—')]));
         }))])));
       if (out.parts.length >= out.shown_limit) list.appendChild(el('p', { class: 'ida-small ida-muted' }, t('Les 100 plus récentes sont affichées ; filtrez par provenance pour voir les autres.')));
     } catch (e) { list.setAttribute('aria-busy', 'false'); C.state(list, 'error', C.errorText(e)); }
   }
   source.addEventListener('change', function () { history.replaceState(null, '', location.pathname + qs(source.value)); load(); });
-  (async function () { if (await C.sessionLine(null, location.pathname + location.search)) load(); }());
+  (async function () { var me = await C.sessionLine(null, location.pathname + location.search); if (!me) return; admin = me.role === 'admin'; load(); }());
 }());

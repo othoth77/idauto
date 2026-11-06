@@ -129,7 +129,7 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   var op = (await db.query("SELECT op.part_source, op.part_condition, op.status, op.created_by FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id JOIN idauto_vehicles v ON v.id = w.vehicle_id WHERE v.ivid = $1", [IVID])).rows[0];
   ok(op && op.part_source === 'customer_supplied' && op.part_condition === 'new' && op.status === 'done' && /^user:/.test(op.created_by), 'stored: source, condition, done, the technician\'s identity');
   await go('/atelier/pieces-remplacees', '/FILTRE A HUILE/.test(document.getElementById("list").textContent)');
-  ok(await ev('/fournie par le client/.test(document.getElementById("list").textContent)'), '« Pièces posées » lists it with its source');
+  ok(await ev('/fournie par le client \\(déclarée\\)/i.test(document.getElementById("list").textContent)'), '« Pièces posées » lists it with its declared source');
   ok(await ev('/\\(déclarée\\)/.test(document.getElementById("list").textContent) && document.querySelectorAll("#totals a").length >= 4'), 'shown as a declaration, with the totals per source');
 
   console.log('\n== WORKSHOP PAGE');

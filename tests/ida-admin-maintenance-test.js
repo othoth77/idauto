@@ -128,10 +128,10 @@ async function main() {
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html), 'the page has no inline script/style and is French');
   // IDA-ADMIN-7 — one navigation, defined once in the shared shell.
   var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
-  // IDA-UI-1 — the application shell: sections in order, each item with its admin page.
-  var SECTIONS = ['Vue générale', 'Gestion des véhicules', 'Carte grise', 'Maintenance', 'Ateliers', 'Catalogue', 'Administration', 'Sécurité', 'Configuration'];
-  ok(JSON.stringify(shellNav.SECTIONS.map(function (x) { return x.label; })) === JSON.stringify(SECTIONS), 'the shared navigation lists its nine sections in order, with their French labels');
-  var adminPages = { '/admin/dashboard': 'Tableau de bord', '/admin/vehicles': 'Véhicules', '/admin/vehicle': 'Véhicules', '/admin/maintenance': 'Historique de maintenance', '/admin/sources': 'Liste des ateliers',
+  // Client restructuring 2026-11-06 — the application shell: five sections in order, each console page still an item.
+  var SECTIONS = ['Tableau de bord', 'Véhicules', 'Ateliers', 'Pièces', 'Paramètres'];
+  ok(JSON.stringify(shellNav.SECTIONS.map(function (x) { return x.label; })) === JSON.stringify(SECTIONS), 'the shared navigation lists its five sections in order, with their French labels');
+  var adminPages = { '/admin/dashboard': 'Indicateurs de la console', '/admin/vehicles': 'Registre (console)', '/admin/vehicle': 'Registre (console)', '/admin/maintenance': 'Historique de maintenance (console)', '/admin/sources': 'Sources de données',
     '/admin/quality': 'Qualité des données', '/admin/review': 'Vérification et validation', '/admin/security': 'Journal d\u2019activité et audit', '/admin': 'Saisie technique (avancée)' };
   ok(Object.keys(adminPages).every(function (p) { var l = shellNav.locate(p); return l.item && l.item.label === adminPages[p]; }), 'every console page belongs to one menu item');
   ok(shellNav.locate('/admin/maintenance/').item.admin === undefined && shellNav.locate('/admin/maintenance/').item.href === '/admin/maintenance', 'maintenance: located with or without a trailing slash');
