@@ -5,28 +5,28 @@
  * unless [data-theme] pins a choice. */
 
 :root {
-  /* color — light (Papier & Encre) */
-  --ida-bg: #F6F4EE;
+  /* color — light (Atelier: clair, neutre, accent bleu — IDA-UI-4) */
+  --ida-bg: #F4F6F8;
   --ida-surface: #FFFFFF;
   --ida-surface-raised: #FFFFFF;
-  --ida-surface-sunken: #EFECE4;
-  --ida-text: #1C1B18;
-  --ida-text-muted: #5D594F;
-  --ida-text-faint: #8A8578;
-  --ida-border: #DCD8CC;
-  --ida-border-strong: #A9A395;
-  --ida-primary: #1C1B18;
-  --ida-primary-contrast: #F6F4EE;
-  --ida-verify: #1D6B4F;
-  --ida-verify-strong: #14523C;
-  --ida-verify-tint: #E3EFE8;
+  --ida-surface-sunken: #EBEFF3;
+  --ida-text: #17212B;
+  --ida-text-muted: #4D5966;
+  --ida-text-faint: #7A8591;
+  --ida-border: #D6DCE2;
+  --ida-border-strong: #A2ACB7;
+  --ida-primary: #1D4F8F;
+  --ida-primary-contrast: #FFFFFF;
+  --ida-verify: #1E6B4C;
+  --ida-verify-strong: #15533A;
+  --ida-verify-tint: #E2F0E8;
   --ida-pending: #8A5A0B;
-  --ida-pending-tint: #F5EBD8;
-  --ida-danger: #9E3125;
-  --ida-danger-tint: #F7E5E2;
-  --ida-info: #44514E;
-  --ida-info-tint: #E7ECEA;
-  --ida-focus: #1D6B4F;
+  --ida-pending-tint: #F7EEDC;
+  --ida-danger: #A3302A;
+  --ida-danger-tint: #F9E7E5;
+  --ida-info: #3B5A78;
+  --ida-info-tint: #E6EDF5;
+  --ida-focus: #1D4F8F;
   --ida-plate-field: #0B0B0C;
   --ida-plate-glyph: #FAFAF7;
 

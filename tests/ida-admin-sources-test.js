@@ -126,7 +126,7 @@ async function main() {
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-sources.html'), 'utf8');
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
   var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
-  ok(shellNav.locate('/admin/sources').item.href === '/admin/sources', 'the shared sidebar marks /admin/sources as the current module and page');
+  ok(shellNav.locate('/admin/sources').item === null, '/admin/sources: the console page is out of the simplified menu (IDA-UI-4) and marks no menu item; it is still served');
 
   /* ===================================================================== */
   say('\n1. ACCESS');

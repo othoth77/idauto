@@ -21,6 +21,7 @@ var plateNormalizer = require('../vehicle/plate-normalizer.js');
 var vinModule = require('../vehicle/vin.js');
 var repository = require('../vehicle/vehicle-repository.js');
 var owners = require('./owner-contacts.js');
+var details = require('./vehicle-details.js');
 
 var FUELS = ['petrol', 'diesel', 'lpg', 'electric', 'hybrid', 'other'];
 var CURRENT_YEAR = new Date().getUTCFullYear();
@@ -30,7 +31,7 @@ function str(v, max) { if (v === null || v === undefined) return null; var s = S
 function int(body, k, min, max) {
   var v = body[k];
   if (v === null || v === undefined || v === '') return null;
-  if (!/^\d{1,6}$/.test(String(v).trim())) throw fail(k, 'not_a_number');
+  if (!/^\d{1,7}$/.test(String(v).trim())) throw fail(k, 'not_a_number');
   var n = parseInt(v, 10);
   if (n < min || n > max) throw fail(k, 'out_of_range');
   return n;
@@ -62,18 +63,20 @@ function validate(body) {
     if (!v.ok) throw fail('vin', v.reason || 'invalid_vin');
     vin = v.vin;
   }
-  if (!plate && !vin) throw fail('plate', 'plate_or_vin_required');
+  // IDA-UI-4 (simplification): the registration number is the only required field.
+  if (!plate) throw fail('plate', 'plate_required');
   var make = str(body.make, 80);
-  if (!make) throw fail('make', 'required');
   var fuel = str(body.fuel_type, 20);
   if (fuel && FUELS.indexOf(fuel) === -1) throw fail('fuel_type', 'unknown_fuel');
   var out = {
-    plate: plate, vin: vin, make: make.toUpperCase(), model: str(body.model, 80), variant: str(body.variant, 80), fuel_type: fuel,
+    plate: plate, vin: vin, make: make ? make.toUpperCase() : null, model: str(body.model, 80), variant: str(body.variant, 80), fuel_type: fuel,
     year: int(body, 'year', 1950, CURRENT_YEAR + 1), engine_cc: int(body, 'engine_cc', 49, 20000), seats: int(body, 'seats', 1, 99),
     gross_weight_kg: int(body, 'gross_weight_kg', 100, 60000), category_code: str(body.category_code, 10), body_type: str(body.body_type, 40),
     engine_code: str(body.engine_code, 30), colour: str(body.colour, 40)
   };
   if (out.category_code && !/^[A-Z][0-9A-Z]{0,3}$/i.test(out.category_code)) throw fail('category_code', 'invalid_category');
+  out.odometer_km = int(body, 'odometer_km', 0, 3000000);
+  out.notes = details.cleanNotes(body.notes);
   if (out.model) out.model = out.model.toUpperCase();
   var owner = body.owner && (body.owner.full_name || body.owner.phone) ? owners.validate(body.owner) : null;
   return { vehicle: out, owner: owner, ownerInput: owner ? body.owner : null };
@@ -104,9 +107,11 @@ async function register(body, actor) {
         var holders = await repository.vehiclesWithVin(client, v.vehicle.vin);
         if (holders.length) { var kv = canSeeVin ? await repository.canonicalById(holders[0], client) : null; vinProbe = { vin: v.vehicle.vin, ivid: kv ? kv.ivid : null }; throw errors.IdautoError('CONFLICT', { reason: 'vehicle_already_registered', identifier: 'vin', ivid: kv ? kv.ivid : null }); }
       }
-      var input = Object.assign({}, v.vehicle); delete input.colour;
+      var input = Object.assign({}, v.vehicle); delete input.colour; delete input.odometer_km; delete input.notes;
       var row = await repository.insertIdentifiedVehicle(client, input, actor, { method: 'manual_registration', source: 'manual_registration', confidence: 1 }, true);
       if (v.vehicle.colour) await client.query('UPDATE idauto_vehicles SET colour = $1 WHERE id = $2', [v.vehicle.colour, row.id]);
+      if (v.vehicle.odometer_km !== null && v.vehicle.odometer_km !== undefined) await client.query('UPDATE idauto_vehicles SET odometer_km = $1, odometer_at = CURRENT_DATE WHERE id = $2', [v.vehicle.odometer_km, row.id]);
+      if (v.vehicle.notes) await details.upsertNotesWith(client, row.id, v.vehicle.notes, actor);
       var ownerFields = v.owner ? await owners.upsertWith(client, row.id, v.ownerInput, actor) : [];
       return { record: { ivid: row.ivid, plate: p ? p.canonical : null, vin_recorded: !!v.vehicle.vin, owner_fields: ownerFields }, auditTargetRef: row.ivid };
     });

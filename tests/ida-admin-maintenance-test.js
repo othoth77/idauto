@@ -128,13 +128,11 @@ async function main() {
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html), 'the page has no inline script/style and is French');
   // IDA-ADMIN-7 — one navigation, defined once in the shared shell.
   var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
-  // IDA-UI-1 — the application shell: sections in order, each item with its admin page.
-  var SECTIONS = ['Vue générale', 'Gestion des véhicules', 'Carte grise', 'Maintenance', 'Ateliers', 'Catalogue', 'Administration', 'Sécurité', 'Configuration'];
-  ok(JSON.stringify(shellNav.SECTIONS.map(function (x) { return x.label; })) === JSON.stringify(SECTIONS), 'the shared navigation lists its nine sections in order, with their French labels');
-  var adminPages = { '/admin/dashboard': 'Tableau de bord', '/admin/vehicles': 'Véhicules', '/admin/vehicle': 'Véhicules', '/admin/maintenance': 'Historique de maintenance', '/admin/sources': 'Liste des ateliers',
-    '/admin/quality': 'Qualité des données', '/admin/review': 'Vérification et validation', '/admin/security': 'Journal d\u2019activité et audit', '/admin': 'Saisie technique (avancée)' };
-  ok(Object.keys(adminPages).every(function (p) { var l = shellNav.locate(p); return l.item && l.item.label === adminPages[p]; }), 'every console page belongs to one menu item');
-  ok(shellNav.locate('/admin/maintenance/').item.admin === undefined && shellNav.locate('/admin/maintenance/').item.href === '/admin/maintenance', 'maintenance: located with or without a trailing slash');
+  // IDA-UI-4 — the simplified menu: five links; the console pages are out of it (and still served).
+  var FIVE = ['Tableau de bord', 'Véhicules', 'Interventions', 'Pièces', 'Paramètres'];
+  ok(JSON.stringify(shellNav.NAV.map(function (x) { return x.label; })) === JSON.stringify(FIVE), 'the shared navigation lists its five links in order, with their French labels');
+  ok(['/admin/dashboard', '/admin/vehicles', '/admin/vehicle', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/review', '/admin/security', '/admin'].every(function (p) { return shellNav.locate(p).item === null; }), 'no console page is a menu item any more');
+  ok(shellNav.locate('/admin/utilisateurs').item.label === 'Paramètres' && shellNav.locate('/admin/roles/').item.label === 'Paramètres', 'users and roles are reached from « Paramètres » (with or without a trailing slash)');
   ok(shellNav.locate('/admin/nope').item === null && shellNav.locate('/').item === null, 'a path outside the application marks no item');
   ok(shellNav.visible('technician').every(function (sec) { return sec.items.every(function (i) { return !/^\/admin/.test(shellNav.hrefFor(i, 'technician')); }); }), 'a technician\'s menu holds no console page (the server refuses them anyway)');
   var pages = ['admin.html', 'review.html', 'admin-vehicles.html', 'admin-vehicle.html', 'admin-maintenance.html', 'admin-sources.html', 'admin-quality.html', 'admin-security.html', 'admin-dashboard.html'];

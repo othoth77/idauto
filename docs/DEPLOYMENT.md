@@ -87,7 +87,8 @@ test); VPS disk ≤ 89 %; owner go.
      or NULL), otherwise the new CHECK constraint is refused and the migration stops.
 2. Backup `idauto_production` (`pg_dump -Fc idauto_production`, sha256, `pg_restore --list`) and confirm the nightly off-host backup is green.
 3. Merge; fast-forward the production checkout. No new npm dependency.
-4. Apply `database/migrations/ida-ui3-registration-maintenance.sql` **in one transaction**
+4. Apply, in order and each **in one transaction**, the migrations not yet in production — `ida-ui3-registration-maintenance.sql`, then `ida-ui4-simplification.sql` (IDA-UI-4: additive; docs/SIMPLIFICATION_2026-11.md §3).
+   For `ida-ui3-registration-maintenance.sql`:
    (`psql -d idauto_production -1 -v ON_ERROR_STOP=1`): additive, idempotent (applied twice on scratch). It creates
    `idauto_vehicle_owner_contacts` (personal data — owner decision 2026-11-05) and adds nullable columns to
    `idauto_workshop_operations`; no existing row changes.

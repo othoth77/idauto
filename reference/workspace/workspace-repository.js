@@ -21,6 +21,7 @@ var repository = require('../vehicle/vehicle-repository.js');
 var plateNormalizer = require('../vehicle/plate-normalizer.js');
 var vinModule = require('../vehicle/vin.js');
 var owners = require('./owner-contacts.js');
+var details = require('./vehicle-details.js');
 
 function orgOf(actor) { return actor.principal && actor.principal.kind === 'organisation' ? actor.principal.org_id : null; }
 function isAdmin(actor) { return !!(actor.principal && actor.principal.kind !== 'organisation'); }
@@ -32,8 +33,12 @@ function orgVehicleClause(alias, p) {
   return '(EXISTS (SELECT 1 FROM idauto_workshop_visits w WHERE w.vehicle_id = ' + alias + '.id AND w.org_id = $' + p + ')' +
     ' OR EXISTS (SELECT 1 FROM idauto_vehicle_identification_history h WHERE h.vehicle_id = ' + alias + '.id AND h.org_id = $' + p + ')' +
     ' OR EXISTS (SELECT 1 FROM idauto_vehicle_documents d WHERE d.vehicle_id = ' + alias + '.id AND d.org_id = $' + p + ')' +
-    ' OR EXISTS (SELECT 1 FROM idauto_vehicle_owner_contacts c WHERE c.vehicle_id = ' + alias + '.id AND c.org_id = $' + p + ' AND c.superseded_at IS NULL))';
+    ' OR EXISTS (SELECT 1 FROM idauto_vehicle_owner_contacts c WHERE c.vehicle_id = ' + alias + '.id AND c.org_id = $' + p + ' AND c.superseded_at IS NULL)' +
+    ' OR EXISTS (SELECT 1 FROM idauto_vehicle_notes n WHERE n.vehicle_id = ' + alias + '.id AND n.org_id = $' + p + '))';
 }
+
+// A recorded part: an operation that names a part, neither it nor its intervention cancelled.
+var PART_WHERE = "(op.part_id IS NOT NULL OR op.part_label IS NOT NULL OR op.part_reference_text IS NOT NULL) AND op.status <> 'cancelled' AND w.status <> 'cancelled'";
 
 // Display names of the people behind actor references ('user:<id>'), never their e-mail.
 async function namesOf(refs) {
@@ -54,19 +59,20 @@ async function vehicleOr404(ref) {
 // ---- maintenance history ------------------------------------------------------
 async function interventionsFor(where, params, limit) {
   var visits = (await db.query(
-    'SELECT w.id, w.org_id, o.name AS org_name, w.vehicle_id, v.ivid, v.make, v.model, w.status, w.reason, w.identification_method, w.opened_by, w.opened_at, w.closed_at, ' +
+    'SELECT w.id, w.org_id, o.name AS org_name, w.vehicle_id, v.ivid, v.make, v.model, w.status, w.reason, w.identification_method, w.opened_by, w.opened_at, w.closed_at, w.performed_on, w.odometer_km, w.technician_ref, ' +
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = w.vehicle_id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate " +
     'FROM idauto_workshop_visits w LEFT JOIN idauto_organizations o ON o.id = w.org_id LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id ' +
-    'WHERE ' + where + ' ORDER BY w.opened_at DESC LIMIT ' + (limit || 50), params)).rows;
+    'WHERE ' + where + ' ORDER BY coalesce(w.performed_on, w.opened_at::date) DESC, w.id DESC LIMIT ' + (limit || 50), params)).rows;
   if (!visits.length) return [];
   var ops = (await db.query(
     'SELECT op.id, op.visit_id, op.operation_type, op.description, op.quantity, op.status, op.created_by, op.created_at, op.part_source, op.part_condition, op.part_label, op.part_reference_text, op.performed_on, op.notes, ' +
     'pt.reference AS part_reference, pt.name AS part_catalogue_name, pt.brand AS part_brand ' +
-    'FROM idauto_workshop_operations op LEFT JOIN idauto_parts pt ON pt.id = op.part_id WHERE op.visit_id = ANY($1::int[]) ORDER BY op.id', [visits.map(function (v) { return v.id; })])).rows;
-  var names = await namesOf(visits.map(function (v) { return v.opened_by; }).concat(ops.map(function (o) { return o.created_by; })));
+    'FROM idauto_workshop_operations op LEFT JOIN idauto_parts pt ON pt.id = op.part_id WHERE op.visit_id = ANY($1::int[]) AND op.status <> \'cancelled\' ORDER BY op.id', [visits.map(function (v) { return v.id; })])).rows;
+  var names = await namesOf(visits.map(function (v) { return v.opened_by; }).concat(visits.map(function (v) { return v.technician_ref; }), ops.map(function (o) { return o.created_by; })));
   return visits.map(function (v) {
     return { id: v.id, org: { id: v.org_id, name: v.org_name }, vehicle: v.ivid ? { ivid: v.ivid, plate: v.plate, make: v.make, model: v.model } : null, status: v.status, reason: v.reason,
       opened_at: v.opened_at, closed_at: v.closed_at, opened_by: who(names, v.opened_by),
+      performed_on: v.performed_on, date: v.performed_on || v.opened_at, odometer_km: v.odometer_km, technician: who(names, v.technician_ref || v.opened_by), technician_ref: v.technician_ref || v.opened_by,
       operations: ops.filter(function (o) { return o.visit_id === v.id; }).map(function (o) {
         return { id: o.id, type: o.operation_type, description: o.description, quantity: o.quantity, status: o.status, performed_on: o.performed_on, created_at: o.created_at, notes: o.notes,
           technician: who(names, o.created_by),
@@ -87,16 +93,18 @@ async function dossier(ref, actor) {
   var docParams = [v.id], docWhere = "vehicle_id = $1 AND document_type = 'carte_grise'";
   if (!isAdmin(actor)) { docParams.push(org); docWhere += ' AND org_id = $2'; }
   var docs = (await db.query('SELECT face, mime_type, byte_size, width, height, created_at, updated_at, created_by FROM idauto_vehicle_documents WHERE ' + docWhere + ' ORDER BY face', docParams)).rows;
-  var visitWhere = 'w.vehicle_id = $1', visitParams = [v.id];
+  var visitWhere = "w.vehicle_id = $1 AND w.status <> 'cancelled'", visitParams = [v.id];
   if (!isAdmin(actor)) { visitParams.push(org); visitWhere += ' AND w.org_id = $2'; }
   var history = await interventionsFor(visitWhere, visitParams, 200);
   var legacy = isAdmin(actor) ? (await db.query('SELECT event_type, event_date, odometer_km, description, outcome FROM idauto_service_events WHERE vehicle_id = $1 ORDER BY event_date DESC LIMIT 100', [v.id])).rows : [];
   var ident = (await db.query('SELECT changed_at, action, method, source, org_id, actor_ref FROM idauto_vehicle_identification_history WHERE vehicle_id = $1' + (isAdmin(actor) ? '' : ' AND (org_id = $2 OR org_id IS NULL)') + ' ORDER BY changed_at DESC LIMIT 20', isAdmin(actor) ? [v.id] : [v.id, org])).rows;
   var names = await namesOf(ident.map(function (i) { return i.actor_ref; }));
+  var odo = (await db.query('SELECT odometer_km, odometer_at FROM idauto_vehicles WHERE id = $1', [v.id])).rows[0] || {};
   return {
     vehicle: { ivid: rec.id, internal_ref: rec.internal_ref, plate: rec.plate, plate_display: rec.plate_display, make: rec.manufacturer, model: rec.model, variant: rec.version,
       year: rec.year, fuel_type: rec.fuel_type, engine_cc: rec.engine_cc, seats: rec.seats, gross_weight_kg: rec.gross_weight_kg, category_code: rec.category_code, body_type: rec.body_type,
-      engine_code: rec.engine_code, colour: v.colour || null, fiche_status: rec.fiche_status, verified: rec.verified, verification_method: rec.verification_method, created_at: rec.created_at,
+      engine_code: rec.engine_code, colour: v.colour || null,
+      odometer_km: odo.odometer_km, odometer_at: odo.odometer_at, notes: await details.notesOf(v.id, actor), can_edit: can(actor, 'vehicle:write'), fiche_status: rec.fiche_status, verified: rec.verified, verification_method: rec.verification_method, created_at: rec.created_at,
       vin_present: !!vinOnRecord, vin: vin },
     plates: plates,
     documents: { faces: docs.map(function (d) { return { face: d.face, mime_type: d.mime_type, byte_size: d.byte_size, width: d.width, height: d.height, at: d.updated_at || d.created_at }; }),
@@ -125,13 +133,14 @@ async function listVehicles(actor, opts) {
     params.push(q); cond.push('upper(v.ivid) = upper($' + params.length + ')');
     where.push('(' + cond.join(' OR ') + ')');
   }
-  var sql = 'SELECT v.id, v.ivid, v.make, v.model, v.variant, v.year, v.fuel_type, v.created_at, ' +
+  var sql = 'SELECT v.id, v.ivid, v.make, v.model, v.variant, v.year, v.fuel_type, v.created_at, v.odometer_km, ' +
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate, " +
     "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS faces, ' +
-    '(SELECT max(w.opened_at) FROM idauto_workshop_visits w WHERE w.vehicle_id = v.id' + (isAdmin(actor) ? '' : ' AND w.org_id = $1') + ') AS last_intervention_at ' +
+    "(SELECT max(coalesce(w.performed_on, w.opened_at::date)) FROM idauto_workshop_visits w WHERE w.vehicle_id = v.id AND w.status <> 'cancelled'" + (isAdmin(actor) ? '' : ' AND w.org_id = $1') + ') AS last_intervention_at ' +
     'FROM idauto_vehicles v WHERE ' + where.join(' AND ') + ' ORDER BY v.created_at DESC LIMIT ' + (pg.limit + 1) + ' OFFSET ' + pg.offset;
   var rows = (await db.query(sql, params)).rows;
-  return { page: pg.page, has_more: rows.length > pg.limit, vehicles: rows.slice(0, pg.limit).map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, variant: r.variant, year: r.year, fuel_type: r.fuel_type, documents: r.faces, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; }) };
+  var total = (await db.query('SELECT count(*)::int n FROM idauto_vehicles v WHERE ' + where.join(' AND '), params)).rows[0].n;
+  return { page: pg.page, has_more: rows.length > pg.limit, total: total, vehicles: rows.slice(0, pg.limit).map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, variant: r.variant, year: r.year, fuel_type: r.fuel_type, documents: r.faces, odometer_km: r.odometer_km, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; }) };
 }
 
 async function listDocuments(actor, opts) {
@@ -149,61 +158,72 @@ async function listInterventions(actor, opts) {
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push('w.org_id = $' + params.length); }
   else if (opts.org_id) { params.push(parseInt(opts.org_id, 10) || 0); where.push('w.org_id = $' + params.length); }
   if (['open', 'in_progress', 'closed', 'cancelled'].indexOf(opts.status) !== -1) { params.push(opts.status); where.push('w.status = $' + params.length); }
+  else if (!opts.id) where.push("w.status <> 'cancelled'");  // one intervention by its number: shown even when cancelled
+  var q = String(opts.q || '').trim().slice(0, 80);
+  if (q) { params.push('%' + like(q.toUpperCase()) + '%'); var k = '$' + params.length;
+    where.push('(upper(coalesce(w.reason, \'\')) LIKE ' + k + ' OR upper(coalesce(v.make, \'\') || \' \' || coalesce(v.model, \'\')) LIKE ' + k +
+      " OR EXISTS (SELECT 1 FROM idauto_plates p WHERE p.vehicle_id = w.vehicle_id AND replace(replace(p.plate_number, ' ', ''), 'TUN', 'TU') LIKE replace(" + k + ", ' ', '')))"); }
   if (opts.vehicle) { var vv = await repository.findByRef(String(opts.vehicle)); params.push(vv ? vv.id : -1); where.push('w.vehicle_id = $' + params.length); }
   if (opts.id && /^\d{1,9}$/.test(String(opts.id))) { params.push(parseInt(opts.id, 10)); where.push('w.id = $' + params.length); }
-  return { interventions: await interventionsFor(where.join(' AND '), params, 50) };
+  var total = (await db.query('SELECT count(*)::int n FROM idauto_workshop_visits w LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id WHERE ' + where.join(' AND '), params)).rows[0].n;
+  return { total: total, interventions: await interventionsFor(where.join(' AND '), params, 100) };
 }
 
 async function listPartsUsed(actor, opts) {
   opts = opts || {};
-  var params = [], where = ['(op.part_id IS NOT NULL OR op.part_label IS NOT NULL OR op.part_reference_text IS NOT NULL)'];
+  var params = [], where = [PART_WHERE];
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push('w.org_id = $' + params.length); }
+  else if (opts.org_id && /^\d{1,9}$/.test(String(opts.org_id))) { params.push(parseInt(opts.org_id, 10)); where.push('w.org_id = $' + params.length); }
+  // Totals per source over the same scope, before the source filter: what the page says is what the database holds.
+  var totals = { our_shop: 0, customer_supplied: 0, external_supplier: 0, unknown: 0 };
+  (await db.query('SELECT coalesce(op.part_source, \'unknown\') AS k, count(*)::int AS n FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE ' + where.join(' AND ') + ' GROUP BY 1', params)).rows
+    .forEach(function (r) { if (r.k in totals) totals[r.k] = r.n; });
   if (['our_shop', 'customer_supplied', 'external_supplier'].indexOf(opts.source) !== -1) { params.push(opts.source); where.push('op.part_source = $' + params.length); }
-  var rows = (await db.query('SELECT op.id, op.visit_id, op.operation_type, op.quantity, op.status, op.part_source, op.part_condition, op.part_label, op.part_reference_text, op.performed_on, op.created_at, op.created_by, ' +
-    'pt.reference AS part_reference, pt.name AS part_catalogue_name, pt.brand, v.ivid, v.make, v.model, o.name AS org_name, ' +
+  else if (opts.source === 'unknown') where.push('op.part_source IS NULL');
+  var pq = String(opts.q || '').trim().slice(0, 80);
+  if (pq) { params.push('%' + like(pq.toUpperCase()) + '%'); var pk = '$' + params.length;
+    where.push('(upper(coalesce(op.part_label, pt.name, \'\')) LIKE ' + pk + ' OR upper(coalesce(op.part_reference_text, pt.reference, \'\')) LIKE ' + pk +
+      " OR EXISTS (SELECT 1 FROM idauto_plates p WHERE p.vehicle_id = w.vehicle_id AND replace(replace(p.plate_number, ' ', ''), 'TUN', 'TU') LIKE replace(" + pk + ", ' ', '')))"); }
+  var rows = (await db.query('SELECT op.id, op.visit_id, op.operation_type, op.quantity, op.status, op.part_source, op.part_condition, op.part_label, op.part_reference_text, coalesce(op.performed_on, w.performed_on) AS performed_on, op.created_at, op.created_by, ' +
+    'pt.reference AS part_reference, pt.name AS part_catalogue_name, pt.brand, v.ivid, v.make, v.model, o.name AS org_name, w.org_id, ' +
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = w.vehicle_id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate " +
     'FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id LEFT JOIN idauto_parts pt ON pt.id = op.part_id ' +
-    'LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id LEFT JOIN idauto_organizations o ON o.id = w.org_id WHERE ' + where.join(' AND ') + ' ORDER BY coalesce(op.performed_on, op.created_at::date) DESC, op.id DESC LIMIT 100', params)).rows;
+    'LEFT JOIN idauto_vehicles v ON v.id = w.vehicle_id LEFT JOIN idauto_organizations o ON o.id = w.org_id WHERE ' + where.join(' AND ') + ' ORDER BY coalesce(op.performed_on, w.performed_on, op.created_at::date) DESC, op.id DESC LIMIT 200', params)).rows;
+  var matching = (await db.query('SELECT count(*)::int n FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id LEFT JOIN idauto_parts pt ON pt.id = op.part_id WHERE ' + where.join(' AND '), params)).rows[0].n;
   var names = await namesOf(rows.map(function (r) { return r.created_by; }));
-  return { parts: rows.map(function (r) { return { id: r.id, intervention: r.visit_id, type: r.operation_type, quantity: r.quantity, status: r.status, source: r.part_source, condition: r.part_condition,
+  return { totals: totals, total: totals.our_shop + totals.customer_supplied + totals.external_supplier + totals.unknown, matching: matching, shown_limit: 200,
+    parts: rows.map(function (r) { return { id: r.id, intervention: r.visit_id, type: r.operation_type, quantity: r.quantity, status: r.status, source: r.part_source, condition: r.part_condition,
     label: r.part_label || r.part_catalogue_name, reference: r.part_reference_text || r.part_reference, brand: r.brand, from_catalogue: !!r.part_reference, performed_on: r.performed_on, at: r.created_at,
-    technician: who(names, r.created_by), vehicle: r.ivid ? { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model } : null, org: r.org_name }; }) };
+    technician: who(names, r.created_by), vehicle: r.ivid ? { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model } : null, org: r.org_name, org_id: r.org_id }; }) };
 }
 
-async function listTechnicians(actor) {
+async function listTechnicians(actor, orgId) {
   var params = [], where = ['u."role" IN (\'manager\', \'technician\')'];
   if (!isAdmin(actor)) { params.push(orgOf(actor)); where.push('u."org_id" = $' + params.length); }
+  else if (orgId) { params.push(orgId); where.push('u."org_id" = $' + params.length); }
   var rows = (await db.query('SELECT u."id", u."name", u."role", u."org_id", u."createdAt", o.name AS org_name, ' +
     '(SELECT count(*)::int FROM idauto_workshop_visits w WHERE w.opened_by = \'user:\' || u."id") AS interventions, ' +
     '(SELECT count(*)::int FROM idauto_workshop_operations op WHERE op.created_by = \'user:\' || u."id") AS operations, ' +
     '(SELECT max(s."updatedAt") FROM idauto_auth_session s WHERE s."userId" = u."id") AS last_seen ' +
     'FROM idauto_auth_user u LEFT JOIN idauto_organizations o ON o.id = u."org_id" WHERE ' + where.join(' AND ') + ' ORDER BY o.name NULLS LAST, u."role", u."name"', params)).rows;
-  return { people: rows.map(function (r) { return { name: r.name, role: r.role, org: r.org_name, since: r.createdAt, interventions: r.interventions, operations: r.operations, last_seen: r.last_seen }; }) };
+  return { people: rows.map(function (r) { return { id: r.id, name: r.name, role: r.role, org: r.org_name, since: r.createdAt, interventions: r.interventions, operations: r.operations, last_seen: r.last_seen }; }) };
 }
 
 // ---- overview + notifications ---------------------------------------------------
 async function count(sql, params) { return (await db.query(sql, params || [])).rows[0].n; }
+// The dashboard (client restructuring 2026-11-06): five numbers, each the count of the list it links to,
+// plus the most recent vehicle records. Admin: every workshop; manager / technician: their workshop only.
 async function overview(actor) {
-  if (isAdmin(actor)) {
-    return { scope: 'all_workshops',
-      vehicles: await count('SELECT count(*)::int n FROM idauto_vehicles WHERE merged_into_id IS NULL'),
-      registered_30d: await count("SELECT count(*)::int n FROM idauto_vehicles WHERE merged_into_id IS NULL AND created_at > NOW() - INTERVAL '30 days'"),
-      interventions_open: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE status IN ('open','in_progress')"),
-      interventions_30d: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE opened_at > NOW() - INTERVAL '30 days'"),
-      workshops_active: await count("SELECT count(*)::int n FROM idauto_organizations WHERE status = 'active'"),
-      technicians: await count('SELECT count(*)::int n FROM idauto_auth_user WHERE "role" IN (\'manager\', \'technician\')'),
-      recent_vehicles: (await listVehicles(actor, {})).vehicles.slice(0, 6),
-      recent_interventions: (await interventionsFor('TRUE', [], 6)) };
-  }
-  var org = orgOf(actor);
-  return { scope: 'own_workshop',
-    vehicles: await count('SELECT count(*)::int n FROM idauto_vehicles v WHERE v.merged_into_id IS NULL AND ' + orgVehicleClause('v', 1), [org]),
-    registered_30d: await count("SELECT count(DISTINCT h.vehicle_id)::int n FROM idauto_vehicle_identification_history h WHERE h.org_id = $1 AND h.method = 'manual_registration' AND h.changed_at > NOW() - INTERVAL '30 days'", [org]),
-    interventions_open: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE org_id = $1 AND status IN ('open','in_progress')", [org]),
-    interventions_30d: await count("SELECT count(*)::int n FROM idauto_workshop_visits WHERE org_id = $1 AND opened_at > NOW() - INTERVAL '30 days'", [org]),
-    technicians: await count('SELECT count(*)::int n FROM idauto_auth_user WHERE "org_id" = $1', [org]),
-    recent_vehicles: (await listVehicles(actor, {})).vehicles.slice(0, 6),
-    recent_interventions: await interventionsFor('w.org_id = $1', [org], 6) };
+  var admin = isAdmin(actor), org = orgOf(actor), p = admin ? [] : [org];
+  var vScope = admin ? 'v.merged_into_id IS NULL' : 'v.merged_into_id IS NULL AND ' + orgVehicleClause('v', 1);
+  var wScope = admin ? 'TRUE' : 'w.org_id = $1';
+  var parts = 'SELECT count(*)::int n FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id WHERE ' + PART_WHERE + ' AND ' + wScope;
+  return { scope: admin ? 'all_workshops' : 'own_workshop',
+    vehicles: await count('SELECT count(*)::int n FROM idauto_vehicles v WHERE ' + vScope, p),
+    interventions: await count("SELECT count(*)::int n FROM idauto_workshop_visits w WHERE w.status <> 'cancelled' AND " + wScope, p),
+    parts: await count(parts, p),
+    parts_our_shop: await count(parts + " AND op.part_source = 'our_shop'", p),
+    parts_customer: await count(parts + " AND op.part_source = 'customer_supplied'", p) };
 }
 
 async function notifications(actor) {

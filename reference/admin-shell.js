@@ -20,33 +20,15 @@
   var ALL = ['admin', 'manager', 'technician'], ADMIN = ['admin'], MANAGE = ['admin', 'manager'];
   // Sections in order. An item may have a different page for the admin (`admin`)
   // and for a workshop account (`href`). `match` lists the pages that belong to it.
+  // IDA-UI-4 — simplification (2026-11-06): five links, no sub-menu. Pages that are not here (console,
+  // catalogue, documents, team) still answer at their URL; they are simply not part of the menu any more.
   var SECTIONS = [
-    { label: 'Vue générale', items: [
-      { label: 'Tableau de bord', icon: 'dashboard', roles: ALL, href: '/atelier/tableau-de-bord', admin: '/admin/dashboard', match: ['/admin/dashboard', '/atelier/tableau-de-bord'] }] },
-    { label: 'Gestion des véhicules', items: [
-      { label: 'Véhicules', icon: 'car', roles: ALL, href: '/atelier/vehicules', admin: '/admin/vehicles', match: ['/admin/vehicles', '/atelier/vehicules', '/atelier/vehicule', '/admin/vehicle'] },
-      { label: 'Ajouter un véhicule', icon: 'plus', roles: ALL, href: '/atelier/vehicules/nouveau', match: ['/atelier/vehicules/nouveau'] }] },
-    { label: 'Carte grise', items: [
-      { label: 'Documents et pièces jointes', icon: 'file', roles: ALL, href: '/atelier/documents', match: ['/atelier/documents'] }] },
-    { label: 'Maintenance', items: [
-      { label: 'Interventions', icon: 'wrench', roles: ALL, href: '/atelier/interventions', match: ['/atelier/interventions', '/atelier/intervention', '/atelier'] },
-      { label: 'Pièces remplacées', icon: 'part', roles: ALL, href: '/atelier/pieces-remplacees', match: ['/atelier/pieces-remplacees'] },
-      { label: 'Historique de maintenance', icon: 'history', roles: ADMIN, href: '/admin/maintenance', match: ['/admin/maintenance'] }] },
-    { label: 'Ateliers', items: [
-      { label: 'Liste des ateliers', icon: 'building', roles: ADMIN, href: '/admin/sources', match: ['/admin/sources'] },
-      { label: 'Techniciens', icon: 'users', roles: MANAGE, href: '/atelier/techniciens', match: ['/atelier/techniciens'] }] },
-    { label: 'Catalogue', items: [
-      { label: 'Catalogue des pièces', icon: 'box', roles: ALL, href: '/atelier/catalogue', match: ['/atelier/catalogue'] }] },
-    { label: 'Administration', items: [
-      { label: 'Utilisateurs', icon: 'users', roles: ADMIN, href: '/admin/utilisateurs', match: ['/admin/utilisateurs'] },
-      { label: 'Rôles et permissions', icon: 'key', roles: ADMIN, href: '/admin/roles', match: ['/admin/roles'] },
-      { label: 'Qualité des données', icon: 'check', roles: ADMIN, href: '/admin/quality', match: ['/admin/quality'] },
-      { label: 'Vérification et validation', icon: 'inbox', roles: ADMIN, href: '/admin/review', match: ['/admin/review'] },
-      { label: 'Saisie technique (avancée)', icon: 'edit', roles: ADMIN, href: '/admin', match: ['/admin'] }] },
-    { label: 'Sécurité', items: [
-      { label: 'Journal d’activité et audit', icon: 'shield', roles: ADMIN, href: '/admin/security', match: ['/admin/security'] }] },
-    { label: 'Configuration', items: [
-      { label: 'Mon compte', icon: 'user', roles: ALL, href: '/atelier/compte', match: ['/atelier/compte'] }] }
+    { label: '', items: [
+      { label: 'Tableau de bord', icon: 'dashboard', roles: ALL, href: '/atelier/tableau-de-bord', match: ['/atelier/tableau-de-bord'] },
+      { label: 'Véhicules', icon: 'car', roles: ALL, href: '/atelier/vehicules', match: ['/atelier/vehicules', '/atelier/vehicule', '/atelier/vehicules/nouveau'] },
+      { label: 'Interventions', icon: 'wrench', roles: ALL, href: '/atelier/interventions', match: ['/atelier/interventions', '/atelier/intervention'] },
+      { label: 'Pièces', icon: 'part', roles: ALL, href: '/atelier/pieces-remplacees', match: ['/atelier/pieces-remplacees'] },
+      { label: 'Paramètres', icon: 'user', roles: ALL, href: '/atelier/compte', match: ['/atelier/compte', '/admin/utilisateurs', '/admin/roles'] }] }
   ];
   // Flat list (tests, page titles): every item once.
   var NAV = [];
@@ -155,20 +137,21 @@
     clear(navHost);
     visible(role).forEach(function (s, si) {
       var hid = 'nav-sec-' + si;
-      var list = el('ul', { class: 'ida-admin-nav-list', 'aria-labelledby': hid });
+      var list = el('ul', { class: 'ida-admin-nav-list', 'aria-labelledby': s.label ? hid : null });
       s.items.forEach(function (m) {
         var href = hrefFor(m, role), active = !!here.item && here.item.label === m.label && here.item.section === s.label;
         list.appendChild(el('li', null, el('a', { href: href, class: 'ida-admin-nav-link' + (active ? ' is-active' : ''), title: m.label,
           'aria-current': active ? 'page' : null, 'data-module': href }, [icon(m.icon), el('span', { class: 'ida-admin-nav-label' }, m.label)])));
       });
-      navHost.appendChild(el('div', { class: 'ida-admin-nav-section' }, [el('p', { class: 'ida-admin-nav-heading ida-admin-nav-label', id: hid }, s.label), list]));
+      if (!s.label) list.setAttribute('aria-label', 'Menu');
+      navHost.appendChild(el('div', { class: 'ida-admin-nav-section' }, [s.label ? el('p', { class: 'ida-admin-nav-heading ida-admin-nav-label', id: hid }, s.label) : null, list]));
     });
   }
 
   // ---- top bar: title, search, notifications, language, profile ------------
   var menuBtn = el('button', { type: 'button', class: 'ida-admin-menu-btn', 'aria-controls': 'admin-sidebar', 'aria-expanded': 'false', 'aria-label': 'Ouvrir le menu' }, icon('menu'));
   var crumbs = el('nav', { class: 'ida-admin-topbar-title', 'aria-label': 'Fil d’Ariane' }, here.item
-    ? el('ol', { class: 'ida-admin-crumbs' }, [el('li', null, here.section), el('li', { 'aria-current': 'page' }, here.item.label)])
+    ? el('ol', { class: 'ida-admin-crumbs' }, (!here.section || here.section === here.item.label ? [] : [el('li', null, here.section)]).concat([el('li', { 'aria-current': 'page' }, here.item.label)]))
     : el('span', null, document.title.replace(/^IDauto\s*[—-]\s*/, '')));
 
   // Global search (server-side: /api/search; every result is filtered by the server for this account).
@@ -179,9 +162,6 @@
   var searchForm = el('form', { class: 'ida-app-search', role: 'search', 'data-app-search': '' }, [el('span', { class: 'ida-app-search-icon', 'aria-hidden': 'true' }, icon('search')), searchInput, searchResults]);
   var searchToggle = el('button', { type: 'button', class: 'ida-admin-tool ida-app-search-toggle', 'aria-label': 'Ouvrir la recherche', 'aria-expanded': 'false' }, icon('search'));
 
-  var bellCount = el('span', { class: 'ida-app-badge', hidden: true, 'data-app-notif-count': '' }, '');
-  var bellBtn = el('button', { type: 'button', class: 'ida-admin-tool ida-app-bell', 'aria-haspopup': 'true', 'aria-expanded': 'false', 'aria-controls': 'app-notif', 'aria-label': 'Notifications', title: 'Notifications' }, [icon('bell'), bellCount]);
-  var bellPanel = el('div', { class: 'ida-app-popover', id: 'app-notif', hidden: true, 'data-app-notif': '' }, el('p', { class: 'ida-small ida-muted' }, 'Chargement…'));
 
   var langSelect = el('select', { class: 'ida-input ida-app-lang', 'aria-label': 'Langue', 'data-app-lang': '' }, [
     el('option', { value: 'fr', lang: 'fr' }, 'Français'), el('option', { value: 'ar', lang: 'ar' }, 'العربية')]);
@@ -194,17 +174,16 @@
   var roleEl = el('span', { class: 'ida-admin-identity-role', 'data-admin-identity-role': '' }, '');
   var profileBtn = el('button', { type: 'button', class: 'ida-app-profile', 'aria-haspopup': 'true', 'aria-expanded': 'false', 'aria-controls': 'app-profile' },
     [avatar, el('span', { class: 'ida-admin-identity-text ida-admin-identity' }, [nameEl, roleEl])]);
-  var themeBtn = el('button', { type: 'button', class: 'ida-app-menuitem', 'data-theme-toggle': '', role: 'menuitem' }, [icon('theme'), el('span', null, 'Thème clair / sombre')]);
   var logoutBtn = el('button', { type: 'button', class: 'ida-app-menuitem', 'data-admin-logout': '', role: 'menuitem', hidden: true }, [icon('logout'), el('span', null, 'Déconnexion')]);
   var profilePanel = el('div', { class: 'ida-app-popover ida-app-popover--end', id: 'app-profile', role: 'menu', hidden: true }, [
-    el('a', { class: 'ida-app-menuitem', href: '/atelier/compte', role: 'menuitem' }, [icon('user'), el('span', null, 'Mon compte')]), themeBtn, logoutBtn]);
+    el('a', { class: 'ida-app-menuitem', href: '/atelier/compte', role: 'menuitem' }, [icon('user'), el('span', null, 'Mon compte')]), logoutBtn]);
 
   var topbar = el('header', { class: 'ida-admin-topbar', 'data-app-topbar': '' }, [
     menuBtn,
     el('a', { class: 'ida-wordmark ida-app-topbar-brand', href: dashHref, 'aria-label': 'IDauto — tableau de bord' }, [el('span', { class: 'ida-wordmark-id', 'aria-hidden': 'true' }, 'ID'), el('span', null, 'auto')]),
     crumbs, searchForm,
     el('div', { class: 'ida-app-actions' }, [searchToggle,
-      el('div', { class: 'ida-app-anchor' }, [bellBtn, bellPanel]), langSelect,
+      langSelect,
       el('div', { class: 'ida-app-anchor' }, [profileBtn, profilePanel])])
   ]);
   var backdrop = el('div', { class: 'ida-admin-backdrop', hidden: '' });
@@ -212,10 +191,10 @@
   shell.appendChild(backdrop);
 
   // Popovers: one open at a time, Esc and outside click close.
-  var popovers = [[bellBtn, bellPanel], [profileBtn, profilePanel]];
+  var popovers = [[profileBtn, profilePanel]];
   function closePopovers(except) { popovers.forEach(function (p) { if (p[1] !== except) { p[1].hidden = true; p[0].setAttribute('aria-expanded', 'false'); } }); }
   popovers.forEach(function (p) {
-    p[0].addEventListener('click', function (e) { e.stopPropagation(); var open = p[1].hidden; closePopovers(p[1]); p[1].hidden = !open; p[0].setAttribute('aria-expanded', open ? 'true' : 'false'); if (open && p[1] === bellPanel) loadNotifications(); });
+    p[0].addEventListener('click', function (e) { e.stopPropagation(); var open = p[1].hidden; closePopovers(p[1]); p[1].hidden = !open; p[0].setAttribute('aria-expanded', open ? 'true' : 'false'); });
   });
   document.addEventListener('click', function (e) { if (!e.target.closest('.ida-app-anchor')) closePopovers(); if (!e.target.closest('[data-app-search]')) hideResults(); });
 
@@ -273,23 +252,6 @@
   });
   searchForm.addEventListener('submit', function (e) { e.preventDefault(); });
   searchToggle.addEventListener('click', function () { var open = !shell.classList.contains('is-searching'); shell.classList.toggle('is-searching', open); searchToggle.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) searchInput.focus(); });
-
-  // ---- notifications (real counts from /api/notifications) -------------------
-  function loadNotifications() {
-    return fetch('/api/notifications', { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1', Accept: 'application/json' } })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
-        var items = (d && d.items) || [], total = items.reduce(function (s, i) { return s + (i.count || 0); }, 0);
-        bellCount.hidden = total === 0; bellCount.textContent = total > 99 ? '99+' : String(total);
-        bellBtn.setAttribute('aria-label', total ? t('Notifications') + ' (' + total + ')' : t('Notifications'));
-        clear(bellPanel);
-        if (!d) { bellPanel.appendChild(el('p', { class: 'ida-small ida-muted' }, 'Notifications indisponibles.')); return; }
-        if (!items.length) { bellPanel.appendChild(el('p', { class: 'ida-small ida-muted' }, 'Aucune notification.')); return; }
-        bellPanel.appendChild(el('ul', { class: 'ida-app-notif-list' }, items.map(function (i) {
-          return el('li', null, el('a', { href: i.href, class: 'ida-app-menuitem' }, [el('span', { class: 'ida-app-badge ida-app-badge--inline' }, String(i.count)), el('span', null, i.label)]));
-        })));
-      }).catch(function () {});
-  }
 
   // ---- drawer / collapse -----------------------------------------------------
   var mobile = window.matchMedia('(max-width: 63.99rem)');
@@ -354,6 +316,5 @@
       try { await fetch('/api/auth/sign-out', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{}' }); } catch (e) { /* the session is server-side; /login confirms */ }
       window.location.replace('/login');
     });
-    loadNotifications();
   }());
 }());
