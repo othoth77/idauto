@@ -36,16 +36,19 @@
     document.querySelector('.ida-page-head p').appendChild(el('span', null, [C.plate(v.plate_display, v.plate), ' · ', C.id(v.ivid)]));
     var ni = document.getElementById('act-intervention'); if (ni) ni.setAttribute('href', '/atelier/interventions?new=1&vehicle=' + enc(v.ivid));
     if (params.get('created')) say('success', t('Véhicule enregistré.'));
-    // Identity
-    root.appendChild(section('sec-identity', t('Identité du véhicule'), null, kv([
-      [t('Immatriculation'), C.plate(v.plate_display, v.plate)], [t('Identifiant IDauto'), C.id(v.ivid)],
-      [t('Marque'), C.text(v.make)], [t('Modèle'), C.text(v.model)], v.variant ? [t('Version'), v.variant] : null, [t('Année'), C.text(v.year)],
-      [t('Énergie'), C.label('fuel_type', v.fuel_type)], [t('Cylindrée (cm³)'), C.text(v.engine_cc)], [t('Places'), C.text(v.seats)],
-      v.gross_weight_kg ? [t('Poids total autorisé (kg)'), String(v.gross_weight_kg)] : null, v.category_code ? [t('Catégorie'), v.category_code] : null,
+    // Identity — the fields of the simplified form first; any other technical field the record holds is shown too.
+    var idActions = v.can_edit ? [el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', id: 'details-edit' }, t('Modifier'))] : null;
+    root.appendChild(section('sec-identity', t('Véhicule'), idActions, kv([
+      [t('Immatriculation'), C.plate(v.plate_display, v.plate)],
+      [t('Marque'), C.text(v.make)], [t('Modèle'), C.text(v.model)], [t('Année'), C.text(v.year)],
+      [t('Kilométrage'), v.odometer_km !== null && v.odometer_km !== undefined ? [C.km(v.odometer_km), v.odometer_at ? el('span', { class: 'ida-small ida-muted' }, ' · ' + C.date(v.odometer_at)) : ''] : '—'],
+      [t('Numéro de châssis (VIN)'), v.vin ? el('code', { class: 'ida-id', translate: 'no' }, v.vin) : (v.vin_present ? t('Enregistré (visible avec le droit de recherche par VIN)') : t('Non renseigné'))],
+      v.variant ? [t('Version'), v.variant] : null, v.fuel_type ? [t('Énergie'), C.label('fuel_type', v.fuel_type)] : null, v.engine_cc ? [t('Cylindrée (cm³)'), String(v.engine_cc)] : null,
+      v.seats ? [t('Places'), String(v.seats)] : null, v.gross_weight_kg ? [t('Poids total autorisé (kg)'), String(v.gross_weight_kg)] : null, v.category_code ? [t('Catégorie'), v.category_code] : null,
       v.body_type ? [t('Carrosserie'), v.body_type] : null, v.colour ? [t('Couleur'), v.colour] : null, v.engine_code ? [t('Code moteur'), el('bdi', { dir: 'ltr' }, v.engine_code)] : null,
-      [t('Numéro de châssis (VIN)'), v.vin ? el('code', { class: 'ida-id', translate: 'no' }, v.vin) : (v.vin_present ? t('Enregistré (visible avec le droit de recherche par VIN)') : t('Non enregistré'))],
-      [t('Fiche'), C.badge('fiche_status', v.fiche_status)], [t('Enregistré le'), C.date(v.created_at, true)]
+      [t('Informations complémentaires'), v.notes ? el('span', { class: 'ida-pre', translate: 'no' }, v.notes.text) : '—']
     ])));
+    var de = document.getElementById('details-edit'); if (de) de.addEventListener('click', editDetails);
     // Owner
     var ownerBody = el('div', { class: 'ida-stack', id: 'owner-body' });
     var ownerActions = [];
@@ -79,53 +82,28 @@
     root.appendChild(section('sec-docs', t('Carte grise'), null, el('div', { class: 'ida-stack' }, [faces, el('p', { class: 'ida-small ida-muted' }, t('Pièces justificatives : les photos ne sont pas lues automatiquement. Remplacement et suppression sont enregistrés au journal.'))])));
     // Maintenance history
     root.appendChild(section('sec-history', t('Historique d\'entretien'), [el('a', { class: 'ida-btn ida-btn--secondary ida-btn--sm', href: '/atelier/interventions?new=1&vehicle=' + enc(v.ivid) }, t('Nouvelle intervention'))], history()));
-    // Plates
-    if (data.plates.length) root.appendChild(section('sec-plates', t('Plaques'), null, el('div', { class: 'ida-table-wrap' }, el('table', { class: 'ida-table' }, [
-      el('thead', null, el('tr', null, [el('th', { scope: 'col' }, t('Plaque')), el('th', { scope: 'col' }, t('Statut')), el('th', { scope: 'col' }, t('Depuis'))])),
-      el('tbody', null, data.plates.map(function (p) { return el('tr', null, [el('td', null, C.plate(p.plate_number, p.plate_number)), el('td', null, C.badge('plate_status', p.status)), el('td', null, C.date(p.created_at))]); }))]))));
   }
 
+  // Maintenance history: one line per intervention — date, mileage, work done, technician, parts and their declared source.
   function history() {
     var box = el('div', { class: 'ida-stack' });
-    var list = data.maintenance;
-    if (!list.length) {
-      box.appendChild(el('p', { class: 'ida-empty' }, data.scope === 'own_workshop'
-        ? t('Aucune intervention enregistrée par votre atelier pour ce véhicule. L\'absence d\'enregistrement ne prouve pas qu\'aucun entretien n\'a eu lieu.')
-        : t('Aucune intervention enregistrée dans IDauto pour ce véhicule. L\'absence d\'enregistrement ne prouve pas qu\'aucun entretien n\'a eu lieu.')));
+    if (!data.maintenance.length) {
+      box.appendChild(el('p', { class: 'ida-empty' }, t('Aucune intervention enregistrée pour ce véhicule.')));
       return box;
     }
-    var filter = el('select', { class: 'ida-input', id: 'hist-filter', 'aria-label': t('Filtrer par type d\'opération') }, [el('option', { value: '' }, t('Toutes les opérations'))].concat(
-      Object.keys(C.LABELS.operation_type).map(function (k) { return el('option', { value: k }, C.label('operation_type', k)); })));
-    var ol = el('ol', { class: 'ida-timeline' });
-    function draw() {
-      clear(ol);
-      list.forEach(function (iv) {
-        var ops = iv.operations.filter(function (o) { return !filter.value || o.type === filter.value; });
-        if (filter.value && !ops.length) return;
-        ol.appendChild(el('li', { class: 'ida-event ida-event--' + (iv.status === 'closed' ? 'verified' : iv.status === 'cancelled' ? 'anomaly' : 'pending') }, el('div', { class: 'ida-stack' }, [
-          el('div', { class: 'ida-section-head' }, [el('p', { class: 'ida-label' }, [C.date(iv.opened_at, true), ' · #' + iv.id, data.scope === 'all_workshops' && iv.org.name ? ' · ' + iv.org.name : '']), C.badge('visit_status', iv.status)]),
-          iv.reason ? el('p', null, iv.reason) : null,
-          ops.length ? el('ul', { class: 'ida-op-list' }, ops.map(opItem)) : el('p', { class: 'ida-small ida-muted' }, t('Aucune opération enregistrée.')),
-          el('p', { class: 'ida-small' }, el('a', { href: '/atelier/interventions?id=' + iv.id }, t('Ouvrir l\'intervention')))])));
-      });
-    }
-    filter.addEventListener('change', draw); draw();
-    box.appendChild(el('div', { class: 'ida-filter-bar' }, el('div', { class: 'ida-field' }, filter)));
-    box.appendChild(ol);
+    box.appendChild(el('ol', { class: 'ida-timeline' }, data.maintenance.map(function (iv) {
+      var parts = iv.operations.filter(function (o) { return o.part; });
+      return el('li', { class: 'ida-event ida-event--verified' }, el('div', { class: 'ida-stack' }, [
+        el('div', { class: 'ida-section-head' }, [el('p', { class: 'ida-label' }, [C.date(iv.date), iv.odometer_km !== null && iv.odometer_km !== undefined ? ' · ' + C.km(iv.odometer_km) : '', data.scope === 'all_workshops' && iv.org.name ? ' · ' + iv.org.name : '']),
+          el('a', { class: 'ida-small', href: '/atelier/interventions?id=' + iv.id }, t('Voir / modifier'))]),
+        iv.reason ? el('p', { class: 'ida-pre', translate: 'no' }, iv.reason) : null,
+        parts.length ? el('ul', { class: 'ida-op-list' }, parts.map(function (o) {
+          return el('li', { class: 'ida-op' }, [el('span', { translate: 'no' }, [o.part.label || '—', o.part.reference ? el('bdi', { dir: 'ltr', class: 'ida-muted' }, ' · ' + o.part.reference) : '', o.quantity > 1 ? ' × ' + o.quantity : '']),
+            el('span', { class: 'ida-small' }, C.label('part_source_short', o.part.source || 'unknown'))]);
+        })) : null,
+        iv.technician ? el('p', { class: 'ida-small ida-muted' }, t('Technicien') + ' : ' + iv.technician.name) : null]));
+    })));
     return box;
-  }
-  function opItem(o) {
-    var p = o.part;
-    return el('li', { class: 'ida-op' }, [
-      el('span', null, [el('strong', null, C.label('operation_type', o.type)), o.description ? ' — ' + o.description : '']),
-      C.badge('operation_status', o.status),
-      el('div', { class: 'ida-op-meta' }, [
-        p ? el('span', null, [t('Pièce') + ' : ', p.label || '—', p.reference ? el('bdi', { dir: 'ltr' }, ' (' + p.reference + ')') : '', ' × ' + o.quantity]) : null,
-        p && p.source ? el('span', null, t('Provenance') + ' : ' + C.label('part_source', p.source)) : null,
-        p && p.condition ? el('span', null, C.label('part_condition', p.condition)) : null,
-        el('span', null, t('Date') + ' : ' + C.date(o.performed_on || o.created_at)),
-        o.technician ? el('span', null, t('Technicien') + ' : ' + o.technician.name) : null,
-        o.notes ? el('span', null, t('Remarques') + ' : ' + o.notes) : null])]);
   }
 
   async function loadImage(f, box) {
@@ -150,6 +128,23 @@
     try { await C.send('DELETE', '/api/vehicles/' + enc(data.vehicle.ivid) + '/registration-document/' + f); say('success', t('Photo supprimée.')); await load(); }
     catch (e) { say('danger', C.errorText(e)); }
   }
+
+  // ---- vehicle details: make, model, year, mileage, the workshop's note --------------
+  function editDetails() {
+    var v = data.vehicle, d = document.getElementById('details-dialog');
+    document.getElementById('d-make').value = v.make || ''; document.getElementById('d-model').value = v.model || '';
+    document.getElementById('d-year').value = v.year || ''; document.getElementById('d-km').value = v.odometer_km === null || v.odometer_km === undefined ? '' : v.odometer_km;
+    document.getElementById('d-notes').value = v.notes ? v.notes.text : '';
+    clear(document.getElementById('details-errors')); d.showModal();
+  }
+  document.getElementById('details-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var errBox = document.getElementById('details-errors'); clear(errBox);
+    var body = { make: document.getElementById('d-make').value, model: document.getElementById('d-model').value, year: document.getElementById('d-year').value.trim(),
+      odometer_km: document.getElementById('d-km').value.replace(/[\s.]/g, ''), notes: document.getElementById('d-notes').value };
+    try { await C.send('PUT', '/api/vehicles/' + enc(data.vehicle.ivid) + '/details', body); document.getElementById('details-dialog').close(''); say('success', t('Fiche mise à jour.')); await load(); }
+    catch (err) { errBox.appendChild(el('p', { class: 'ida-field-error', role: 'alert' }, C.errorText(err))); }
+  });
 
   // ---- owner: shown on request (audited), edited in a dialog --------------------------
   var ownerCache = null;

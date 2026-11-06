@@ -19,6 +19,26 @@
       </form>
     </dialog>
 
+    <dialog class="ida-dialog" id="details-dialog" aria-labelledby="details-dialog-title">
+      <form method="dialog" class="ida-dialog-body" id="details-form" novalidate>
+        <h2 id="details-dialog-title" class="ida-h3">Modifier la fiche</h2>
+        <p class="ida-small ida-muted">L'immatriculation et le numéro de châssis identifient le véhicule et ne se modifient pas ici.</p>
+        <div class="ida-form-grid">
+          <div class="ida-field"><label for="d-make">Marque</label><input class="ida-input" id="d-make" maxlength="80" autocomplete="off"></div>
+          <div class="ida-field"><label for="d-model">Modèle</label><input class="ida-input" id="d-model" maxlength="80" autocomplete="off"></div>
+          <div class="ida-field"><label for="d-year">Année</label><input class="ida-input" id="d-year" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          <div class="ida-field"><label for="d-km">Kilométrage (km)</label><input class="ida-input" id="d-km" inputmode="numeric" maxlength="9" autocomplete="off" dir="ltr"></div>
+        </div>
+        <div class="ida-field"><label for="d-notes">Informations complémentaires</label><textarea class="ida-input" id="d-notes" rows="3" maxlength="500"></textarea>
+          <p class="ida-field-hint">Visibles uniquement par votre atelier.</p></div>
+        <div id="details-errors" aria-live="assertive"></div>
+        <div class="ida-dialog-actions">
+          <button type="button" class="ida-btn ida-btn--ghost" data-close>Annuler</button>
+          <button type="submit" class="ida-btn ida-btn--primary" value="save">Enregistrer</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog class="ida-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
       <form method="dialog" class="ida-dialog-body">
         <h2 id="confirm-title" class="ida-h3">Confirmer</h2>

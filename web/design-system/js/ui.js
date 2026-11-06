@@ -17,7 +17,8 @@
     if (value === "light" || value === "dark") rootEl.setAttribute("data-theme", value);
     else rootEl.removeAttribute("data-theme");
   }
-  applyTheme(storedTheme());
+  // A page that pins its theme in its HTML (the signed-in application: one light theme) keeps it.
+  if (!document.documentElement.hasAttribute("data-theme")) applyTheme(storedTheme());
 
   document.addEventListener("click", function (e) {
     var btn = e.target.closest("[data-theme-toggle]");

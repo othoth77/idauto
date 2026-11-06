@@ -1,150 +1,191 @@
 'use strict';
-/* IDauto — IDA-UI-3 — interventions: list, open one, record what was done.
- *   GET  /api/workspace/interventions[?status|id]   (own workshop; admin: all)
- *   POST /api/workshop/visits {vehicle_ref, reason}  open an intervention on a chosen vehicle
- *   POST /api/workshop/visits/:id/operations         one operation = one part at most, with its DECLARED source
- *   POST /api/workshop/visits/:id/operations/:op/status, /close, /cancel
- * The technician is the signed-in account (recorded by the server). */
+/* IDauto — IDA-UI-4 — interventions (simplified, 2026-11-06).
+ *   /atelier/interventions              list + search (GET /api/workspace/interventions?q=)
+ *   /atelier/interventions?new=1[&vehicle=IVID]   the form (POST /api/workspace/interventions)
+ *   /atelier/interventions?id=N         the same form, filled, to edit (PUT …/:id) or cancel (DELETE …/:id)
+ * One intervention = vehicle, date, mileage, description, technician, and any number of parts,
+ * each with its DECLARED source: bought from us, or supplied by the customer. Every value is textContent. */
 (function () {
   var C = window.IdAutoConsole, el = C.el, clear = C.clear, t = (window.IdAutoI18n || { t: function (s) { return s; } }).t;
-  var params = new URLSearchParams(location.search);
-  var list = document.getElementById('list'), detailBox = document.getElementById('detail-box'), detail = document.getElementById('detail');
-  var opForm = document.getElementById('op-form'), status = document.getElementById('page-status'), statusSel = document.getElementById('f-status');
-  var me = null, current = null;
-  function say(kind, text) { clear(status); if (text) status.appendChild(el('p', { class: 'ida-alert ida-alert--' + kind, role: kind === 'danger' ? 'alert' : null }, text)); }
+  var params = new URLSearchParams(location.search), ID = params.get('id'), NEW = params.get('new') === '1';
+  var status = document.getElementById('page-status'), form = document.getElementById('iv-form');
+  var me = null, chosen = null, rowSeq = 0;
   function enc(v) { return encodeURIComponent(v); }
-  function orgBody(iv) { return me && me.role === 'admin' ? { org_id: iv.org.id } : {}; }
-  if (params.get('status')) statusSel.value = params.get('status');
+  function say(kind, text) { clear(status); if (text) status.appendChild(el('p', { class: 'ida-alert ida-alert--' + kind, role: kind === 'danger' ? 'alert' : null }, text)); }
+  function today() { var d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+  function vehicleText(v) { return [v.plate ? v.plate : null, [v.make, v.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ') || v.ivid; }
+  Array.prototype.forEach.call(document.querySelectorAll('dialog [data-close]'), function (b) { b.addEventListener('click', function () { b.closest('dialog').close(''); }); });
 
-  function vehicleCell(v) { return v ? el('a', { href: '/atelier/vehicule?ref=' + enc(v.ivid) }, [C.plate(v.plate, v.plate), ' ', [v.make, v.model].filter(Boolean).join(' ')]) : el('span', { class: 'ida-muted' }, t('Véhicule non identifié')); }
-
+  // ---- list -----------------------------------------------------------------
+  var list = document.getElementById('list'), q = document.getElementById('f-q');
+  q.value = params.get('q') || '';
   async function loadList() {
     list.setAttribute('aria-busy', 'true');
     try {
-      var out = await C.api('/api/workspace/interventions' + (statusSel.value ? '?status=' + enc(statusSel.value) : ''));
+      var out = await C.api('/api/workspace/interventions' + (q.value.trim() ? '?q=' + enc(q.value.trim()) : ''));
       list.setAttribute('aria-busy', 'false'); clear(list);
-      if (!out.interventions.length) { list.appendChild(el('p', { class: 'ida-empty' }, t('Aucune intervention pour ce filtre.'))); return; }
+      list.appendChild(el('p', { class: 'ida-small ida-muted', id: 'list-total' }, t('# intervention(s)').replace('#', String(out.total))));
+      if (!out.interventions.length) { list.appendChild(el('p', { class: 'ida-empty' }, q.value ? t('Aucune intervention ne correspond.') : t('Aucune intervention pour le moment.'))); return; }
       list.appendChild(el('div', { class: 'ida-table-wrap' }, el('table', { class: 'ida-table' }, [
-        el('thead', null, el('tr', null, ['N°', 'Date', 'Véhicule', 'Motif', 'Opérations', 'Statut'].concat(me && me.role === 'admin' ? ['Atelier'] : []).map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
+        el('thead', null, el('tr', null, ['Date', 'Véhicule', 'Kilométrage', 'Travail effectué', 'Pièces', 'Technicien'].map(function (h) { return el('th', { scope: 'col' }, t(h)); }))),
         el('tbody', null, out.interventions.map(function (iv) {
-          return el('tr', null, [el('td', null, el('a', { href: '?id=' + iv.id }, '#' + iv.id)), el('td', null, C.date(iv.opened_at, true)), el('td', null, vehicleCell(iv.vehicle)),
-            el('td', null, C.text(iv.reason)), el('td', null, String(iv.operations.length)), el('td', null, C.badge('visit_status', iv.status))].concat(me && me.role === 'admin' ? [el('td', null, C.text(iv.org.name))] : []));
+          var parts = iv.operations.filter(function (o) { return o.part; });
+          return el('tr', null, [el('td', null, el('a', { href: '/atelier/interventions?id=' + iv.id }, C.date(iv.date))),
+            el('td', null, iv.vehicle ? el('a', { href: '/atelier/vehicule?ref=' + enc(iv.vehicle.ivid) }, [C.plate(iv.vehicle.plate, iv.vehicle.plate), ' ', [iv.vehicle.make, iv.vehicle.model].filter(Boolean).join(' ')]) : '—'),
+            el('td', null, iv.odometer_km !== null && iv.odometer_km !== undefined ? C.km(iv.odometer_km) : '—'),
+            el('td', null, iv.reason ? el('span', { class: 'ida-pre', translate: 'no' }, iv.reason) : '—'),
+            el('td', null, String(parts.length)), el('td', null, iv.technician ? iv.technician.name : '—')]);
         }))])));
     } catch (e) { list.setAttribute('aria-busy', 'false'); C.state(list, 'error', C.errorText(e)); }
   }
-  statusSel.addEventListener('change', loadList);
+  document.getElementById('filter').addEventListener('submit', function (e) { e.preventDefault(); history.replaceState(null, '', q.value.trim() ? '?q=' + enc(q.value.trim()) : location.pathname); loadList(); });
 
-  async function loadDetail(id) {
-    try {
-      var out = await C.api('/api/workspace/interventions?id=' + enc(id));
-      current = out.interventions[0];
-      if (!current) { say('danger', t('Intervention introuvable.')); return; }
-      renderDetail();
-    } catch (e) { say('danger', C.errorText(e)); }
+  // ---- form: vehicle chooser ------------------------------------------------
+  var vq = document.getElementById('f-vehicle-q'), vres = document.getElementById('vehicle-results'), vchosen = document.getElementById('vehicle-chosen');
+  function choose(v) {
+    chosen = v; clear(vres); clear(vchosen);
+    vchosen.appendChild(el('span', null, [t('Véhicule choisi') + ' : ', el('strong', null, vehicleText(v))]));
+    if (v.odometer_km !== null && v.odometer_km !== undefined) vchosen.appendChild(el('span', { class: 'ida-muted' }, [' · ' + t('dernier kilométrage') + ' ', C.km(v.odometer_km)]));
   }
-  function renderDetail() {
-    var iv = current, open = iv.status === 'open' || iv.status === 'in_progress';
-    detailBox.hidden = false; clear(detail);
-    document.getElementById('sec-detail').textContent = t('Intervention') + ' #' + iv.id;
-    detail.appendChild(el('dl', { class: 'ida-kv' }, [el('dt', null, t('Véhicule')), el('dd', null, vehicleCell(iv.vehicle)), el('dt', null, t('Ouverte le')), el('dd', null, C.date(iv.opened_at, true)),
-      el('dt', null, t('Ouverte par')), el('dd', null, iv.opened_by ? iv.opened_by.name : '—'), el('dt', null, t('Motif')), el('dd', null, C.text(iv.reason)), el('dt', null, t('Statut')), el('dd', null, C.badge('visit_status', iv.status)),
-      iv.closed_at ? el('dt', null, t('Clôturée le')) : null, iv.closed_at ? el('dd', null, C.date(iv.closed_at, true)) : null]));
-    var ops = el('ul', { class: 'ida-op-list' });
-    iv.operations.forEach(function (o) {
-      var p = o.part, acts = [];
-      if (open && o.status === 'planned') { var done = el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm' }, t('Marquer réalisée')); done.addEventListener('click', function () { setOp(o, 'done'); }); acts.push(done); }
-      if (open && o.status !== 'cancelled') { var cx = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm' }, t('Annuler l\'opération')); cx.addEventListener('click', function () { setOp(o, 'cancelled'); }); acts.push(cx); }
-      ops.appendChild(el('li', { class: 'ida-op' }, [el('span', null, [el('strong', null, C.label('operation_type', o.type)), o.description ? ' — ' + o.description : '']), C.badge('operation_status', o.status),
-        el('div', { class: 'ida-op-meta' }, [p ? el('span', null, [t('Pièce') + ' : ', p.label || '—', p.reference ? el('bdi', { dir: 'ltr' }, ' (' + p.reference + ')') : '', ' × ' + o.quantity]) : null,
-          p && p.source ? el('span', null, t('Provenance') + ' : ' + C.label('part_source', p.source)) : null, p && p.condition ? el('span', null, C.label('part_condition', p.condition)) : null,
-          el('span', null, t('Date') + ' : ' + C.date(o.performed_on || o.created_at)), o.technician ? el('span', null, t('Technicien') + ' : ' + o.technician.name) : null, o.notes ? el('span', null, t('Remarques') + ' : ' + o.notes) : null]),
-        acts.length ? el('div', { class: 'ida-page-actions' }, acts) : null]));
+  async function searchVehicles() {
+    clear(vres);
+    var s = vq.value.trim(); if (!s) return;
+    try {
+      var out = await C.api('/api/workspace/vehicles?q=' + enc(s));
+      if (!out.vehicles.length) { vres.appendChild(el('p', { class: 'ida-small' }, [t('Aucun véhicule trouvé.') + ' ', el('a', { href: '/atelier/vehicules/nouveau' }, t('Ajouter un véhicule'))])); return; }
+      vres.appendChild(el('ul', { class: 'ida-op-list', id: 'vehicle-options' }, out.vehicles.slice(0, 8).map(function (v) {
+        var b = el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', 'data-ivid': v.ivid }, t('Choisir'));
+        b.addEventListener('click', function () { choose(v); });
+        return el('li', { class: 'ida-op' }, [el('span', null, [C.plate(v.plate, v.plate), ' ', [v.make, v.model, v.year].filter(Boolean).join(' ')]), b]);
+      })));
+    } catch (e) { vres.appendChild(el('p', { class: 'ida-field-error' }, C.errorText(e))); }
+  }
+  document.getElementById('vehicle-search').addEventListener('click', searchVehicles);
+  vq.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); searchVehicles(); } });
+
+  // ---- form: parts ------------------------------------------------------------
+  var partsBox = document.getElementById('parts'), noParts = document.getElementById('no-parts');
+  function refreshEmpty() { noParts.hidden = partsBox.children.length > 0; }
+  function addPart(p) {
+    p = p || {}; var n = ++rowSeq, name = 'src-' + n;
+    function radio(value, label) {
+      var i = el('input', { type: 'radio', name: name, value: value, required: true });
+      if (p.source === value) i.checked = true;
+      return el('label', { class: 'ida-radio' }, [i, ' ', t(label)]);
+    }
+    var remove = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm ida-part-remove' }, t('Retirer'));
+    var row = el('div', { class: 'ida-part-row', 'data-part': '', 'data-id': p.id ? String(p.id) : null }, [
+      el('div', { class: 'ida-field' }, [el('label', { for: 'p-label-' + n, class: 'ida-required' }, t('Pièce')), el('input', { class: 'ida-input', id: 'p-label-' + n, 'data-f': 'label', maxlength: '120', autocomplete: 'off', value: p.label || '' })]),
+      el('div', { class: 'ida-field' }, [el('label', { for: 'p-ref-' + n }, t('Référence')), el('input', { class: 'ida-input', id: 'p-ref-' + n, 'data-f': 'reference', maxlength: '60', autocomplete: 'off', dir: 'ltr', value: p.reference || '' })]),
+      el('div', { class: 'ida-field' }, [el('label', { for: 'p-qty-' + n }, t('Quantité')), el('input', { class: 'ida-input', id: 'p-qty-' + n, 'data-f': 'quantity', inputmode: 'numeric', maxlength: '3', value: String(p.quantity || 1) })]),
+      el('fieldset', { class: 'ida-radio-group ida-radio-inline', 'data-source': '' }, [el('legend', { class: 'ida-label' }, t('Provenance')), radio('our_shop', 'Achetée chez nous'), radio('customer_supplied', 'Fournie par le client')]),
+      remove]);
+    remove.addEventListener('click', function () { row.remove(); refreshEmpty(); });
+    partsBox.appendChild(row); refreshEmpty();
+    return row;
+  }
+  document.getElementById('add-part').addEventListener('click', function () { var r = addPart(); r.querySelector('[data-f=label]').focus(); });
+
+  function collect() {
+    return Array.prototype.map.call(partsBox.querySelectorAll('[data-part]'), function (r) {
+      var src = r.querySelector('input[type=radio]:checked');
+      return { id: r.getAttribute('data-id') || undefined, label: r.querySelector('[data-f=label]').value, reference: r.querySelector('[data-f=reference]').value,
+        quantity: r.querySelector('[data-f=quantity]').value, source: src ? src.value : null };
     });
-    detail.appendChild(el('h3', { class: 'ida-h3' }, t('Opérations')));
-    detail.appendChild(iv.operations.length ? ops : el('p', { class: 'ida-empty' }, t('Aucune opération enregistrée.')));
-    var actions = document.getElementById('detail-actions'); clear(actions);
-    if (open) {
-      var close = el('button', { type: 'button', class: 'ida-btn ida-btn--primary ida-btn--sm' }, t('Clôturer l\'intervention'));
-      close.addEventListener('click', function () { finish(false); });
-      var cancel = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm' }, t('Annuler l\'intervention'));
-      cancel.addEventListener('click', function () { finish(true); });
-      actions.appendChild(cancel); actions.appendChild(close);
-    }
-    opForm.hidden = !open;
-    document.getElementById('op-date').max = new Date().toISOString().slice(0, 10);
-    if (!document.getElementById('op-date').value) document.getElementById('op-date').value = new Date().toISOString().slice(0, 10);
-    detailBox.scrollIntoView({ block: 'start' });
-  }
-  async function setOp(o, st) {
-    try { await C.send('POST', '/api/workshop/visits/' + current.id + '/operations/' + o.id + '/status', Object.assign({ status: st }, orgBody(current))); await loadDetail(current.id); loadList(); }
-    catch (e) { say('danger', C.errorText(e)); }
-  }
-  async function finish(cancel) {
-    try { await C.send('POST', '/api/workshop/visits/' + current.id + (cancel ? '/cancel' : '/close'), orgBody(current)); say('success', t(cancel ? 'Intervention annulée.' : 'Intervention clôturée.')); await loadDetail(current.id); loadList(); }
-    catch (e) { say('danger', C.errorText(e)); }
   }
 
-  opForm.addEventListener('submit', async function (e) {
+  // ---- form: technician (managers / admins choose; a technician is recorded as themself) ----
+  async function loadTechnicians(selected) {
+    if (!me || me.role === 'technician') return;
+    try {
+      var out = await C.api('/api/workspace/technicians'), sel = document.getElementById('f-tech');
+      clear(sel); sel.appendChild(el('option', { value: '' }, t('Moi-même')));
+      out.people.forEach(function (p) { if (p.id) sel.appendChild(el('option', { value: 'user:' + p.id }, p.name + (p.org && me.role === 'admin' ? ' · ' + p.org : ''))); });
+      if (selected) sel.value = selected;
+      document.getElementById('tech-field').hidden = out.people.length === 0;
+    } catch (e) { /* the field stays hidden */ }
+  }
+  async function loadOrgs(current) {
+    if (!me || me.role !== 'admin') return;
+    try {
+      var out = await C.api('/api/admin/organisations?status=active&page_size=100'), sel = document.getElementById('f-org');
+      clear(sel); out.results.forEach(function (o) { sel.appendChild(el('option', { value: String(o.id) }, o.name)); });
+      if (current) sel.value = String(current);
+      document.getElementById('org-field').hidden = out.results.length < 2 || !!ID;
+    } catch (e) { /* the server picks the only active workshop */ }
+  }
+
+  async function openForm(existing) {
+    document.getElementById('list-box').hidden = true; form.hidden = false;
+    document.getElementById('f-date').value = today(); document.getElementById('f-date').max = today();
+    await Promise.all([loadTechnicians(existing ? existing.technician_ref : null), loadOrgs(existing ? existing.org.id : null)]);
+    if (existing) {
+      document.getElementById('sec-form').textContent = t('Intervention du') + ' ' + C.date(existing.date);
+      document.getElementById('vehicle-field').hidden = true;
+      chosen = existing.vehicle;
+      document.getElementById('f-date').value = String(existing.performed_on || existing.opened_at).slice(0, 10);
+      document.getElementById('f-km').value = existing.odometer_km === null || existing.odometer_km === undefined ? '' : existing.odometer_km;
+      document.getElementById('f-desc').value = existing.reason || '';
+      existing.operations.filter(function (o) { return o.part; }).forEach(function (o) { addPart({ id: o.id, label: o.part.label, reference: o.part.reference, quantity: o.quantity, source: o.part.source }); });
+      document.getElementById('iv-submit').textContent = t('Enregistrer les modifications');
+      var cancelBtn = document.getElementById('iv-cancel-record'); cancelBtn.hidden = existing.status === 'cancelled';
+      cancelBtn.addEventListener('click', cancelRecord);
+      document.querySelector('.ida-page-head h1').textContent = t('Intervention');
+    } else {
+      var ref = params.get('vehicle');
+      if (ref) { try { var d = await C.api('/api/vehicles/' + enc(ref) + '/dossier'); choose({ ivid: d.vehicle.ivid, plate: d.vehicle.plate, make: d.vehicle.make, model: d.vehicle.model, odometer_km: d.vehicle.odometer_km }); } catch (e) { /* choose by search */ } }
+      if (!chosen) vq.focus();
+    }
+    refreshEmpty();
+  }
+
+  form.addEventListener('submit', async function (e) {
     e.preventDefault();
-    var errBox = document.getElementById('op-errors'); clear(errBox);
-    var part = document.getElementById('op-part').value.trim(), ref = document.getElementById('op-ref').value.trim();
-    var src = opForm.querySelector('input[name=part_source]:checked'), cond = opForm.querySelector('input[name=part_condition]:checked');
+    var errBox = document.getElementById('form-errors'); clear(errBox);
     var problems = [];
-    if ((part || ref) && !src) problems.push(t('Choisissez la provenance de la pièce.'));
-    var qty = document.getElementById('op-qty').value.trim() || '1';
-    if (!/^\d{1,3}$/.test(qty) || +qty < 1) problems.push(t('Quantité : un nombre entier de 1 à 999.'));
+    if (!chosen) problems.push(t('Choisissez le véhicule.'));
+    var parts = collect();
+    if (!document.getElementById('f-desc').value.trim() && !parts.length) problems.push(t('Décrivez le travail effectué.'));
+    parts.forEach(function (p, i) {
+      if (!p.label.trim()) problems.push(t('Pièce') + ' ' + (i + 1) + ' : ' + t('indiquez le nom de la pièce.'));
+      if (!p.source) problems.push(t('Pièce') + ' ' + (i + 1) + ' : ' + t('choisissez la provenance.'));
+    });
     if (problems.length) { errBox.appendChild(el('div', { class: 'ida-alert ida-alert--danger', role: 'alert' }, el('ul', null, problems.map(function (p) { return el('li', null, p); })))); return; }
-    var body = Object.assign({ operation_type: document.getElementById('op-type').value, description: document.getElementById('op-desc').value.trim() || null,
-      part_label: part || null, part_reference: ref || null, quantity: +qty, part_source: (part || ref) && src ? src.value : null, part_condition: (part || ref) && cond && cond.value ? cond.value : null,
-      performed_on: document.getElementById('op-date').value || null, notes: document.getElementById('op-notes').value.trim() || null, status: document.getElementById('op-done').checked ? 'done' : 'planned' }, orgBody(current));
+    var body = { performed_on: document.getElementById('f-date').value, odometer_km: document.getElementById('f-km').value.replace(/[\s.]/g, ''), description: document.getElementById('f-desc').value,
+      technician: document.getElementById('f-tech').value || null, parts: parts };
+    var submit = document.getElementById('iv-submit'); submit.disabled = true;
     try {
-      await C.send('POST', '/api/workshop/visits/' + current.id + '/operations', body);
-      ['op-desc', 'op-part', 'op-ref', 'op-notes'].forEach(function (i) { document.getElementById(i).value = ''; });
-      document.getElementById('op-qty').value = '1'; if (src) src.checked = false; opForm.querySelector('input[name=part_condition][value=""]').checked = true;
-      say('success', t('Opération enregistrée.')); await loadDetail(current.id); loadList();
-    } catch (err) { errBox.appendChild(el('p', { class: 'ida-field-error', role: 'alert' }, C.errorText(err))); }
+      if (ID) { await C.send('PUT', '/api/workspace/interventions/' + enc(ID), body); location.href = '/atelier/interventions?id=' + enc(ID) + '&saved=1'; }
+      else {
+        body.vehicle_ref = chosen.ivid; if (me.role === 'admin' && !document.getElementById('org-field').hidden) body.org_id = document.getElementById('f-org').value;
+        var out = await C.send('POST', '/api/workspace/interventions', body); location.href = '/atelier/interventions?id=' + out.id + '&saved=1';
+      }
+    } catch (err) { submit.disabled = false; errBox.appendChild(el('p', { class: 'ida-alert ida-alert--danger', role: 'alert' }, C.errorText(err))); }
   });
 
-  // ---- new intervention: choose the vehicle (server search), open the visit --------------------
-  var dlg = document.getElementById('new-dialog'), nVehicle = document.getElementById('n-vehicle'), nResults = document.getElementById('n-results'), chosen = null, timer = null;
-  Array.prototype.forEach.call(document.querySelectorAll('dialog [data-close]'), function (b) { b.addEventListener('click', function () { b.closest('dialog').close(''); }); });
-  function pick(v) { chosen = v; clear(nResults); nResults.appendChild(el('p', { class: 'ida-alert ida-alert--success' }, [t('Véhicule choisi') + ' : ', C.plate(v.plate, v.plate), ' ', [v.make, v.model].filter(Boolean).join(' ')])); }
-  async function findVehicles() {
-    chosen = null; var q = nVehicle.value.trim(); clear(nResults);
-    if (q.length < 2) return;
-    try {
-      var out = await C.api('/api/workspace/vehicles?q=' + enc(q));
-      if (!out.vehicles.length) { nResults.appendChild(el('p', { class: 'ida-small ida-muted' }, [t('Aucun véhicule trouvé.') + ' ', el('a', { href: '/atelier/vehicules/nouveau' }, t('Ajouter un véhicule'))])); return; }
-      out.vehicles.slice(0, 6).forEach(function (v) { var b = el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm' }, [C.plate(v.plate, v.plate), ' ', [v.make, v.model].filter(Boolean).join(' ')]); b.addEventListener('click', function () { pick(v); }); nResults.appendChild(b); });
-    } catch (e) { nResults.appendChild(el('p', { class: 'ida-field-error' }, C.errorText(e))); }
+  async function cancelRecord() {
+    var d = document.getElementById('confirm-dialog'); document.getElementById('confirm-text').textContent = t('Annuler cette intervention ? Elle reste dans l\'historique comme annulée, et ses pièces ne sont plus comptées.');
+    var yes = await new Promise(function (res) { d.returnValue = ''; d.showModal(); d.addEventListener('close', function h() { d.removeEventListener('close', h); res(d.returnValue === 'yes'); }); });
+    if (!yes) return;
+    try { await C.send('DELETE', '/api/workspace/interventions/' + enc(ID)); location.href = '/atelier/interventions'; }
+    catch (e) { say('danger', C.errorText(e)); }
   }
-  nVehicle.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(findVehicles, 250); });
-  async function openNew(prefill) {
-    chosen = null; clear(nResults); clear(document.getElementById('n-errors')); nVehicle.value = '';
-    if (me && me.role === 'admin') {
-      document.getElementById('n-org-field').hidden = false;
-      var sel = document.getElementById('n-org'); clear(sel);
-      try { var orgs = await C.api('/api/admin/organisations'); (orgs.organisations || orgs.items || []).forEach(function (o) { sel.appendChild(el('option', { value: String(o.id) }, o.name)); }); } catch (e) { /* the server refuses without an organisation */ }
-    }
-    if (prefill) { try { var d = await C.api('/api/vehicles/' + enc(prefill) + '/dossier'); pick({ ivid: d.vehicle.ivid, plate: d.vehicle.plate, make: d.vehicle.make, model: d.vehicle.model }); nVehicle.value = d.vehicle.plate || d.vehicle.ivid; } catch (e) { /* choose by hand */ } }
-    dlg.showModal();
-  }
-  document.getElementById('act-new-intervention').addEventListener('click', function () { openNew(null); });
-  document.getElementById('new-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
-    var errBox = document.getElementById('n-errors'); clear(errBox);
-    if (!chosen) { errBox.appendChild(el('p', { class: 'ida-field-error', role: 'alert' }, t('Choisissez le véhicule dans la liste.'))); return; }
-    var body = { vehicle_ref: chosen.ivid, reason: document.getElementById('n-reason').value.trim() || null };
-    if (me && me.role === 'admin') body.org_id = document.getElementById('n-org').value;
-    try { var out = await C.send('POST', '/api/workshop/visits', body); dlg.close(''); history.replaceState(null, '', '?id=' + out.visit.id); await loadDetail(out.visit.id); loadList(); say('success', t('Intervention ouverte.')); }
-    catch (err) { errBox.appendChild(el('p', { class: 'ida-field-error', role: 'alert' }, C.errorText(err))); }
-  });
 
-  (async function start() {
-    me = await C.sessionLine(null, location.pathname + location.search);
-    if (!me) return;
-    loadList();
-    if (params.get('id')) loadDetail(params.get('id'));
-    if (params.get('new')) openNew(params.get('vehicle'));
+  var newBtn = document.getElementById('act-new-intervention');
+  if (newBtn) newBtn.addEventListener('click', function () { location.href = '/atelier/interventions?new=1'; });
+
+  (async function () {
+    me = await C.sessionLine(null, location.pathname + location.search); if (!me) return;
+    if (ID) {
+      try {
+        var out = await C.api('/api/workspace/interventions?id=' + enc(ID) + '&status=' + 'any');
+        var iv = out.interventions[0];
+        if (!iv) { say('danger', t('Intervention introuvable.')); return; }
+        if (params.get('saved')) say('success', t('Intervention enregistrée.'));
+        if (iv.status === 'cancelled') say('info', t('Cette intervention est annulée.'));
+        await openForm(iv);
+      } catch (e) { say('danger', C.errorText(e)); }
+    } else if (NEW) await openForm(null);
+    else loadList();
   }());
 }());

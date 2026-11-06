@@ -1,6 +1,6 @@
     <form id="register-form" class="ida-stack-lg" novalidate>
       <section class="ida-card ida-form-section" aria-labelledby="sec-ident">
-        <h2 id="sec-ident">Identification</h2>
+        <h2 id="sec-ident">Véhicule</h2>
         <fieldset class="ida-radio-group ida-radio-inline">
           <legend>Type d'immatriculation</legend>
           <label class="ida-radio"><input type="radio" name="plate_type" value="TU" checked> Série tunisienne (TU)</label>
@@ -8,42 +8,24 @@
         </fieldset>
         <div class="ida-form-grid">
           <div class="ida-field">
-            <label for="f-plate-series" id="lbl-plate">Immatriculation</label>
+            <label for="f-plate-series" id="lbl-plate" class="ida-required">Immatriculation</label>
             <div class="ida-plate-row">
-              <input class="ida-input ida-id" id="f-plate-series" name="plate_series" inputmode="numeric" maxlength="3" autocomplete="off" aria-label="Série (3 chiffres au plus)" aria-describedby="hint-plate">
+              <input class="ida-input ida-id" id="f-plate-series" name="plate_series" inputmode="numeric" maxlength="3" autocomplete="off" aria-label="Série (3 chiffres au plus)" aria-describedby="hint-plate" required>
               <span class="ida-plate-word ida-id" aria-hidden="true" data-plate-word>TU</span>
-              <input class="ida-input ida-id" id="f-plate-number" name="plate_number" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Numéro (4 chiffres au plus)" aria-describedby="hint-plate">
+              <input class="ida-input ida-id" id="f-plate-number" name="plate_number" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="Numéro (4 chiffres au plus)" aria-describedby="hint-plate" required>
             </div>
-            <p class="ida-field-hint" id="hint-plate">Comme sur la plaque : série et numéro. L'immatriculation ou le numéro de châssis est obligatoire.</p>
+            <p class="ida-field-hint" id="hint-plate">Comme sur la plaque : série et numéro. Seul champ obligatoire.</p>
           </div>
-          <div class="ida-field">
-            <label for="f-vin">Numéro de châssis (VIN)</label>
-            <input class="ida-input" id="f-vin" name="vin" maxlength="17" autocomplete="off" spellcheck="false" dir="ltr" aria-describedby="hint-vin">
-            <p class="ida-field-hint" id="hint-vin">17 caractères, sans I, O ni Q.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="ida-card ida-form-section" aria-labelledby="sec-vehicle">
-        <h2 id="sec-vehicle">Véhicule</h2>
-        <div class="ida-form-grid">
-          <div class="ida-field"><label for="f-make" class="ida-required">Marque</label><input class="ida-input" id="f-make" name="make" maxlength="80" required autocomplete="off"></div>
+          <div class="ida-field"><label for="f-make">Marque</label><input class="ida-input" id="f-make" name="make" maxlength="80" autocomplete="off"></div>
           <div class="ida-field"><label for="f-model">Modèle</label><input class="ida-input" id="f-model" name="model" maxlength="80" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-variant">Version</label><input class="ida-input" id="f-variant" name="variant" maxlength="80" autocomplete="off"></div>
           <div class="ida-field"><label for="f-year">Année</label><input class="ida-input" id="f-year" name="year" inputmode="numeric" maxlength="4" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-fuel">Énergie</label>
-            <select class="ida-input" id="f-fuel" name="fuel_type">
-              <option value="">—</option><option value="petrol">Essence</option><option value="diesel">Diesel</option><option value="lpg">GPL</option>
-              <option value="electric">Électrique</option><option value="hybrid">Hybride</option><option value="other">Autre</option>
-            </select></div>
-          <div class="ida-field"><label for="f-cc">Cylindrée (cm³)</label><input class="ida-input" id="f-cc" name="engine_cc" inputmode="numeric" maxlength="5" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-seats">Places</label><input class="ida-input" id="f-seats" name="seats" inputmode="numeric" maxlength="2" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-weight">Poids total autorisé (kg)</label><input class="ida-input" id="f-weight" name="gross_weight_kg" inputmode="numeric" maxlength="5" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-category">Catégorie</label><input class="ida-input" id="f-category" name="category_code" maxlength="4" autocomplete="off" placeholder="M1, N1…"></div>
-          <div class="ida-field"><label for="f-body">Carrosserie</label><input class="ida-input" id="f-body" name="body_type" maxlength="40" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-colour">Couleur</label><input class="ida-input" id="f-colour" name="colour" maxlength="40" autocomplete="off"></div>
-          <div class="ida-field"><label for="f-engine">Code moteur</label><input class="ida-input" id="f-engine" name="engine_code" maxlength="30" autocomplete="off" dir="ltr"></div>
+          <div class="ida-field"><label for="f-vin">Numéro de châssis (facultatif)</label>
+            <input class="ida-input" id="f-vin" name="vin" maxlength="17" autocomplete="off" spellcheck="false" dir="ltr" aria-describedby="hint-vin">
+            <p class="ida-field-hint" id="hint-vin">17 caractères, sans I, O ni Q.</p></div>
+          <div class="ida-field"><label for="f-km">Kilométrage (km)</label><input class="ida-input" id="f-km" name="odometer_km" inputmode="numeric" maxlength="9" autocomplete="off" dir="ltr"></div>
         </div>
+        <div class="ida-field"><label for="f-notes">Informations complémentaires (facultatif)</label><textarea class="ida-input" id="f-notes" name="notes" rows="2" maxlength="500"></textarea>
+          <p class="ida-field-hint">Visibles uniquement par votre atelier.</p></div>
       </section>
 
       <section class="ida-card ida-form-section" aria-labelledby="sec-owner">
@@ -58,7 +40,7 @@
       </section>
 
       <section class="ida-card ida-form-section" aria-labelledby="sec-docs">
-        <h2 id="sec-docs">Carte grise</h2>
+        <h2 id="sec-docs">Photos de la carte grise (facultatives)</h2>
         <p class="ida-small ida-muted">Photos jointes comme pièces justificatives (JPEG, PNG ou WebP, 6 Mo au plus). Elles sont conservées dans un stockage privé et ne sont pas lues automatiquement.</p>
         <div class="ida-faces">
           <div class="ida-face">

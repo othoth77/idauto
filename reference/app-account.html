@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IDauto — Mon compte</title>
+  <title>IDauto — Paramètres</title>
   <link rel="icon" type="image/svg+xml" href="/atelier/assets/favicon.svg">
   <link rel="stylesheet" href="/atelier/assets/tokens.css">
   <link rel="stylesheet" href="/atelier/assets/base.css">
@@ -19,25 +19,31 @@
   <div class="ida-stack-lg">
     <header class="ida-page-head">
       <div>
-        <h1>Mon compte</h1>
-        <p class="ida-muted ida-u-maxch-52">Votre profil, votre langue, votre mot de passe et vos sessions.</p>
+        <h1>Paramètres</h1>
+        <p class="ida-muted ida-u-maxch-52">Votre compte, la langue, et pour l&#x27;administrateur les utilisateurs et les rôles.</p>
       </div>
       <div class="ida-page-actions"></div>
     </header>
     <div id="page-status" aria-live="polite"></div>
     <div class="ida-admin-grid">
       <section class="ida-card ida-stack" aria-labelledby="sec-profile">
-        <h2 id="sec-profile" class="ida-h3">Profil</h2>
+        <h2 id="sec-profile" class="ida-h3">Mon compte</h2>
         <div id="profile"><p class="ida-muted">Chargement…</p></div>
       </section>
       <section class="ida-card ida-stack" aria-labelledby="sec-prefs">
-        <h2 id="sec-prefs" class="ida-h3">Langue et affichage</h2>
+        <h2 id="sec-prefs" class="ida-h3">Langue</h2>
         <div class="ida-field"><label for="pref-lang">Langue de l'interface</label>
           <select class="ida-input" id="pref-lang" data-i18n-skip><option value="fr" lang="fr">Français</option><option value="ar" lang="ar">العربية</option></select>
-          <p class="ida-field-hint">Le choix est conservé sur cet appareil et s'applique à toutes les pages.</p></div>
-        <div><button type="button" class="ida-btn ida-btn--secondary" data-theme-toggle>Thème clair / sombre</button></div>
+          <p class="ida-field-hint">Le choix s'applique à toutes les pages.</p></div>
       </section>
     </div>
+    <section class="ida-card ida-stack" aria-labelledby="sec-admin" id="admin-box" hidden>
+      <h2 id="sec-admin" class="ida-h3">Administration</h2>
+      <div class="ida-admin-stats">
+        <a class="ida-card ida-admin-stat--link" href="/admin/utilisateurs"><p class="ida-h3">Gestion des utilisateurs</p><p class="ida-small ida-muted">Les comptes et leur rôle.</p></a>
+        <a class="ida-card ida-admin-stat--link" href="/admin/roles"><p class="ida-h3">Rôles et permissions</p><p class="ida-small ida-muted">Ce que chaque rôle peut faire.</p></a>
+      </div>
+    </section>
     <section class="ida-card ida-stack" aria-labelledby="sec-pwd">
       <h2 id="sec-pwd" class="ida-h3">Changer le mot de passe</h2>
       <form id="pwd-form" class="ida-stack" novalidate>
@@ -50,10 +56,6 @@
         <div id="pwd-msg" aria-live="assertive"></div>
         <div class="ida-form-actions"><button type="submit" class="ida-btn ida-btn--primary">Changer le mot de passe</button></div>
       </form>
-    </section>
-    <section class="ida-card ida-stack" aria-labelledby="sec-sessions">
-      <div class="ida-section-head"><h2 id="sec-sessions" class="ida-h3">Sessions ouvertes</h2><button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" id="revoke-others">Fermer les autres sessions</button></div>
-      <div id="sessions" aria-live="polite"><p class="ida-muted">Chargement…</p></div>
     </section>
   </div>
 </main>

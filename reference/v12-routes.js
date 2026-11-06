@@ -68,7 +68,7 @@ var ATELIER_ASSETS = {
 };
 // IDA-UI-3 — the workshop pages (static shells; every datum comes from the scoped APIs).
 [['tableau-de-bord', 'app-dashboard'], ['vehicules', 'app-vehicles'], ['vehicules/nouveau', 'app-register'], ['vehicule', 'app-dossier'],
-  ['documents', 'app-documents'], ['interventions', 'app-interventions'], ['pieces-remplacees', 'app-parts-used'], ['techniciens', 'app-technicians'], ['ateliers', 'app-workshops'],
+  ['documents', 'app-documents'], ['interventions', 'app-interventions'], ['pieces-remplacees', 'app-parts-used'], ['techniciens', 'app-technicians'],
   ['catalogue', 'app-catalogue'], ['compte', 'app-account']].forEach(function (p) {
   ATELIER_ASSETS['/atelier/' + p[0]] = { file: p[1] + '.html', contentType: 'text/html; charset=utf-8' };
   ATELIER_ASSETS['/atelier/' + p[0] + '/'] = { file: p[1] + '.html', contentType: 'text/html; charset=utf-8' };

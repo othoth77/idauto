@@ -11,7 +11,7 @@ function langOf(req) { return i18n.readCookieLang(req && req.headers && req.head
 function localize(content, contentType, req) {
   if (!/^text\/html/.test(contentType || '') || langOf(req) !== 'ar') return content;
   var s = Buffer.isBuffer(content) ? content.toString('utf8') : String(content);
-  return Buffer.from(s.replace(/<html lang="fr"( dir="ltr")?>/, '<html lang="ar" dir="rtl">'), 'utf8');
+  return Buffer.from(s.replace(/<html lang="fr"( dir="ltr")?(?=[ >])/, '<html lang="ar" dir="rtl"'), 'utf8');
 }
 
 module.exports = { localize: localize, langOf: langOf };

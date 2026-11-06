@@ -1,79 +1,56 @@
     <section class="ida-card ida-stack" aria-labelledby="sec-list" id="list-box">
-      <div class="ida-section-head">
-        <h2 id="sec-list">Interventions</h2>
-        <div class="ida-filter-bar">
-          <div class="ida-field">
-            <label for="f-status">Statut</label>
-            <select class="ida-input" id="f-status">
-              <option value="">Toutes</option><option value="open">Ouverte</option><option value="in_progress">En cours</option>
-              <option value="closed">Clôturée</option><option value="cancelled">Annulée</option>
-            </select>
-          </div>
-        </div>
-      </div>
+      <h2 id="sec-list" class="ida-sr-only">Interventions</h2>
+      <form class="ida-filter-bar" id="filter" role="search">
+        <div class="ida-field ida-field--grow"><label for="f-q">Rechercher</label>
+          <input class="ida-input" id="f-q" type="search" maxlength="80" autocomplete="off" placeholder="Immatriculation, véhicule, travail effectué…"></div>
+        <button class="ida-btn ida-btn--secondary" type="submit">Rechercher</button>
+      </form>
       <div id="list" aria-live="polite" aria-busy="true"><p class="ida-muted">Chargement…</p></div>
     </section>
 
-    <section class="ida-card ida-stack" aria-labelledby="sec-detail" id="detail-box" hidden>
-      <div class="ida-section-head">
-        <h2 id="sec-detail">Intervention</h2>
-        <div class="ida-page-actions" id="detail-actions"></div>
-      </div>
-      <div id="detail"></div>
-      <form id="op-form" class="ida-stack ida-card" novalidate hidden>
-        <h3 class="ida-h3">Enregistrer une opération</h3>
-        <div class="ida-form-grid">
-          <div class="ida-field">
-            <label for="op-type" class="ida-required">Type d'opération</label>
-            <select class="ida-input" id="op-type" required>
-              <option value="replacement">Remplacement</option><option value="repair">Réparation</option><option value="service">Entretien</option>
-              <option value="diagnosis">Diagnostic</option><option value="inspection">Contrôle</option><option value="other">Autre</option>
-            </select>
+    <form id="iv-form" class="ida-stack-lg" novalidate hidden>
+      <section class="ida-card ida-form-section ida-stack" aria-labelledby="sec-form">
+        <div class="ida-section-head"><h2 id="sec-form">Nouvelle intervention</h2><a class="ida-small" href="/atelier/interventions">Retour à la liste</a></div>
+        <div class="ida-field" id="vehicle-field">
+          <label for="f-vehicle-q" class="ida-required">Véhicule</label>
+          <div class="ida-filter-bar">
+            <input class="ida-input" id="f-vehicle-q" type="search" maxlength="40" autocomplete="off" placeholder="Immatriculation, marque ou modèle" aria-describedby="vehicle-chosen">
+            <button class="ida-btn ida-btn--secondary" type="button" id="vehicle-search">Chercher</button>
           </div>
-          <div class="ida-field"><label for="op-desc">Travail effectué</label><input class="ida-input" id="op-desc" maxlength="300" autocomplete="off"></div>
-          <div class="ida-field"><label for="op-date">Date</label><input class="ida-input" id="op-date" type="date"></div>
+          <div id="vehicle-results" aria-live="polite"></div>
+          <p class="ida-field-hint" id="vehicle-chosen">Aucun véhicule choisi.</p>
         </div>
         <div class="ida-form-grid">
-          <div class="ida-field"><label for="op-part">Pièce remplacée ou réparée</label><input class="ida-input" id="op-part" maxlength="120" autocomplete="off" aria-describedby="hint-part"></div>
-          <div class="ida-field"><label for="op-ref">Référence de la pièce</label><input class="ida-input" id="op-ref" maxlength="60" autocomplete="off" dir="ltr"></div>
-          <div class="ida-field"><label for="op-qty">Quantité</label><input class="ida-input" id="op-qty" inputmode="numeric" maxlength="3" value="1" autocomplete="off"></div>
+          <div class="ida-field" id="org-field" hidden><label for="f-org">Atelier</label><select class="ida-input" id="f-org"></select></div>
+          <div class="ida-field"><label for="f-date" class="ida-required">Date de l'intervention</label><input class="ida-input" id="f-date" type="date" required></div>
+          <div class="ida-field"><label for="f-km">Kilométrage (km)</label><input class="ida-input" id="f-km" inputmode="numeric" maxlength="9" autocomplete="off" dir="ltr"></div>
+          <div class="ida-field" id="tech-field" hidden><label for="f-tech">Technicien</label><select class="ida-input" id="f-tech"></select></div>
         </div>
-        <p class="ida-field-hint" id="hint-part">Laissez vide si l'opération n'utilise aucune pièce.</p>
-        <fieldset class="ida-radio-group" id="op-source" aria-describedby="hint-source">
-          <legend>Provenance de la pièce</legend>
-          <label class="ida-radio"><input type="radio" name="part_source" value="our_shop"> Pièce achetée auprès de notre établissement</label>
-          <label class="ida-radio"><input type="radio" name="part_source" value="customer_supplied"> Pièce fournie par le client</label>
-          <label class="ida-radio"><input type="radio" name="part_source" value="external_supplier"> Pièce achetée auprès d'un fournisseur externe</label>
-          <p class="ida-field-hint" id="hint-source">Obligatoire dès qu'une pièce est indiquée. C'est une déclaration du technicien : IDauto ne détient pas la facture.</p>
-        </fieldset>
-        <fieldset class="ida-radio-group ida-radio-inline">
-          <legend>État de la pièce</legend>
-          <label class="ida-radio"><input type="radio" name="part_condition" value="" checked> Non précisé</label>
-          <label class="ida-radio"><input type="radio" name="part_condition" value="new"> Neuve</label>
-          <label class="ida-radio"><input type="radio" name="part_condition" value="used"> Occasion</label>
-        </fieldset>
-        <div class="ida-field"><label for="op-notes">Remarques</label><input class="ida-input" id="op-notes" maxlength="500" autocomplete="off"></div>
-        <label class="ida-admin-check"><input type="checkbox" id="op-done" checked> Opération réalisée</label>
-        <div id="op-errors" aria-live="assertive"></div>
-        <div class="ida-form-actions"><button type="submit" class="ida-btn ida-btn--primary">Enregistrer l'opération</button></div>
-      </form>
-    </section>
+        <div class="ida-field"><label for="f-desc" class="ida-required">Description du travail effectué</label><textarea class="ida-input" id="f-desc" rows="3" maxlength="1000"></textarea></div>
+      </section>
 
-    <dialog class="ida-dialog" id="new-dialog" aria-labelledby="new-title">
-      <form method="dialog" class="ida-dialog-body" id="new-form" novalidate>
-        <h2 id="new-title" class="ida-h3">Nouvelle intervention</h2>
-        <div class="ida-field">
-          <label for="n-vehicle" class="ida-required">Véhicule</label>
-          <input class="ida-input" id="n-vehicle" autocomplete="off" placeholder="Immatriculation, marque ou modèle" aria-describedby="hint-vehicle">
-          <p class="ida-field-hint" id="hint-vehicle">Choisissez le véhicule dans la liste. Un véhicule absent s'ajoute d'abord par « Ajouter un véhicule ».</p>
-          <div id="n-results" class="ida-stack" aria-live="polite"></div>
-        </div>
-        <div class="ida-field" id="n-org-field" hidden><label for="n-org" class="ida-required">Atelier</label><select class="ida-input" id="n-org"></select></div>
-        <div class="ida-field"><label for="n-reason">Motif</label><input class="ida-input" id="n-reason" maxlength="200" autocomplete="off" placeholder="Vidange, freins, diagnostic…"></div>
-        <div id="n-errors" aria-live="assertive"></div>
+      <section class="ida-card ida-form-section ida-stack" aria-labelledby="sec-parts">
+        <div class="ida-section-head"><h2 id="sec-parts">Pièces utilisées</h2><button class="ida-btn ida-btn--secondary ida-btn--sm" type="button" id="add-part">Ajouter une pièce</button></div>
+        <p class="ida-small ida-muted">Pour chaque pièce, indiquez seulement sa provenance. C'est une déclaration : IDauto ne gère ni vente ni facture.</p>
+        <div id="parts" class="ida-part-rows"></div>
+        <p class="ida-empty" id="no-parts">Aucune pièce. Utilisez « Ajouter une pièce » si des pièces ont été posées.</p>
+      </section>
+
+      <div id="form-errors" aria-live="assertive"></div>
+      <div class="ida-form-actions">
+        <button type="button" class="ida-btn ida-btn--ghost" id="iv-cancel-record" hidden>Annuler l'intervention</button>
+        <a class="ida-btn ida-btn--ghost" href="/atelier/interventions">Fermer</a>
+        <button type="submit" class="ida-btn ida-btn--primary" id="iv-submit">Enregistrer l'intervention</button>
+      </div>
+    </form>
+
+    <dialog class="ida-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+      <form method="dialog" class="ida-dialog-body">
+        <h2 id="confirm-title" class="ida-h3">Confirmer</h2>
+        <p id="confirm-text"></p>
         <div class="ida-dialog-actions">
-          <button type="button" class="ida-btn ida-btn--ghost" data-close>Annuler</button>
-          <button type="submit" class="ida-btn ida-btn--primary" value="create">Ouvrir l'intervention</button>
+          <button type="button" class="ida-btn ida-btn--ghost" data-close>Non</button>
+          <button type="submit" class="ida-btn ida-btn--danger" value="yes">Oui, annuler</button>
         </div>
       </form>
     </dialog>
