@@ -33,7 +33,9 @@ var MANAGER_SCOPES = ['vehicle:read', 'vehicle:write', 'vehicle:search', 'vehicl
   'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'parts:write', 'stock:write', 'workshop:read', 'workshop:write',
   'document:read', 'document:write', 'document:delete',
   // IDA-UI-3 (owner decision 2026-11-05): the owner's contact (own organisation only, audited) and the team list.
-  'owner:read', 'owner:write', 'team:read'];
+  'owner:read', 'owner:write', 'team:read',
+  // IDA-UI-4: delete (archive) a vehicle record entered by mistake — manager and admin, never a technician.
+  'vehicle:delete'];
 var TECHNICIAN_SCOPES = ['vehicle:read', 'vehicle:write', 'vehicle:search', 'vehicle:resolve', 'plate:read', 'fact:read',
   'observation:read', 'observation:write', 'passport:read', 'identity:resolve', 'parts:read', 'workshop:read', 'workshop:write',
   'document:read', 'document:write',   // a technician may photograph and replace, not delete

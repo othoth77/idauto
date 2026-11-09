@@ -97,12 +97,17 @@ ITS OWN interventions, documents and owner contacts; an admin sees everything.
 | `GET /api/vehicles/:ref/dossier` | `vehicle:read` | `{ vehicle (VIN only with vin:search — audited), plates, documents{faces, can_upload, can_delete}, owner{recorded, can_read, can_write}, maintenance[interventions with operations, parts, source, technician], identification, scope }` |
 | `GET /api/vehicles/:ref/owner` | `owner:read` | `{ contacts[] }` — this workshop's contact (admin: all); **every read audited** (`vehicle.owner.read`, no personal data in the row) |
 | `PUT /api/vehicles/:ref/owner` · `DELETE` | `owner:write` | `{ full_name (required), phone?, email?, address?, notes? }` — supersedes the previous row (history kept); delete supersedes too |
-| `GET /api/workspace/vehicles?q&page` | `vehicle:read` | the workshop's vehicles (visited, registered, documented or with an owner contact); admin: all |
+| `GET /api/workspace/vehicles?q&page` | `vehicle:read` | the workshop's vehicles (visited, registered, documented, with an owner contact or a note); admin: all. `total` = rows matching the search; each row carries `odometer_km` |
 | `GET /api/workspace/documents?page` | `document:read` | vehicles with carte grise photos |
 | `GET /api/workspace/interventions?status&id&vehicle` | `workshop:read` | interventions with their operations |
-| `GET /api/workspace/parts-used?source` | `workshop:read` | replaced/repaired parts with their declared source |
+| `GET /api/workspace/parts-used?source&org` | `workshop:read` | parts fitted at interventions with their **declared** source; `source` = `our_shop`\|`customer_supplied`\|`external_supplier`\|`unknown` (not recorded); `totals` per source and `total` over the scope (before the source filter); `org` narrows an admin to one workshop (ignored for others). No price: none is recorded for a fitted part |
 | `GET /api/workspace/technicians` | `team:read` (manager, admin) | the workshop's accounts and their recorded activity |
-| `GET /api/workspace/overview` | `vehicle:read` | dashboard counts (own workshop; admin: platform) |
+| `GET /api/workspace/overview` | `vehicle:read` | the dashboard (IDA-UI-4): `vehicles`, `interventions`, `parts`, `parts_our_shop`, `parts_customer` — each the total of the list it opens (own workshop; admin: platform) |
+| `DELETE /api/vehicles/:ref` | `vehicle:delete` | delete = archive (data kept; refused with interventions, or for a manager when another workshop holds data) — docs/SIMPLIFICATION_2026-11.md §4 |
+| `PUT /api/vehicles/:ref/details` | `vehicle:write` | edit make, model, year, `odometer_km`, `notes` (the workshop's own note, ≤ 500) — docs/SIMPLIFICATION_2026-11.md §4 |
+| `POST /api/workspace/interventions` | `workshop:write` | `{ vehicle_ref, performed_on, odometer_km, description, technician?, org_id? (admin), parts: [{ label, reference?, quantity?, source: our_shop\|customer_supplied }] }` → 201 `{ id }`, one transaction |
+| `PUT /api/workspace/interventions/:id` | `workshop:write` | same body; parts with `id` updated, unlisted ones cancelled (kept), new ones added |
+| `DELETE /api/workspace/interventions/:id` | `workshop:write` | cancel (kept; leaves counts and lists) |
 | `GET /api/notifications` | `vehicle:read` | real counts, each with the page that lists them |
 | `GET /api/search?q=` | `vehicle:read` | `{ groups: [vehicles, owners, interventions, parts] }`, ≥ 2 characters; the vehicles group needs `vehicle:search` and is the shared registry (identity only, as `/api/search/vehicles`), 30 searches/min per account; owners only with `owner:read` (own workshop, audited), VIN only with `vin:search` (audited), interventions of the own workshop |
 | `GET /api/admin/roles` | admin | the role → scope matrix the server applies |

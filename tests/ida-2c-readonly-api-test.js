@@ -122,8 +122,10 @@ function authed(requestPath, method) {
   ok(postAttempt.status === 405, 'POST /api/vehicles/:ref -> 405 (not 200, not silently accepted)');
   var putAttempt = await authed('/api/vehicles/IDA2C-TEST-VEHICLE-001', 'PUT');
   ok(putAttempt.status === 405, 'PUT /api/vehicles/:ref -> 405');
-  var deleteAttempt = await authed('/api/vehicles/IDA2C-TEST-VEHICLE-001', 'DELETE');
-  ok(deleteAttempt.status === 405, 'DELETE /api/vehicles/:ref -> 405');
+  // IDA-UI-4 added DELETE /api/vehicles/:ref (archive, scope vehicle:delete). The seed record must never be
+  // touched here: an unknown reference shows the route answers without writing anything.
+  var deleteAttempt = await authed('/api/vehicles/IDA2C-NO-SUCH-VEHICLE', 'DELETE');
+  ok(deleteAttempt.status === 404, 'DELETE /api/vehicles/:ref on an unknown vehicle -> 404 (no write)');
 
   console.log('\n7. UNKNOWN ROUTES -> 404');
   var unknownRoute = await authed('/api/something-that-does-not-exist');

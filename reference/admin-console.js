@@ -64,6 +64,13 @@
 
   var DASH = '—';
   function text(v) { return v === null || v === undefined || v === '' ? DASH : String(v); }
+  // A mileage: Western digits, grouped, « km » (« كم » in Arabic). Kept left-to-right inside Arabic text.
+  function km(n) {
+    if (n === null || n === undefined || n === '') return DASH;
+    var ar = root.IdAutoI18n && root.IdAutoI18n.lang() === 'ar';
+    var s = Number(n).toLocaleString(ar ? 'ar-TN-u-nu-latn' : 'fr-FR') + (ar ? ' كم' : ' km');
+    return typeof document !== 'undefined' ? el('bdi', { dir: 'ltr' }, s) : s;
+  }
   function date(v, withTime) {
     if (!v) return DASH;
     var d = new Date(v);
@@ -110,7 +117,11 @@
     actor_type: { system: 'Système', contributor: 'Contributeur', professional_user: 'Professionnel', admin: 'Administrateur', anonymous: 'Anonyme' },
     outcome: { pass: 'Conforme', fail: 'Non conforme', conditional: 'Sous réserve', informational: 'Information' },
     // IDA-UI-3 — the part source as DECLARED by the technician (no invoice is held by IDauto).
-    part_source: { our_shop: 'Pièce achetée auprès de notre établissement', customer_supplied: 'Pièce fournie par le client', external_supplier: 'Pièce achetée auprès d\'un fournisseur externe' },
+    // Shown as a DECLARATION wherever it is displayed: IDauto holds no sale or invoice, so « notre établissement »
+    // is never presented as a proven purchase (client rule 2026-11-06). The radio buttons keep the plain wording.
+    part_source: { our_shop: 'Achetée chez nous (déclarée)', customer_supplied: 'Fournie par le client (déclarée)', external_supplier: 'Autre fournisseur (déclarée, ancienne saisie)', unknown: 'Provenance non renseignée' },
+    // Same declarations, short, for table cells.
+    part_source_short: { our_shop: 'Achetée chez nous (déclarée)', customer_supplied: 'Fournie par le client (déclarée)', external_supplier: 'Autre fournisseur (déclarée)', unknown: 'Non renseignée' },
     part_condition: { new: 'Neuve', used: 'Occasion' },
     fuel_type: { petrol: 'Essence', diesel: 'Diesel', lpg: 'GPL', electric: 'Électrique', hybrid: 'Hybride', other: 'Autre' },
     role: { admin: 'Administrateur', manager: 'Gestionnaire', technician: 'Technicien' }
@@ -152,14 +163,22 @@
   // A server refusal in words: its message, plus the field it concerns when known.
   var FIELD = { plate: 'Immatriculation', vin: 'Numéro de châssis (VIN)', make: 'Marque', model: 'Modèle', year: 'Année', engine_cc: 'Cylindrée', seats: 'Places',
     gross_weight_kg: 'Poids total', fuel_type: 'Énergie', category_code: 'Catégorie', 'owner.full_name': 'Nom du propriétaire', 'owner.phone': 'Téléphone du propriétaire',
-    'owner.email': 'E-mail du propriétaire', part_source: 'Provenance de la pièce', performed_on: 'Date', quantity: 'Quantité', operation_type: 'Type d\'opération' };
+    'owner.email': 'E-mail du propriétaire', part_source: 'Provenance de la pièce', performed_on: 'Date', quantity: 'Quantité', operation_type: 'Type d\'opération',
+    odometer_km: 'Kilométrage', description: 'Description du travail effectué', technician: 'Technicien', notes: 'Informations complémentaires', org_id: 'Atelier', vehicle_ref: 'Véhicule' };
+  var PART_FIELD = { label: 'nom de la pièce', source: 'provenance', quantity: 'quantité', reference: 'référence' };
   function errorText(e) {
     var d = e && e.body && e.body.details;
     var msg = (e && e.message) || 'La demande n\'a pas abouti.';
     if (d && d.field && FIELD[d.field]) msg += ' — ' + FIELD[d.field];
+    var pm = d && d.field && /^parts\[(\d+)\]\.(\w+)$/.exec(d.field);
+    if (pm) msg += ' — ' + 'Pièce ' + (Number(pm[1]) + 1) + ' : ' + (PART_FIELD[pm[2]] || pm[2]);
+    if (d && d.reason === 'choose_source') msg = 'Choisissez la provenance de chaque pièce.' + (pm ? ' (Pièce ' + (Number(pm[1]) + 1) + ')' : '');
+    if (d && d.reason === 'plate_required') msg = 'L\'immatriculation est obligatoire.';
+    if (d && d.reason === 'vehicle_has_interventions') msg = 'Ce véhicule a des interventions enregistrées : il ne peut pas être supprimé (son historique est conservé).';
+    if (d && d.reason === 'vehicle_used_by_another_workshop') msg = 'Un autre atelier a des données sur ce véhicule : seul un administrateur peut le supprimer.';
     return msg;
   }
 
-  root.IdAutoConsole = { api: api, send: send, errorText: errorText, FIELD: FIELD, el: el, append: append, clear: clear, text: text, date: date, plate: plate, id: id,
+  root.IdAutoConsole = { api: api, send: send, errorText: errorText, FIELD: FIELD, el: el, append: append, clear: clear, text: text, date: date, km: km, plate: plate, id: id,
     label: label, badge: badge, state: state, sessionLine: sessionLine, LABELS: LABELS, DASH: DASH };
 }(typeof window !== 'undefined' ? window : this));

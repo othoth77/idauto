@@ -2,7 +2,7 @@
 'use strict';
 // IDA-UI — the redesigned application in a real browser (headless Chrome over CDP), on a scratch
 // database: shell (sidebar + top bar), manual registration with carte grise photos, dossier,
-// private owner contact, intervention with the part-source radio, replaced parts, global search,
+// private owner contact, interventions with several parts and their source (IDA-UI-4), parts, global search,
 // roles, French / Arabic (RTL), and the responsive layout at 1920 → 375 px. Synthetic data only.
 
 var path = require('path');
@@ -62,86 +62,115 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
     return waitFor('location.pathname === ' + JSON.stringify(next.split('?')[0]) + ' && document.readyState === "complete" && !!document.querySelector(".ida-admin-nav-link")', 45000);
   }
   var LANG_NOW = null;
-  var NAVLABELS = '(function(){return Array.from(document.querySelectorAll(".ida-admin-nav-link")).map(function(a){return a.textContent.trim()})})()';
 
+  var NAVLABELS = '(function(){return Array.from(document.querySelectorAll(".ida-admin-nav-link")).map(function(a){return a.textContent.trim()})})()';
   console.log('== SHELL (manager, 1440 px)');
   ok(await signIn('manager', '/atelier/tableau-de-bord'), 'the manager signs in and lands on the dashboard');
-  var nav = await ev(NAVLABELS);
-  ok(nav.indexOf('Ajouter un véhicule') !== -1 && nav.indexOf('Interventions') !== -1 && nav.indexOf('Techniciens') !== -1 && nav.indexOf('Utilisateurs') === -1 && nav.indexOf('Journal d’activité et audit') === -1, 'role-filtered menu: workshop items, no administration (' + nav.length + ' items)');
-  ok(await ev('!!document.querySelector("[data-app-topbar] #app-search") && !!document.querySelector("[data-app-lang]") && !!document.querySelector(".ida-app-bell") && !!document.querySelector(".ida-app-profile")'), 'top bar: search, notifications, language, profile');
+  ok(JSON.stringify(await ev(NAVLABELS)) === JSON.stringify(['Tableau de bord', 'Véhicules', 'Interventions', 'Pièces', 'Paramètres']), 'the menu: five links, nothing else');
+  ok(await ev('!!document.querySelector("[data-app-topbar] #app-search") && !!document.querySelector("[data-app-lang]") && !!document.querySelector(".ida-app-profile") && !document.querySelector(".ida-app-bell") && !document.querySelector("[data-theme-toggle]")'), 'top bar: search, language, profile (no notification bell, no theme switch)');
+  ok(await ev('document.documentElement.getAttribute("data-theme") === "light"'), 'one light theme');
   ok(await ev('document.querySelector(".ida-admin-nav-link.is-active").getAttribute("aria-current") === "page" && /Tableau de bord/.test(document.querySelector(".ida-admin-nav-link.is-active").textContent)'), 'the current page is marked (aria-current)');
-  ok(await waitFor('/\\d/.test(document.getElementById("stats").textContent)', 20000), 'dashboard: real counts');
+  ok(await waitFor('document.querySelectorAll("#stats a").length === 5', 20000), 'dashboard: five numbers');
+  ok(await ev('JSON.stringify(Array.from(document.querySelectorAll("#stats a")).map(function(a){return a.getAttribute("href")})) === JSON.stringify(["/atelier/vehicules","/atelier/interventions","/atelier/pieces-remplacees","/atelier/pieces-remplacees?source=our_shop","/atelier/pieces-remplacees?source=customer_supplied"])'), 'each number opens its list');
 
-  console.log('\n== MANUAL REGISTRATION');
+  console.log('\n== VEHICLE: ADD, FILE, EDIT');
   await go('/atelier/vehicules/nouveau', '!!document.getElementById("register-form")');
-  ok(await ev('!document.querySelector("[data-cg-root]") && !/Scanner la carte grise/.test(document.body.textContent) && !/tesseract/i.test(Array.from(document.scripts).map(function(s){return s.src}).join(" "))'), 'no OCR scanner on the registration page (no Tesseract loaded)');
+  ok(await ev('!document.querySelector("[data-cg-root]") && !/tesseract/i.test(Array.from(document.scripts).map(function(s){return s.src}).join(" ")) && !document.getElementById("f-fuel") && !document.getElementById("f-cc")'), 'the simple form: no OCR, no technical fields beyond the request');
+  ok(await ev('["f-plate-series","f-make","f-model","f-year","f-vin","f-km","f-notes","f-owner-name","f-owner-phone"].every(function(i){return !!document.getElementById(i)}) && document.querySelectorAll("[data-file]").length === 2'), 'fields: registration, make, model, year, VIN, mileage, notes, owner, face 1 / face 2');
   await ev('document.getElementById("register-submit").click()');
-  ok(await waitFor('/obligatoire|Indiquez l/.test(document.getElementById("form-errors").textContent)', 5000) && await ev('document.getElementById("f-make").getAttribute("aria-invalid") === "true"'), 'empty form: the missing fields are named and marked aria-invalid');
-  var CARD = 'window.__card = function (txt, w, h) { var c = document.createElement("canvas"); c.width = w; c.height = h; var x = c.getContext("2d"); x.fillStyle = "#f4efe2"; x.fillRect(0, 0, w, h); x.fillStyle = "#222"; x.font = "40px sans-serif"; x.fillText(txt, 40, 100); return new Promise(function (r) { c.toBlob(function (b) { r(new File([b], "face.png", { type: "image/png" })); }, "image/png"); }); };' +
+  ok(await waitFor('/immatriculation est obligatoire/i.test(document.getElementById("form-errors").textContent)', 5000), 'empty form: only the registration number is asked for');
+  var CARD = 'window.__card = function (txt, w, h) { var c = document.createElement("canvas"); c.width = w; c.height = h; var x = c.getContext("2d"); x.fillStyle = "#f4efe2"; x.fillRect(0, 0, w, h); x.fillStyle = "#222"; x.font = "40px sans-serif"; x.fillText(txt, 40, 80); return new Promise(function (r) { c.toBlob(function (b) { r(new File([b], "carte.png", { type: "image/png" })); }, "image/png"); }); };' +
     'window.__feed = function (sel, f) { var i = document.querySelector(sel); var dt = new DataTransfer(); dt.items.add(f); i.files = dt.files; i.dispatchEvent(new Event("change", { bubbles: true })); }; true';
   await ev(CARD);
-  await ev('window.__card("TROP PETITE", 300, 200).then(function (f) { window.__feed("[data-file=\\"1\\"]", f); return true; })');
-  ok(await waitFor('/trop petite/i.test(document.querySelector("[data-face-msg=\\"1\\"]").textContent)', 8000), 'a photo too small to read is refused before upload');
   await ev('window.__card("CARTE GRISE FACE 1 SPECIMEN", 1600, 1000).then(function (f) { window.__feed("[data-file=\\"1\\"]", f); return true; })');
   await ev('window.__card("CARTE GRISE FACE 2 SPECIMEN", 1600, 1000).then(function (f) { window.__feed("[data-file=\\"2\\"]", f); return true; })');
   ok(await waitFor('document.querySelectorAll(".ida-face-preview img").length === 2', 10000), 'both faces previewed before sending');
   await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(String(S)) + ';f.plate_number.value=' + JSON.stringify(String(N)) + ';f.make.value=' + JSON.stringify(MAKE) +
-    ';f.model.value="208";f.year.value="2019";f.fuel_type.value="petrol";f.engine_cc.value="1199";f.seats.value="5";f.owner_full_name.value=' + JSON.stringify(OWNER) + ';f.owner_phone.value=' + JSON.stringify(PHONE) + ';true');
+    ';f.model.value="208";f.year.value="2019";f.odometer_km.value="84 500";f.notes.value="Roue de secours neuve";f.owner_full_name.value=' + JSON.stringify(OWNER) + ';f.owner_phone.value=' + JSON.stringify(PHONE) + ';true');
   await ev('document.getElementById("register-submit").click()');
-  ok(await waitFor('location.pathname === "/atelier/vehicule" && /created=1/.test(location.search)', 30000), 'registered → the new dossier opens');
+  ok(await waitFor('location.pathname === "/atelier/vehicule" && /created=1/.test(location.search)', 30000), 'registered → the vehicle file opens');
   var IVID = await ev('new URLSearchParams(location.search).get("ref")');
   ok(/^ivid:1:/.test(IVID || ''), 'with its IVID (' + IVID + ')');
-  ok(await waitFor('document.querySelectorAll("#sec-docs-box img").length === 2', 20000), 'dossier: both carte grise photos shown (private store, blobs)');
-  var docs = (await db.query('SELECT count(*)::int n, max(org_id) o FROM idauto_vehicle_documents d JOIN idauto_vehicles v ON v.id = d.vehicle_id WHERE v.ivid = $1', [IVID])).rows[0];
-  ok(docs.n === 2 && docs.o === ORG, 'both faces stored for the workshop');
-  ok(await ev('/' + MAKE + '/.test(document.getElementById("sec-identity-box").textContent) && /1199/.test(document.getElementById("sec-identity-box").textContent)'), 'identity section shows the typed values');
+  ok(await waitFor('document.querySelectorAll("#sec-docs-box img").length === 2', 20000), 'file: both carte grise photos shown (private store, blobs)');
+  ok(await ev('/84\\s?500/.test(document.getElementById("sec-identity-box").textContent) && /Roue de secours neuve/.test(document.getElementById("sec-identity-box").textContent)'), 'file: mileage and notes');
   var bodyBefore = await ev('document.body.textContent');
   ok(bodyBefore.indexOf(OWNER) === -1 && bodyBefore.indexOf(PHONE) === -1, 'the owner contact is NOT displayed until asked for');
   var readsBefore = (await db.query("SELECT count(*)::int n FROM idauto_audit_log WHERE event_type = 'vehicle.owner.read' AND target_ref = $1", [IVID])).rows[0].n;
   await ev('document.getElementById("owner-show").click()');
   ok(await waitFor('document.getElementById("owner-body").textContent.indexOf(' + JSON.stringify(OWNER) + ') !== -1', 10000), 'on request the owner\'s name and phone appear');
   ok((await db.query("SELECT count(*)::int n FROM idauto_audit_log WHERE event_type = 'vehicle.owner.read' AND target_ref = $1", [IVID])).rows[0].n === readsBefore + 1, 'and that read is audited');
-  // duplicate
+  await ev('document.getElementById("details-edit").click()');
+  ok(await waitFor('document.getElementById("details-dialog").open && document.getElementById("d-model").value === "208"', 5000), '« Modifier » opens the file\'s form, filled');
+  await ev('document.getElementById("d-model").value="208 GT";document.getElementById("d-km").value="85000";document.querySelector("#details-form button[type=submit]").click();true');
+  ok(await waitFor('/208 GT/.test(document.getElementById("sec-identity-box").textContent) && /85\\s?000/.test(document.getElementById("sec-identity-box").textContent)', 10000), 'the edit is saved and shown');
   await go('/atelier/vehicules/nouveau', '!!document.getElementById("register-form")');
-  await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(String(S)) + ';f.plate_number.value=' + JSON.stringify(String(N)) + ';f.make.value="AUTRE";document.getElementById("register-submit").click();true');
-  ok(await waitFor('/existe déjà/.test(document.getElementById("form-errors").textContent) && !!document.querySelector("#form-errors a[href*=\\"vehicule?ref=\\"]")', 15000), 'the same plate again → « existe déjà », with a link to its dossier (no duplicate)');
-  // régime suspensif: same shape as TU (series RS number), chosen by the radio button
+  await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(String(S)) + ';f.plate_number.value=' + JSON.stringify(String(N)) + ';document.getElementById("register-submit").click();true');
+  ok(await waitFor('/existe déjà/.test(document.getElementById("form-errors").textContent) && !!document.querySelector("#form-errors a[href*=\\"vehicule?ref=\\"]")', 15000), 'the same plate again → « existe déjà », with a link to its file (no duplicate)');
   var RS_S = String(100 + Math.floor(Math.random() * 899)), RS_N = String(1000 + Math.floor(Math.random() * 8999));
   await go('/atelier/vehicules/nouveau', '!!document.getElementById("register-form")');
   await ev('document.querySelector("input[name=plate_type][value=RS]").click();true');
-  ok(await ev('document.querySelector("[data-plate-word]").textContent === "RS" && !document.getElementById("f-plate-series").closest("[hidden]")'), 'RS chosen: the plate reads series RS number');
-  await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(RS_S) + ';f.plate_number.value=' + JSON.stringify(RS_N) + ';f.make.value="RSTEST";document.getElementById("register-submit").click();true');
-  ok(await waitFor('location.pathname === "/atelier/vehicule" && /created=1/.test(location.search)', 30000), 'an RS vehicle registers from the form');
-  ok((await db.query("SELECT count(*)::int n FROM idauto_plates WHERE plate_number = $1", [RS_S + ' RS ' + RS_N])).rows[0].n === 1, 'with the plate ' + RS_S + ' RS ' + RS_N);
+  ok(await ev('document.querySelector("[data-plate-word]").textContent === "RS"'), 'RS chosen: the plate reads series RS number');
+  await ev('var f=document.getElementById("register-form");f.plate_series.value=' + JSON.stringify(RS_S) + ';f.plate_number.value=' + JSON.stringify(RS_N) + ';document.getElementById("register-submit").click();true');
+  ok(await waitFor('location.pathname === "/atelier/vehicule" && /created=1/.test(location.search)', 30000), 'a vehicle registers with its registration number alone (RS)');
+  ok(await waitFor('!!document.getElementById("vehicle-delete")', 15000), 'the manager sees « Supprimer le véhicule »');
+  await ev('document.getElementById("vehicle-delete").click();true');
+  await waitFor('document.getElementById("confirm-dialog").open', 5000);
+  await ev('document.getElementById("confirm-yes").click();true');
+  ok(await waitFor('location.pathname === "/atelier/vehicules" && /supprimé/.test(document.getElementById("page-status").textContent)', 15000), 'deleted after confirmation → back to the list');
+  ok((await db.query("SELECT fiche_status FROM idauto_vehicles v JOIN idauto_plates p ON p.vehicle_id = v.id WHERE p.plate_number = $1", [RS_S + ' RS ' + RS_N])).rows[0].fiche_status === 'archived', 'archived in the database, not erased');
+  await go('/atelier/vehicules?q=' + encodeURIComponent('208 GT'), 'document.querySelectorAll("#list tbody tr").length >= 1');
+  ok(await ev('document.getElementById("list").textContent.indexOf(' + JSON.stringify(MAKE) + ') !== -1 && /85\\s?000/.test(document.getElementById("list").textContent)'), 'the vehicle list finds it by model, with its mileage');
 
-  console.log('\n== INTERVENTION AND PART SOURCE');
-  await go('/atelier/interventions?new=1&vehicle=' + encodeURIComponent(IVID), '!!document.getElementById("new-dialog") && document.getElementById("new-dialog").open && /Véhicule choisi/.test(document.getElementById("n-results").textContent)');
-  await ev('document.getElementById("n-reason").value="ENTRETIEN ' + run + '";document.querySelector("#new-form button[type=submit]").click();true');
-  ok(await waitFor('!document.getElementById("detail-box").hidden && !document.getElementById("op-form").hidden', 15000), 'intervention opened from the dossier; the operation form shows');
-  await ev('document.getElementById("op-type").value="replacement";document.getElementById("op-part").value="FILTRE A HUILE";document.getElementById("op-ref").value="OC 90";document.querySelector("#op-form button[type=submit]").click();true');
-  ok(await waitFor('/provenance/i.test(document.getElementById("op-errors").textContent)', 5000), 'a part without its source → « Choisissez la provenance de la pièce »');
-  ok(await ev('document.querySelectorAll("#op-source input[type=radio]").length === 3'), 'three radio buttons for the source');
-  await ev('document.querySelector("#op-source input[value=customer_supplied]").click();document.querySelector("input[name=part_condition][value=new]").click();document.querySelector("#op-form button[type=submit]").click();true');
-  ok(await waitFor('/FILTRE A HUILE/.test(document.getElementById("detail").textContent) && /fournie par le client/.test(document.getElementById("detail").textContent)', 15000), 'the operation is listed with its part and « Pièce fournie par le client »');
-  var op = (await db.query("SELECT op.part_source, op.part_condition, op.status, op.created_by FROM idauto_workshop_operations op JOIN idauto_workshop_visits w ON w.id = op.visit_id JOIN idauto_vehicles v ON v.id = w.vehicle_id WHERE v.ivid = $1", [IVID])).rows[0];
-  ok(op && op.part_source === 'customer_supplied' && op.part_condition === 'new' && op.status === 'done' && /^user:/.test(op.created_by), 'stored: source, condition, done, the technician\'s identity');
+  console.log('\n== INTERVENTION WITH SEVERAL PARTS');
+  await go('/atelier/interventions?new=1&vehicle=' + encodeURIComponent(IVID), '!document.getElementById("iv-form").hidden && /Véhicule choisi/.test(document.getElementById("vehicle-chosen").textContent)');
+  ok(await ev('document.getElementById("f-date").value === new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)'), 'opened from the file: the vehicle is chosen, today\'s date is filled');
+  await ev('document.getElementById("f-km").value="86200";document.getElementById("f-desc").value="VIDANGE ET PLAQUETTES ' + run + '";document.getElementById("add-part").click();document.getElementById("add-part").click();true');
+  ok(await ev('document.querySelectorAll("#parts [data-part]").length === 2 && document.querySelectorAll("#parts [data-part]")[0].querySelectorAll("input[type=radio]").length === 2'), 'two part rows, each with two source choices');
+  ok(await ev('/Achetée chez nous/.test(document.querySelector("#parts [data-source]").textContent) && /Fournie par le client/.test(document.querySelector("#parts [data-source]").textContent)'), 'the choices: « Achetée chez nous » / « Fournie par le client »');
+  await ev('var r=document.querySelectorAll("#parts [data-part]");r[0].querySelector("[data-f=label]").value="FILTRE A HUILE";r[0].querySelector("[data-f=reference]").value="OC 90";r[1].querySelector("[data-f=label]").value="PLAQUETTES";document.querySelector("#iv-form button[type=submit]").click();true');
+  ok(await waitFor('/provenance/i.test(document.getElementById("form-errors").textContent)', 5000), 'a part without its source → asked for');
+  await ev('var r=document.querySelectorAll("#parts [data-part]");r[0].querySelector("input[value=our_shop]").click();r[1].querySelector("input[value=customer_supplied]").click();document.querySelector("#iv-form button[type=submit]").click();true');
+  ok(await waitFor('/[?&]id=\\d+/.test(location.search) && /saved=1/.test(location.search) && !document.getElementById("iv-form").hidden', 20000), 'saved → the intervention opens, ready to edit');
+  var VISIT = await ev('new URLSearchParams(location.search).get("id")');
+  var stored = (await db.query("SELECT w.odometer_km, w.status, array_agg(op.part_source ORDER BY op.id) AS s FROM idauto_workshop_visits w JOIN idauto_workshop_operations op ON op.visit_id = w.id WHERE w.id = $1 GROUP BY w.id", [VISIT])).rows[0];
+  ok(stored && stored.odometer_km === 86200 && stored.s.join() === 'our_shop,customer_supplied', 'stored: mileage and each part\'s source');
+  ok(await ev('document.querySelectorAll("#parts [data-part]").length === 2 && document.querySelectorAll("#parts [data-part]")[0].querySelector("input[value=our_shop]").checked'), 'reopened: the parts and their source are filled');
+  await ev('document.querySelectorAll("#parts [data-part]")[1].querySelector(".ida-part-remove").click();document.getElementById("add-part").click();var r=document.querySelectorAll("#parts [data-part]");r[1].querySelector("[data-f=label]").value="AMPOULE";r[1].querySelector("input[value=customer_supplied]").click();document.querySelector("#iv-form button[type=submit]").click();true');
+  ok(await waitFor('/saved=1/.test(location.search) && document.querySelectorAll("#parts [data-part]").length === 2 && /AMPOULE/.test(Array.from(document.querySelectorAll("#parts [data-f=label]")).map(function(i){return i.value}).join(" "))', 20000), 'edit: one part removed, one added');
+  await go('/atelier/interventions', 'document.querySelectorAll("#list tbody tr").length >= 1');
+  ok(await ev('/VIDANGE ET PLAQUETTES/.test(document.getElementById("list").textContent) && /86\\s?200/.test(document.getElementById("list").textContent)'), 'the list shows it with its mileage and work done');
+
+  console.log('\n== PARTS');
   await go('/atelier/pieces-remplacees', '/FILTRE A HUILE/.test(document.getElementById("list").textContent)');
-  ok(await ev('/fournie par le client/.test(document.getElementById("list").textContent)'), '« Pièces remplacées » lists it with its source');
-  await go('/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/FILTRE A HUILE/.test(document.getElementById("sec-history-box").textContent)');
-  ok(await ev('/Technicien/.test(document.getElementById("sec-history-box").textContent)'), 'the dossier\'s history shows the operation and its technician');
+  ok(await ev('JSON.stringify(Array.from(document.querySelectorAll("#list thead th")).map(function(x){return x.textContent.trim()})) === JSON.stringify(["Pièce","Référence","Véhicule","Date","Provenance"])'), 'columns: part, reference, vehicle, date, source');
+  ok(await ev('/Achetée chez nous \\(déclarée\\)/.test(document.getElementById("list").textContent) && /Fournie par le client \\(déclarée\\)/.test(document.getElementById("list").textContent) && !/PLAQUETTES/.test(document.getElementById("list").textContent)'), 'each source shown as a declaration; the removed part is gone');
+  await go('/atelier/pieces-remplacees?source=customer_supplied', '/AMPOULE/.test(document.getElementById("list").textContent)');
+  ok(await ev('!/FILTRE A HUILE/.test(document.getElementById("list").textContent)'), 'filter by source');
+  await ev('document.getElementById("f-source").value="";document.getElementById("f-q").value="OC 90";document.querySelector("#filter button[type=submit]").click();true');
+  ok(await waitFor('/FILTRE A HUILE/.test(document.getElementById("list").textContent) && !/AMPOULE/.test(document.getElementById("list").textContent)', 10000), 'search by reference');
 
   console.log('\n== GLOBAL SEARCH');
+  await go('/atelier/tableau-de-bord', '!!document.getElementById("app-search")');
   await ev('var i=document.getElementById("app-search");i.value=' + JSON.stringify(S + 'TU' + N) + ';i.dispatchEvent(new Event("input",{bubbles:true}));true');
   ok(await waitFor('document.querySelectorAll("#app-search-results [role=option]").length >= 1 && /Véhicules/.test(document.getElementById("app-search-results").textContent)', 10000), 'typing the plate without spaces → grouped results');
-  await ev('var i=document.getElementById("app-search");i.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}));i.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}));true');
-  ok(await waitFor('location.pathname === "/atelier/vehicule" && document.readyState === "complete" && !!document.getElementById("app-search")', 15000), 'keyboard ↓ + Enter opens the dossier');
-  await ev('var i=document.getElementById("app-search");i.value=' + JSON.stringify(OWNER.toLowerCase().slice(0, 12)) + ';i.dispatchEvent(new Event("input",{bubbles:true}));true');
-  ok(await waitFor('/Propriétaires/.test(document.getElementById("app-search-results").textContent)', 10000), 'the owner is found by name (own workshop)');
 
   console.log('\n== ROLES');
-  ok(await signIn('technician', '/atelier/tableau-de-bord'), 'the technician signs in');
-  var tnav = await ev(NAVLABELS);
-  ok(tnav.indexOf('Techniciens') === -1 && tnav.indexOf('Interventions') !== -1, 'technician menu: no team page');
+  // Password recovery: the sign-in page says the administrator resets it; the operator tool does, and the new password works.
+  await send('Network.clearBrowserCookies');
+  await go('/login', '!!document.querySelector("#login-form[data-ready]")');
+  await ev('document.getElementById("login-forgot").click();true');
+  ok(await waitFor('/administrateur/.test(document.body.textContent)', 5000), '« Mot de passe oublié » explains that the administrator resets it');
+  var NEWPW = 'Reset-' + crypto.randomBytes(6).toString('hex') + '-9';
+  var cli = cp.spawnSync(process.execPath, [path.join(BASE, 'ops', 'auth-users.js'), 'set-password', '--email', U.technician], { env: Object.assign({}, process.env, { IDAUTO_NEW_PASSWORD: NEWPW }), encoding: 'utf8' });
+  ok(cli.status === 0, 'the administrator resets the password (ops/auth-users.js set-password)');
+  var oldPW = PW; PW = NEWPW;
+  ok(await signIn('technician', '/atelier/tableau-de-bord'), 'the technician signs in with the new password');
+  PW = oldPW;
+  cp.spawnSync(process.execPath, [path.join(BASE, 'ops', 'auth-users.js'), 'set-password', '--email', U.technician], { env: Object.assign({}, process.env, { IDAUTO_NEW_PASSWORD: PW }), encoding: 'utf8' });  // back to the test password
+  ok(JSON.stringify(await ev(NAVLABELS)) === JSON.stringify(['Tableau de bord', 'Véhicules', 'Interventions', 'Pièces', 'Paramètres']), 'technician: the same five links');
+  ok(await signIn('technician', '/atelier/tableau-de-bord'), 'the password is set back (the reset closes the sessions) and the technician signs in again');
+  await go('/atelier/compte', '!!document.getElementById("profile") && !/Chargement/.test(document.getElementById("profile").textContent)');
+  ok(await ev('document.getElementById("admin-box").hidden'), 'technician: no user or role management in Paramètres');
   await go('/atelier/vehicule?ref=' + encodeURIComponent(IVID), '!!document.getElementById("owner-show")');
   await ev('document.getElementById("owner-show").click()');
   ok(await waitFor('document.getElementById("owner-body").textContent.indexOf(' + JSON.stringify(OWNER) + ') !== -1', 10000), 'the technician of the same workshop can read the owner (owner decision)');
@@ -149,7 +178,11 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   ok(await signIn('other', '/atelier/tableau-de-bord'), 'a manager of ANOTHER workshop signs in');
   await go('/atelier/vehicule?ref=' + encodeURIComponent(IVID), '!!document.getElementById("sec-history-box")');
   var ob = await ev('document.body.textContent');
-  ok(ob.indexOf(OWNER) === -1 && !(await ev('!!document.getElementById("owner-show")')) && ob.indexOf('FILTRE A HUILE') === -1 && (await ev('document.querySelectorAll("#sec-docs-box img").length')) === 0, 'another workshop sees the vehicle, but not its owner, history or photos');
+  ok(ob.indexOf(OWNER) === -1 && !(await ev('!!document.getElementById("owner-show")')) && ob.indexOf('FILTRE A HUILE') === -1 && ob.indexOf('Roue de secours') === -1 && (await ev('document.querySelectorAll("#sec-docs-box img").length')) === 0, 'another workshop sees the vehicle, but not its owner, notes, history or photos');
+  ok(await signIn('admin', '/atelier/compte'), 'the administrator signs in');
+  ok(await waitFor('!document.getElementById("admin-box").hidden && !!document.querySelector("#admin-box a[href=\\"/admin/utilisateurs\\"]") && !!document.querySelector("#admin-box a[href=\\"/admin/roles\\"]")', 10000), 'administrator: Paramètres links to users and roles');
+  await go('/admin/utilisateurs', '!!document.querySelector(".ida-admin-nav-link.is-active")');
+  ok(await ev('/Paramètres/.test(document.querySelector(".ida-admin-nav-link.is-active").textContent)'), 'the users page belongs to « Paramètres »');
   await send('Network.clearBrowserCookies');
   ok(await go('/atelier/vehicule?ref=' + encodeURIComponent(IVID), 'location.pathname === "/login"'), 'signed out, a workshop page redirects to /login');
 
@@ -160,16 +193,16 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   LANG_NOW = 'ar';
   ok(await waitFor('/لوحة القيادة/.test(document.querySelector("h1").textContent)', 10000), 'the page is in Arabic');
   var LEFT = '(function(){var SKIP="script,style,code,bdi,kbd,samp,.ida-plate,.ida-ivid,[translate=no],[data-i18n-skip],option[lang]";var out=[];var tw=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT),n;while((n=tw.nextNode())){var v=n.nodeValue.replace(/\\s+/g," ").trim();if(!/\\b[a-zàâçéèêëîïôûùüÿœ]{3,}\\b[^]*\\b[a-zàâçéèêëîïôûùüÿœ]{3,}\\b/.test(v))continue;var e=n.parentElement;if(!e||e.closest(SKIP)||e.closest("[hidden]"))continue;out.push(v.slice(0,80));}return out;})()';
-  var pagesAr = ['/atelier/tableau-de-bord', '/atelier/vehicules', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/pieces-remplacees', '/atelier/documents', '/atelier/techniciens', '/atelier/catalogue', '/atelier/compte', '/atelier'];
+  var pagesAr = ['/atelier/tableau-de-bord', '/atelier/vehicules', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/interventions?new=1', '/atelier/interventions?id=' + VISIT, '/atelier/pieces-remplacees', '/atelier/compte'];
   var leftovers = [];
   for (var pa of pagesAr) { await go(pa); await sleep(1800); var l = await ev(LEFT); if (l.length) leftovers.push(pa + ': ' + l.slice(0, 3).join(' | ')); ok(await ev('document.documentElement.dir === "rtl"'), 'Arabic persists on ' + pa.split('?')[0]); }
   ok(leftovers.length === 0, 'no interface text left in French on ' + pagesAr.length + ' pages' + (leftovers.length ? ' — ' + leftovers.join(' ; ') : ''));
   ok(await signIn('manager', '/atelier/compte') && await ev('document.documentElement.dir === "rtl" && document.getElementById("pref-lang").value === "ar"'), 'the choice survives sign-out and sign-in');
   await ev('var s=document.getElementById("pref-lang");s.value="fr";s.dispatchEvent(new Event("change",{bubbles:true}));true');
-  ok(await waitFor('document.documentElement.lang === "fr" && document.documentElement.dir !== "rtl" && /Mon compte/.test(document.querySelector("h1").textContent)', 15000), 'back to French from « Mon compte »');
+  ok(await waitFor('document.documentElement.lang === "fr" && document.documentElement.dir !== "rtl" && /Paramètres/.test(document.querySelector("h1").textContent)', 15000), 'back to French from « Paramètres »');
 
   console.log('\n== RESPONSIVE (FR and AR)');
-  var widths = [1920, 1440, 1366, 1024, 768, 390, 375], pagesR = ['/atelier/tableau-de-bord', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/pieces-remplacees'];
+  var widths = [1920, 1440, 1366, 1024, 768, 390, 375], pagesR = ['/atelier/tableau-de-bord', '/atelier/vehicules', '/atelier/vehicules/nouveau', '/atelier/vehicule?ref=' + encodeURIComponent(IVID), '/atelier/interventions', '/atelier/interventions?id=' + VISIT, '/atelier/pieces-remplacees'];
   var over = [], wrongPage = [], measured = 0;
   for (var lang of ['fr', 'ar']) {
     await send('Network.setCookie', { name: 'ida_lang', value: lang, url: B });

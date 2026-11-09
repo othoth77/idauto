@@ -118,7 +118,7 @@ async function main() {
   var html = fs.readFileSync(path.join(BASE, 'reference', 'admin-security.html'), 'utf8');
   ok(!/<script>|<script [^>]*>[^<]|onclick=|style="/.test(html) && /lang="fr"/.test(html) && /data-admin-sidebar /.test(html), 'the page: no inline code, French, the shared sidebar slot');
   var shellNav = require(path.join(BASE, 'reference', 'admin-shell.js'));
-  ok(shellNav.locate('/admin/security').item.href === '/admin/security', 'the shared sidebar marks /admin/security as the current module and page');
+  ok(shellNav.locate('/admin/security').item === null, '/admin/security: the console page is out of the simplified menu (IDA-UI-4) and marks no menu item; it is still served');
   var apiSrc = fs.readFileSync(path.join(BASE, 'reference', 'api.js'), 'utf8');
   var logFn = (apiSrc.split('function logAuthDecision(req, fields) {')[1] || '').split('\n}\n')[0];
   ok(/counters\.inc\('auth_denied:' \+ String\(fields\.reason \|\| 'unknown'\)\.split\(':'\)\[0\]\)/.test(logFn) && !/inc\([^)]*actor/.test(logFn), 'auth decisions are counted by reason class, never by actor');

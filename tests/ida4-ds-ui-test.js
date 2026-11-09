@@ -198,7 +198,7 @@ for (const f of new Set(servedHtml)) {
   ok(!/https?:\/\/[^"']*\.(css|js|woff|png|svg)/.test(html), f + " loads no external assets (CSP 'self')");
   ok(!/fonts\.googleapis|fonts\.gstatic/.test(html), f + " does not reference remote fonts");
   // structure
-  ok(/<html lang="fr">/.test(html), f + " declares lang");
+  ok(/<html lang="fr"( data-theme="light")?>/.test(html), f + " declares lang");
   ok(/name="viewport"/.test(html), f + " has viewport meta");
   ok(/ida-skip-link/.test(html), f + " has a skip link");
   ok(/<main id="main"/.test(html), f + " has a main landmark");
@@ -351,11 +351,10 @@ ok(/flex-wrap\s*:\s*wrap/.test(navInnerRule),
 /* The three items must survive this fix, exactly and in order. */
 const navMarkup = (read("citizen/index.html").match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [""])[0];
 // IDA-UI-2: a fourth item, the French / Arabic selector.
-ok((navMarkup.match(/<li>/g) || []).length === 4 && /data-public-lang/.test(navMarkup), "the navigation carries its three items plus the language selector");
+ok((navMarkup.match(/<li>/g) || []).length === 3 && /data-public-lang/.test(navMarkup), "the navigation carries its two items plus the language selector (IDA-UI-4: no theme switch)");
 ok(navMarkup.indexOf(">Vérifier<") !== -1, "the first item is Vérifier");
 ok(navMarkup.indexOf(">Passeport<") !== -1, "the second item is Passeport");
-ok(/data-theme-toggle/.test(navMarkup), "the third item is the theme toggle");
-ok(navMarkup.indexOf("◐") !== -1, "the theme toggle keeps its glyph");
+ok(!/data-theme-toggle/.test(navMarkup) && /<html lang="fr" data-theme="light">/.test(read("citizen/index.html")) && /<html lang="fr" data-theme="light">/.test(read("citizen/passport.html")), "one light theme, pinned on the public pages too (IDA-UI-4)");
 
 /* ---------- the IVID chip must fit its container (regression) ----------
  * An IVID is one unbreakable 24-character identifier, and .ida-ivid carries

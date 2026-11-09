@@ -251,6 +251,7 @@
 }
 .ida-admin-stat--link:hover { border-color: var(--ida-border-strong); background: var(--ida-surface-sunken); }
 .ida-admin-stat--link:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+.ida-admin-stat--link.is-active { border-color: var(--ida-primary); background: var(--ida-info-tint); }
 .ida-admin-stat--attention { border-inline-start: 4px solid var(--ida-pending); }
 .ida-admin-group-head {
   display: flex;
@@ -315,12 +316,12 @@
 }
 .ida-admin-nav-link:hover { background: var(--ida-surface-sunken); color: var(--ida-text); }
 .ida-admin-nav-link.is-active {
-  background: var(--ida-verify-tint);
-  color: var(--ida-text);
-  border-inline-start-color: var(--ida-verify);
+  background: var(--ida-info-tint);
+  color: var(--ida-primary);
+  border-inline-start-color: var(--ida-primary);
   font-weight: var(--ida-weight-semibold);
 }
-.ida-admin-nav-link.is-active .ida-admin-icon { color: var(--ida-verify-strong); }
+.ida-admin-nav-link.is-active .ida-admin-icon { color: var(--ida-primary); }
 .ida-admin-icon { flex: 0 0 auto; }
 .ida-admin-nav-sub { margin-block: var(--ida-space-1); margin-inline-start: calc(var(--ida-space-3) + 20px + var(--ida-space-3)); }
 .ida-admin-nav-sublink {
@@ -505,8 +506,8 @@
 .ida-radio-group { display: flex; flex-direction: column; gap: var(--ida-space-2); border: 0; margin: 0; padding: 0; min-width: 0; }
 .ida-radio-group legend { font-size: var(--ida-size-14); font-weight: var(--ida-weight-semibold); margin-block-end: var(--ida-space-2); padding: 0; }
 .ida-radio { display: flex; align-items: flex-start; gap: var(--ida-space-2); padding: var(--ida-space-2) var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-control); cursor: pointer; background: var(--ida-surface); }
-.ida-radio:has(input:checked) { border-color: var(--ida-verify); background: var(--ida-verify-tint); }
-.ida-radio input { margin-block-start: 0.2rem; accent-color: var(--ida-verify-strong); }
+.ida-radio:has(input:checked) { border-color: var(--ida-primary); background: var(--ida-info-tint); }
+.ida-radio input { margin-block-start: 0.2rem; accent-color: var(--ida-primary); }
 .ida-radio input:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
 .ida-radio-inline { flex-direction: row; flex-wrap: wrap; }
 .ida-faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--ida-space-4); }
@@ -520,6 +521,7 @@
 .ida-kv { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: var(--ida-space-2) var(--ida-space-4); margin: 0; }
 .ida-kv dt { color: var(--ida-text-muted); font-size: var(--ida-size-14); }
 .ida-kv dd { margin: 0; font-weight: var(--ida-weight-medium); min-width: 0; overflow-wrap: anywhere; }
+.ida-plain-list { margin: 0; padding-inline-start: var(--ida-space-4); }
 .ida-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ida-space-2); }
 .ida-section-head h2 { margin: 0; font-size: var(--ida-size-18); }
 .ida-pager { display: flex; gap: var(--ida-space-2); justify-content: flex-end; }
@@ -538,3 +540,12 @@
   .ida-form-actions { justify-content: stretch; }
   .ida-form-actions .ida-btn { flex: 1 1 auto; }
 }
+
+/* IDA-UI-4 — simplification */
+.ida-pre { white-space: pre-line; }
+.ida-part-rows { display: grid; gap: var(--ida-space-3); }
+.ida-part-row { display: grid; grid-template-columns: minmax(10rem, 2fr) minmax(6rem, 1fr) 5rem auto auto; gap: var(--ida-space-3); align-items: end; padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); background: var(--ida-surface-sunken); }
+.ida-part-row fieldset { border: 0; margin: 0; padding: 0; display: flex; gap: var(--ida-space-3); flex-wrap: wrap; }
+@media (max-width: 47.99rem) { .ida-part-row { grid-template-columns: 1fr 1fr; } .ida-part-row > .ida-field:first-child, .ida-part-row fieldset, .ida-part-row .ida-part-remove { grid-column: 1 / -1; } }
+.ida-field--grow { flex: 1 1 16rem; }
+#vehicle-field .ida-filter-bar .ida-input { flex: 1 1 16rem; }

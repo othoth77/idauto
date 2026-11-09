@@ -29,8 +29,9 @@ var CDP = 9800 + Math.floor(Math.random() * 150);
 // by role), and six console pages are walked through it.
 var SHELL = require(path.join(BASE, 'reference', 'admin-shell.js'));
 var LABELS = [].concat.apply([], SHELL.visible('admin').map(function (sec) { return sec.items.map(function (i) { return i.label; }); }));
-var MODULES = ['/admin/dashboard', '/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/security'].map(function (h) {
-  return [h, SHELL.NAV.filter(function (i) { return SHELL.hrefFor(i, 'admin') === h; })[0].label]; });
+// IDA-UI-4 — the menu is five links; the console pages are out of it but still served with the shell.
+var MODULES = SHELL.NAV.map(function (i) { return [i.href, i.label]; });
+var CONSOLE = ['/admin/dashboard', '/admin/vehicles', '/admin/maintenance', '/admin/sources', '/admin/quality', '/admin/security'];
 function get(url) { return new Promise(function (r, j) { http.get(url, function (res) { var c = []; res.on('data', function (x) { c.push(x); }); res.on('end', function () { r(JSON.parse(Buffer.concat(c).toString())); }); }).on('error', j); }); }
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS ' + l); } else { fail++; console.log('  FAIL ' + l); } }
@@ -98,14 +99,15 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
     await send('Emulation.setDeviceMetricsOverride', { width: width, height: 900, deviceScaleFactor: 1, mobile: width < 600 });
     ok(await signIn(users.admin), 'the admin signs in and lands on the dashboard');
     var drawer = width < 1024;
-    var pages = MODULES.map(function (m) { return [m[0], m[0], m[0]]; }).concat([['/admin/review', '/admin/review', '/admin/review'], ['/admin', '/admin', '/admin'],
-      ['/admin/vehicle?ref=' + encodeURIComponent(veh.id), '/admin/vehicles', '/admin/vehicles'], ['/admin/quality/', '/admin/quality', '/admin/quality'],
-      ['/admin/utilisateurs', '/admin/utilisateurs', '/admin/utilisateurs'], ['/admin/roles', '/admin/roles', '/admin/roles']]);
+    var pages = MODULES.map(function (m) { return [m[0], m[0], m[0]]; }).concat(CONSOLE.map(function (c) { return [c, null, null]; })).concat([['/admin/review', null, null], ['/admin', null, null],
+      ['/admin/vehicle?ref=' + encodeURIComponent(veh.id), null, null], ['/admin/quality/', null, null],
+      ['/atelier/vehicule?ref=' + encodeURIComponent(veh.id), '/atelier/vehicules', '/atelier/vehicules'],
+      ['/admin/utilisateurs', '/atelier/compte', '/atelier/compte'], ['/admin/roles', '/atelier/compte', '/atelier/compte']]);
     var bad = [];
     for (var p of pages) {
       if (!(await nav(p[0]))) { bad.push(p[0] + ' did not load (at ' + await ev('location.href') + ')'); continue; }
       var s = await ev(STATE);
-      var good = s.active.length === 1 && s.active[0] === p[1] && (p[2] ? s.current.length === 1 && s.current[0] === p[2] : s.current.length === 0) && s.overflow <= 0 &&
+      var good = (p[1] === null ? s.active.length === 0 : s.active.length === 1 && s.active[0] === p[1]) && (p[2] ? s.current.length === 1 && s.current[0] === p[2] : s.current.length === 0) && s.overflow <= 0 &&
         JSON.stringify(s.labels) === JSON.stringify(LABELS) && s.mode === (drawer ? 'drawer' : 'sidebar');
       if (!good) bad.push(p[0] + ' ' + JSON.stringify(s));
     }
@@ -119,44 +121,48 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
       }
       ok(perPage.every(function (x) { return /=1$/.test(x); }), 'each console page reads the session once, shared by the shell and the page (' + perPage.join(', ') + ')');
     }
-    ok(bad.length === 0, 'direct access to ' + pages.length + ' pages: the admin menu (' + LABELS.length + ' items) in order, one active item marked as the current page, no overflow' + (bad.length ? ' — ' + bad.join(' | ').slice(0, 400) : ''));
+    ok(bad.length === 0, 'direct access to ' + pages.length + ' pages: the menu (' + LABELS.length + ' links) in order, the page\'s link marked current (none on a console page), no overflow' + (bad.length ? ' — ' + bad.join(' | ').slice(0, 400) : ''));
     await waitFor('/Admin Sidebar/.test(document.querySelector(".ida-admin-identity").textContent)');
     var ident = await ev('document.querySelector(".ida-admin-identity").textContent');
     ok(/Admin Sidebar/.test(ident) && /Administrateur/.test(ident) && (await ev('document.querySelector("[data-admin-sidebar]").textContent + document.querySelector("[data-app-topbar]").textContent')).indexOf('@') === -1, 'identity: name and role, never the e-mail');
 
-    // Click each module, then Back, Back, Forward.
-    await nav('/admin/dashboard');
+    // Click each menu link, then Back, Back, Forward.
+    await nav('/atelier/tableau-de-bord');
     var trail = true;
     for (var m of MODULES.slice(1)) {
-      if (drawer) { await ev('document.querySelector(".ida-admin-menu-btn").click()'); await waitFor('document.querySelector(".ida-admin-shell").getAttribute("data-drawer") === "open"'); }
-      await ev('document.querySelector("[data-admin-sidebar] .ida-admin-nav-link[href=\\"' + m[0] + '\\"]").click()');
+      if (drawer) { await ev('document.querySelector(".ida-admin-menu-btn").click()'); await waitFor('document.querySelector(".ida-admin-shell").getAttribute("data-drawer") === "open"'); await sleep(600); }
+      // A real (trusted) click: Chrome skips history entries created by script-only clicks without user activation.
+      var box = await ev('(function(){var r=document.querySelector("[data-admin-sidebar] .ida-admin-nav-link[href=\\"' + m[0] + '\\"]").getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()');
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 });
       var arrived = await waitFor('location.pathname === ' + JSON.stringify(m[0]) + ' && document.readyState === "complete" && !!document.querySelector(".ida-admin-nav-link.is-active")', 20000);
       var st = await ev(STATE); if (!arrived || st.active[0] !== m[0] || st.current[0] !== m[0]) trail = false;
     }
     ok(trail, 'clicking each module in the sidebar opens it and marks it active');
     async function hist(fn, expect) { await ev('history.' + fn + '()'); return waitFor('location.pathname === ' + JSON.stringify(expect) + ' && document.readyState === "complete" && (document.querySelector(".ida-admin-nav-link.is-active")||{}).getAttribute && document.querySelector(".ida-admin-nav-link.is-active").getAttribute("href") === ' + JSON.stringify(expect), 20000); }
-    ok(await hist('back', '/admin/quality') && await hist('back', '/admin/sources') && await hist('forward', '/admin/quality'), 'Back, Back, Forward: the active module follows the page');
+    var hb1 = await hist('back', '/atelier/pieces-remplacees'), hb1s = await ev(STATE), hb2 = hb1 && await hist('back', '/atelier/interventions'), hf = hb2 && await hist('forward', '/atelier/pieces-remplacees');
+    ok(hb1 && hb2 && hf, 'Back, Back, Forward: the active link follows the page' + (hb1 && hb2 && hf ? '' : ' — after first Back: ' + JSON.stringify({ path: hb1s.path, active: hb1s.active }) + ' now ' + JSON.stringify((await ev(STATE)).path)));
 
     // A filtered view keeps its query through navigation and Back.
-    await nav('/admin/quality'); await waitFor('!!document.querySelector("#results table, #results .ida-empty")', 20000);
-    await ev('(function(){var s=document.getElementById("f-issue");s.value="disagreement";s.dispatchEvent(new Event("change",{bubbles:true}));return true})()');
-    await waitFor('/issue=disagreement/.test(location.search)');
+    await nav('/atelier/pieces-remplacees'); await waitFor('!!document.querySelector("#list table, #list .ida-empty")', 20000);
+    await ev('(function(){var s=document.getElementById("f-source");s.value="our_shop";s.dispatchEvent(new Event("change",{bubbles:true}));return true})()');
+    await waitFor('/source=our_shop/.test(location.search)');
     if (drawer) { await ev('document.querySelector(".ida-admin-menu-btn").click()'); await waitFor('document.querySelector(".ida-admin-shell").getAttribute("data-drawer") === "open"'); }
-    await ev('document.querySelector("[data-admin-sidebar] .ida-admin-nav-link[href=\\"/admin/maintenance\\"]").click()');
-    await waitFor('location.pathname === "/admin/maintenance"', 20000);
+    await ev('document.querySelector("[data-admin-sidebar] .ida-admin-nav-link[href=\\"/atelier/interventions\\"]").click()');
+    await waitFor('location.pathname === "/atelier/interventions"', 20000);
     await ev('history.back()');
-    var kept = await waitFor('location.pathname === "/admin/quality" && location.search === "?issue=disagreement" && document.getElementById("f-issue") && document.getElementById("f-issue").value === "disagreement" && document.querySelector(".ida-admin-nav-link.is-active").getAttribute("href") === "/admin/quality"', 20000);
+    var kept = await waitFor('location.pathname === "/atelier/pieces-remplacees" && location.search === "?source=our_shop" && document.getElementById("f-source") && document.getElementById("f-source").value === "our_shop" && document.querySelector(".ida-admin-nav-link.is-active").getAttribute("href") === "/atelier/pieces-remplacees"', 20000);
     ok(kept, 'a filtered view keeps its query and filter through sidebar navigation and Back');
 
     if (!drawer) {
-      await nav('/admin/security');
+      await nav('/atelier/interventions');
       var w0 = (await ev(STATE)).sidebarW;
       await ev('document.querySelector(".ida-admin-sidebar-collapse").click()');
       await waitFor('document.querySelector(".ida-admin-shell").getAttribute("data-sidebar") === "collapsed"');
       await sleep(300);
       var c = await ev(STATE);
       var hiddenLabel = await ev('document.querySelector(".ida-admin-nav-link .ida-admin-nav-label").getBoundingClientRect().width <= 1');
-      ok(w0 >= 240 && c.sidebarW < 80 && hiddenLabel && JSON.stringify(c.labels) === JSON.stringify(LABELS) && c.active[0] === '/admin/security' &&
+      ok(w0 >= 240 && c.sidebarW < 80 && hiddenLabel && JSON.stringify(c.labels) === JSON.stringify(LABELS) && c.active[0] === '/atelier/interventions' &&
         await ev('document.querySelector(".ida-admin-sidebar-collapse").getAttribute("aria-expanded")') === 'false',
         'collapse: an icon rail (' + w0 + ' → ' + c.sidebarW + ' px), labels kept as accessible names, active module unchanged');
       await ev('document.querySelector(".ida-admin-sidebar-collapse").click()');
@@ -198,7 +204,7 @@ var pass = 0, fail = 0; function ok(v, l) { if (v) { pass++; console.log('  PASS
   await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   ok(await signIn(users.manager), 'a manager signs in');
   var refused = [];
-  for (var mm of MODULES) {
+  for (var mm of CONSOLE.map(function (c) { return [c]; })) {
     await nav(mm[0]);
     if (!(await waitFor('!!document.querySelector("main .ida-alert")', 15000))) refused.push(mm[0]);
   }

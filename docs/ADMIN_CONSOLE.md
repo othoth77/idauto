@@ -148,7 +148,7 @@ console pages.
 
 ## 9. Ateliers & Data Sources (IDA-ADMIN-3, branch `ida-admin-2-maintenance`)
 
-`/admin/sources` (nav « Ateliers ») — three sections, admin only, read only.
+`/admin/sources` (out of the menu since IDA-UI-4, 2026-11-06, still served — docs/SIMPLIFICATION_2026-11.md §5) — three sections, admin only, read only.
 
 - `GET /api/admin/organisations?q=&status=&org_type=&sort=name|activity|created&dir=&page=&page_size=` →
   `{ page, page_size, total, pages, sort, dir, by_status, results[{ id, name, org_type, status, subscription_tier, city,

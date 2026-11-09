@@ -60,21 +60,21 @@
   function mark(id, bad) { var n = document.getElementById(id); if (n) { if (bad) n.setAttribute('aria-invalid', 'true'); else n.removeAttribute('aria-invalid'); } }
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
-    ['f-plate-series', 'f-plate-number', 'f-vin', 'f-make', 'f-year'].forEach(function (i) { mark(i, false); });
+    ['f-plate-series', 'f-plate-number', 'f-vin', 'f-year', 'f-km'].forEach(function (i) { mark(i, false); });
     var rs = form.plate_type.value === 'RS';
     // TU and RS plates have the same shape: series, type word, number (« 123 RS 4567 »).
     var plate = val('plate_series') || val('plate_number') ? { type: rs ? 'RS' : 'TU', series: val('plate_series'), number: val('plate_number') } : null;
     var problems = [];
-    if (!plate && !val('vin')) { problems.push(t('Indiquez l\'immatriculation ou le numéro de châssis.')); mark('f-plate-series', true); mark('f-vin', true); }
-    if (plate && !rs && (!/^\d{1,3}$/.test(plate.series) || !/^\d{1,4}$/.test(plate.number))) { problems.push(t('Immatriculation : série de 1 à 3 chiffres et numéro de 1 à 4 chiffres.')); mark('f-plate-series', true); mark('f-plate-number', true); }
+    if (!plate) { problems.push(t('L\'immatriculation est obligatoire.')); mark('f-plate-series', true); mark('f-plate-number', true); }
+    if (plate && (!/^\d{1,3}$/.test(plate.series) || !/^\d{1,4}$/.test(plate.number))) { problems.push(t('Immatriculation : série de 1 à 3 chiffres et numéro de 1 à 4 chiffres.')); mark('f-plate-series', true); mark('f-plate-number', true); }
     if (val('vin') && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(val('vin'))) { problems.push(t('Numéro de châssis : 17 caractères, sans I, O ni Q.')); mark('f-vin', true); }
-    if (!val('make')) { problems.push(t('La marque est obligatoire.')); mark('f-make', true); }
+    var km = val('odometer_km').replace(/[\s.]/g, '');
+    if (km && !/^\d{1,7}$/.test(km)) { problems.push(t('Kilométrage : un nombre de kilomètres.')); mark('f-km', true); }
     if (val('year') && !/^\d{4}$/.test(val('year'))) { problems.push(t('Année : 4 chiffres.')); mark('f-year', true); }
     if (files[2] && !files[1]) problems.push(t('Ajoutez la face 1 avant la face 2.'));
     if (problems.length) { showErrors(problems); return; }
     showErrors([]);
-    var body = { plate: plate, vin: val('vin') || null, make: val('make'), model: val('model'), variant: val('variant'), year: val('year'), fuel_type: val('fuel_type') || null,
-      engine_cc: val('engine_cc'), seats: val('seats'), gross_weight_kg: val('gross_weight_kg'), category_code: val('category_code'), body_type: val('body_type'), colour: val('colour'), engine_code: val('engine_code') };
+    var body = { plate: plate, vin: val('vin') || null, make: val('make'), model: val('model'), year: val('year'), odometer_km: km, notes: form.notes.value };
     if (val('owner_full_name') || val('owner_phone')) body.owner = { full_name: val('owner_full_name'), phone: val('owner_phone'), email: val('owner_email'), address: val('owner_address') };
     submit.disabled = true; submit.textContent = t('Enregistrement…');
     var status = document.getElementById('page-status');

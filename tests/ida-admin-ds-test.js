@@ -154,7 +154,7 @@ async function main() {
   var shellUndefined = Object.keys(shellUsed).filter(function (c) { return ds.indexOf('.' + c) === -1; });
   ok(Object.keys(shellUsed).length > 10 && shellUndefined.length === 0,
     'every ida-* class the shell writes is defined (' + Object.keys(shellUsed).length + ' used; undefined: ' + (shellUndefined.join(', ') || 'none') + ')');
-  ok(/class: 'ida-wordmark'/.test(shellSrc) && /'data-theme-toggle': ''/.test(shellSrc), 'the shell carries the IDauto wordmark and the same theme toggle as the citizen surface');
+  ok(/class: 'ida-wordmark'/.test(shellSrc) && !/'data-theme-toggle'/.test(shellSrc), 'the shell carries the IDauto wordmark; one light theme, no theme switch (IDA-UI-4)');
   ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write|localStorage|sessionStorage|document\.cookie|Authorization|Bearer/.test(shellSrc.replace(/\/\*[\s\S]*?\*\//g, '')),
     'the shell writes no markup from strings, stores nothing in the browser, sends no token');
 

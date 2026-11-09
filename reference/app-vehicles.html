@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -20,14 +20,14 @@
     <header class="ida-page-head">
       <div>
         <h1>Véhicules</h1>
-        <p class="ida-muted ida-u-maxch-52">Les véhicules que votre atelier a enregistrés, documentés ou entretenus.</p>
+        <p class="ida-muted ida-u-maxch-52">Les véhicules de votre atelier : recherche, fiche, ajout.</p>
       </div>
       <div class="ida-page-actions"><a class="ida-btn ida-btn--primary" href="/atelier/vehicules/nouveau">Ajouter un véhicule</a></div>
     </header>
     <div id="page-status" aria-live="polite"></div>
     <section class="ida-card ida-stack" aria-labelledby="sec-v">
       <form class="ida-filter-bar" id="filter" role="search">
-        <div class="ida-field"><label for="f-q">Rechercher</label><input class="ida-input" id="f-q" type="search" maxlength="60" autocomplete="off" placeholder="Immatriculation, marque, modèle ou identifiant"></div>
+        <div class="ida-field ida-field--grow"><label for="f-q">Rechercher</label><input class="ida-input" id="f-q" type="search" maxlength="60" autocomplete="off" placeholder="Immatriculation, marque ou modèle"></div>
         <button type="submit" class="ida-btn ida-btn--secondary">Rechercher</button>
       </form>
       <h2 id="sec-v" class="ida-sr-only">Liste des véhicules</h2>
