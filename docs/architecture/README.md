@@ -74,10 +74,10 @@ elements only. The few partial elements that appear are labelled « NOT CONFIGUR
 | Check | Result |
 |---|---|
 | Class diagram against the SQL: every attribute name and base type, every relation against an enforced foreign key, every multiplicity against the key's nullability | **102 items, 0 differences** |
-| Structural lint of all Mermaid and PlantUML sources: title present, `subgraph` / `end` balanced, every edge endpoint and related class declared, no duplicate ids. It also checks that the PlantUML use case and class diagrams have the same use cases, actor links, include / extend and relations as their Mermaid versions. | **22 sources, 0 problems** |
+| Structural lint of all Mermaid and PlantUML sources: title present, `subgraph` / `end` balanced, every edge endpoint and related class declared, no duplicate ids, YAML-safe titles. It also checks that the PlantUML use case and class diagrams have the same use cases, actor links, include / extend and relations as their Mermaid versions. | **22 sources, 0 problems** |
 | Data model generated from the SQL; every table assigned to exactly one diagram group | 41 / 41 |
 | Production database table set | 41, identical to the repository |
-| Mermaid rendering by GitHub | see the pull request: each document was opened on GitHub after the push |
+| Mermaid rendering by GitHub | every document was opened on GitHub (PR branch) in a browser. All 11 embedded diagrams render. One ER diagram failed at first, because its YAML title contained « : »; titles are now quoted, and the lint checks for this. |
 | PlantUML rendering | **not checked with the PlantUML tool.** No PlantUML jar was available, and downloading one was not permitted in this environment. The syntax was checked by the lint above only. |
 | Sensitive data scan of this folder: IP addresses, private host names, home paths, connection strings, key and token patterns | clean |
 

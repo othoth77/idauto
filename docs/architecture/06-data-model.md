@@ -14,7 +14,7 @@ This page is **generated** from the SQL. Nothing here is drawn by hand.
 
 ```mermaid
 ---
-title: IDauto data model — Identity, accounts and organisations
+title: "IDauto data model — Identity, accounts and organisations"
 ---
 erDiagram
     auth_user {
@@ -202,7 +202,7 @@ erDiagram
 
 ```mermaid
 ---
-title: IDauto data model — Vehicle registry, documents and private workshop data
+title: "IDauto data model — Vehicle registry, documents and private workshop data"
 ---
 erDiagram
     vehicles {
@@ -556,7 +556,7 @@ erDiagram
 
 ```mermaid
 ---
-title: IDauto data model — Workshop maintenance, parts and provenance
+title: "IDauto data model — Workshop maintenance, parts and provenance"
 ---
 erDiagram
     workshop_visits {
@@ -780,7 +780,7 @@ erDiagram
 
 ```mermaid
 ---
-title: IDauto data model — Capture, ingestion and review
+title: "IDauto data model — Capture, ingestion and review"
 ---
 erDiagram
     observations {
@@ -1130,7 +1130,7 @@ erDiagram
 
 ```mermaid
 ---
-title: IDauto data model — Cross-cutting: audit and rate limiting
+title: "IDauto data model — Cross-cutting: audit and rate limiting"
 ---
 erDiagram
     audit_log {
