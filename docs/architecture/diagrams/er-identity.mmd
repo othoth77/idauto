@@ -1,0 +1,45 @@
+---
+title: IDauto data model — Identity, accounts and organisations
+---
+erDiagram
+    auth_user {
+        TEXT id PK
+        TEXT name
+        TEXT email
+        TEXT role
+        INTEGER org_id FK
+    }
+    auth_account {
+        TEXT id PK
+        TEXT userId FK
+    }
+    auth_session {
+        TEXT id PK
+        TEXT userId FK
+    }
+    auth_verification {
+        TEXT id PK
+    }
+    auth_rate_limit {
+        TEXT id PK
+    }
+    organizations {
+        SERIAL id PK
+        VARCHAR name
+        INTEGER governorate_id FK
+        VARCHAR status
+    }
+    user_roles {
+        SERIAL id PK
+        INTEGER org_id FK
+        VARCHAR role
+        VARCHAR status
+    }
+    governorates {
+        SERIAL id PK
+    }
+    organizations |o--o{ auth_user : "org_id"
+    auth_user ||--o{ auth_account : "userId"
+    auth_user ||--o{ auth_session : "userId"
+    governorates |o--o{ organizations : "governorate_id"
+    organizations ||--o{ user_roles : "org_id"

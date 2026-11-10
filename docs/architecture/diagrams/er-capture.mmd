@@ -1,0 +1,92 @@
+---
+title: IDauto data model — Capture, ingestion and review
+---
+erDiagram
+    observations {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER plate_id FK
+        INTEGER capture_source_id FK
+        BIGINT capture_session_id FK
+        INTEGER camera_source_id FK
+        INTEGER contributor_id FK
+        VARCHAR status
+        INTEGER org_id FK
+    }
+    observation_media {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        BIGINT derived_from_media_id FK
+    }
+    observation_locations {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        INTEGER governorate_id FK
+    }
+    capture_sources {
+        SERIAL id PK
+    }
+    capture_sessions {
+        BIGSERIAL id PK
+        INTEGER contributor_id FK
+        INTEGER capture_source_id FK
+    }
+    contributors {
+        SERIAL id PK
+    }
+    camera_sources {
+        SERIAL id PK
+        INTEGER capture_source_id FK
+    }
+    vehicle_movements {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        INTEGER vehicle_id FK
+        INTEGER plate_id FK
+        INTEGER camera_source_id FK
+    }
+    submissions {
+        BIGSERIAL id PK
+        INTEGER capture_source_id FK
+        VARCHAR status
+        BIGINT observation_id FK
+    }
+    review_queue {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        VARCHAR reason
+        VARCHAR status
+    }
+    document_scans {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        INTEGER vehicle_id FK
+        BIGINT media_id FK
+    }
+    consent_records {
+        BIGSERIAL id PK
+    }
+    vehicles |o--o{ observations : "vehicle_id"
+    plates |o--o{ observations : "plate_id"
+    capture_sources ||--o{ observations : "capture_source_id"
+    capture_sessions |o--o{ observations : "capture_session_id"
+    camera_sources |o--o{ observations : "camera_source_id"
+    contributors |o--o{ observations : "contributor_id"
+    organizations |o--o{ observations : "org_id"
+    observations ||--o{ observation_media : "observation_id"
+    observation_media |o--o{ observation_media : "derived_from_media_id"
+    observations ||--o{ observation_locations : "observation_id"
+    governorates |o--o{ observation_locations : "governorate_id"
+    contributors |o--o{ capture_sessions : "contributor_id"
+    capture_sources ||--o{ capture_sessions : "capture_source_id"
+    capture_sources ||--o{ camera_sources : "capture_source_id"
+    observations ||--o{ vehicle_movements : "observation_id"
+    vehicles |o--o{ vehicle_movements : "vehicle_id"
+    plates |o--o{ vehicle_movements : "plate_id"
+    camera_sources ||--o{ vehicle_movements : "camera_source_id"
+    capture_sources |o--o{ submissions : "capture_source_id"
+    observations |o--o{ submissions : "observation_id"
+    vehicles |o--o{ review_queue : "vehicle_id"
+    observations ||--o{ document_scans : "observation_id"
+    vehicles |o--o{ document_scans : "vehicle_id"
+    observation_media |o--o{ document_scans : "media_id"
