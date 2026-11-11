@@ -1,0 +1,18 @@
+---
+title: "Faits et preuves"
+---
+erDiagram
+    vehicle_facts {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER source_id FK
+        BIGINT observation_id FK
+    }
+    fact_evidence {
+        BIGSERIAL id PK
+        BIGINT fact_id FK
+    }
+    vehicles ||--o{ vehicle_facts : "vehicle_id"
+    capture_sources |o--o{ vehicle_facts : "source_id"
+    observations |o--o{ vehicle_facts : "observation_id"
+    vehicle_facts ||--o{ fact_evidence : "fact_id"

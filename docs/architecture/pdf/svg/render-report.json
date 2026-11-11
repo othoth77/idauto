@@ -1,0 +1,387 @@
+{
+  "mermaid": "11.17.2",
+  "coverage": [
+    {
+      "source": "use-case",
+      "parts": 4,
+      "nodes": 37,
+      "edges": 39,
+      "missingNodes": [],
+      "missingEdges": []
+    },
+    {
+      "source": "class-diagram",
+      "parts": 4,
+      "nodes": 17,
+      "edges": 21,
+      "missingNodes": [],
+      "missingEdges": []
+    },
+    {
+      "source": "class-modules",
+      "parts": 3,
+      "nodes": 11,
+      "edges": 21,
+      "missingNodes": [],
+      "missingEdges": []
+    },
+    {
+      "source": "logical-architecture",
+      "parts": 5,
+      "nodes": 30,
+      "edges": 38,
+      "missingNodes": [],
+      "missingEdges": []
+    },
+    {
+      "source": "er-vehicle",
+      "parts": 4,
+      "nodes": 11,
+      "edges": 23,
+      "missingNodes": [],
+      "missingEdges": []
+    },
+    {
+      "source": "er-capture",
+      "parts": 3,
+      "nodes": 12,
+      "edges": 24,
+      "missingNodes": [],
+      "missingEdges": []
+    },
+    {
+      "source": "sequence-intervention",
+      "parts": 2,
+      "nodes": 9,
+      "edges": 21,
+      "missingNodes": [],
+      "missingEdges": []
+    }
+  ],
+  "diagrams": [
+    {
+      "file": "class-diagram.mmd",
+      "ok": true,
+      "title": "IDauto — Class diagram (domain entities used by the application)",
+      "width": 1555,
+      "height": 2453,
+      "minFontPx": 11,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-modules.mmd",
+      "ok": true,
+      "title": "IDauto — Service modules and their exported functions",
+      "width": 1349,
+      "height": 1701,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-capture.mmd",
+      "ok": true,
+      "title": "IDauto data model — Capture, ingestion and review",
+      "width": 2369,
+      "height": 1111,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-crosscut.mmd",
+      "ok": true,
+      "title": "IDauto data model — Cross-cutting: audit and rate limiting",
+      "width": 602,
+      "height": 102,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-identity.mmd",
+      "ok": true,
+      "title": "IDauto data model — Identity, accounts and organisations",
+      "width": 738,
+      "height": 667,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-vehicle.mmd",
+      "ok": true,
+      "title": "IDauto data model — Vehicle registry, documents and private workshop data",
+      "width": 2589,
+      "height": 802,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-workshop.mmd",
+      "ok": true,
+      "title": "IDauto data model — Workshop maintenance, parts and provenance",
+      "width": 1153,
+      "height": 1065,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "logical-architecture.mmd",
+      "ok": true,
+      "title": "IDauto — Logical architecture (as implemented)",
+      "width": 2350,
+      "height": 2170,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "physical-architecture.mmd",
+      "ok": true,
+      "title": "IDauto — Physical architecture (production, staging, local, CI)",
+      "width": 1841,
+      "height": 838,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "sequence-intervention.mmd",
+      "ok": true,
+      "title": "IDauto — POST /api/workspace/interventions (record a maintenance intervention)",
+      "width": 2103,
+      "height": 1371,
+      "minFontPx": 12,
+      "foreignObject": 0
+    },
+    {
+      "file": "use-case.mmd",
+      "ok": true,
+      "title": "IDauto — Use case diagram (implemented, main application)",
+      "width": 1829,
+      "height": 1502,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-diagram-1.mmd",
+      "ok": true,
+      "title": "Organisations, comptes et sessions",
+      "width": 943,
+      "height": 1065,
+      "minFontPx": 11,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-diagram-2.mmd",
+      "ok": true,
+      "title": "Véhicule, plaques, faits et historique d'identification",
+      "width": 837,
+      "height": 1274,
+      "minFontPx": 11,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-diagram-3.mmd",
+      "ok": true,
+      "title": "Carte grise, contact propriétaire et note d'atelier",
+      "width": 563,
+      "height": 723,
+      "minFontPx": 11,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-diagram-4.mmd",
+      "ok": true,
+      "title": "Interventions, opérations, pièces et audit",
+      "width": 1401,
+      "height": 693,
+      "minFontPx": 11,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-modules-1.mmd",
+      "ok": true,
+      "title": "Routes de l'espace de travail et services métier",
+      "width": 1039,
+      "height": 937,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-modules-2.mmd",
+      "ok": true,
+      "title": "Service des documents et dépôt des véhicules",
+      "width": 1211,
+      "height": 777,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "class-modules-3.mmd",
+      "ok": true,
+      "title": "Dépôt de l'atelier, écritures auditées et accès à la base",
+      "width": 1396,
+      "height": 742,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-capture-1.mmd",
+      "ok": true,
+      "title": "Observations, médias et scans de documents",
+      "width": 1692,
+      "height": 894,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-capture-2.mmd",
+      "ok": true,
+      "title": "Localisations, soumissions, file de revue et consentements",
+      "width": 1127,
+      "height": 300,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-capture-3.mmd",
+      "ok": true,
+      "title": "Sources de capture, sessions, contributeurs, caméras et mouvements",
+      "width": 1216,
+      "height": 629,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-vehicle-1.mmd",
+      "ok": true,
+      "title": "Véhicules et plaques",
+      "width": 1657,
+      "height": 650,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-vehicle-2.mmd",
+      "ok": true,
+      "title": "Faits et preuves",
+      "width": 458,
+      "height": 450,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-vehicle-3.mmd",
+      "ok": true,
+      "title": "Historique, carte grise, contacts et notes par organisation",
+      "width": 1135,
+      "height": 328,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "er-vehicle-4.mmd",
+      "ok": true,
+      "title": "Vérifications et événements de service",
+      "width": 741,
+      "height": 385,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "logical-architecture-1.mmd",
+      "ok": true,
+      "title": "Couche présentation",
+      "width": 826,
+      "height": 495,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "logical-architecture-2.mmd",
+      "ok": true,
+      "title": "Chaîne de traitement de l'API — étapes 1 à 5",
+      "width": 774,
+      "height": 953,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "logical-architecture-3.mmd",
+      "ok": true,
+      "title": "Chaîne de traitement de l'API — étapes 6 à 9 et aiguillage vers les modules",
+      "width": 1628,
+      "height": 821,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "logical-architecture-4.mmd",
+      "ok": true,
+      "title": "Couche métier",
+      "width": 832,
+      "height": 1024,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "logical-architecture-5.mmd",
+      "ok": true,
+      "title": "Accès aux données, stockage, journaux et adaptateurs non configurés",
+      "width": 1084,
+      "height": 1045,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "sequence-intervention-1.mmd",
+      "ok": true,
+      "title": "Phase 1 — authentification et contrôle des droits (messages 1 à 7)",
+      "width": 1199,
+      "height": 583,
+      "minFontPx": 12,
+      "foreignObject": 0
+    },
+    {
+      "file": "sequence-intervention-2.mmd",
+      "ok": true,
+      "title": "Phase 2 — service métier et transaction (messages 7 à 21)",
+      "width": 1528,
+      "height": 918,
+      "minFontPx": 12,
+      "foreignObject": 0
+    },
+    {
+      "file": "use-case-1.mmd",
+      "ok": true,
+      "title": "Authentification, consultation, administration et API machine",
+      "width": 1173,
+      "height": 694,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "use-case-2.mmd",
+      "ok": true,
+      "title": "Gestion des véhicules",
+      "width": 1434,
+      "height": 486,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "use-case-3.mmd",
+      "ok": true,
+      "title": "Carte grise (document d'immatriculation)",
+      "width": 1124,
+      "height": 201,
+      "minFontPx": 14,
+      "foreignObject": 0
+    },
+    {
+      "file": "use-case-4.mmd",
+      "ok": true,
+      "title": "Interventions d'entretien et pièces",
+      "width": 1259,
+      "height": 413,
+      "minFontPx": 14,
+      "foreignObject": 0
+    }
+  ]
+}

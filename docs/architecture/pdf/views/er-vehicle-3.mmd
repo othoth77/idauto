@@ -1,0 +1,36 @@
+---
+title: "Historique, carte grise, contacts et notes par organisation"
+---
+erDiagram
+    vehicle_identification_history {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+    }
+    vehicle_documents {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+        SMALLINT face
+        TEXT storage_key
+    }
+    vehicle_owner_contacts {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+        VARCHAR full_name
+        VARCHAR email
+    }
+    vehicle_notes {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+    }
+    vehicles ||--o{ vehicle_identification_history : "vehicle_id"
+    organizations |o--o{ vehicle_identification_history : "org_id"
+    vehicles ||--o{ vehicle_documents : "vehicle_id"
+    organizations |o--o{ vehicle_documents : "org_id"
+    vehicles ||--o{ vehicle_owner_contacts : "vehicle_id"
+    organizations |o--o{ vehicle_owner_contacts : "org_id"
+    vehicles ||--o{ vehicle_notes : "vehicle_id"
+    organizations |o--o{ vehicle_notes : "org_id"

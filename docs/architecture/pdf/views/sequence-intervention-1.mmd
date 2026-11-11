@@ -1,0 +1,19 @@
+---
+title: "Phase 1 — authentification et contrôle des droits (messages 1 à 7)"
+---
+sequenceDiagram
+    autonumber
+    actor T as Technician (browser)
+    participant N as nginx (TLS)
+    participant A as api.js pipeline
+    participant BA as Better Auth
+    participant R as workspace-routes
+    T->>N: POST /api/workspace/interventions<br/>cookie + X-IDauto-Session: 1, JSON body
+    N->>A: proxy to 127.0.0.1:3001
+    A->>BA: authenticate(): read the session cookie
+    BA-->>A: user (role, org_id) → principal (principal.js)
+    A->>A: scope gate: workshop:write required (ALL_ROUTE_SCOPES)
+    alt scope missing
+        A-->>T: 403 FORBIDDEN
+    end
+    A->>R: postIntervention(req)

@@ -1,0 +1,46 @@
+---
+title: "Couche métier"
+---
+flowchart LR
+    subgraph BIZ["Business logic layer — modules (CommonJS, exported functions)"]
+        direction TB
+        WS["workspace/<br/>registration-service · intervention-service<br/>vehicle-details · owner-contacts · workspace-repository"]
+        DOCS["documents/<br/>document-service · image-meta<br/>(registration-parser: retired OCR, 410)"]
+        VEHM["vehicle/<br/>vehicle-resolver · plate-normalizer · vin"]
+        WSH["workshop/<br/>workshop-vehicle-service"]
+        PARTS["parts/<br/>parts-catalog · local-parts-catalog · tecdoc-adapter"]
+        CORE["ingestion · passport-assembly · ivid-issuance<br/>public-surface-policy · rate-limit"]
+        ADM["admin/admin-repository"]
+        AUTHMOD["auth/auth.js (Better Auth) · auth/principal.js · identity.js · session.js"]
+    end
+    ROUTES["9 · Route tables, first match wins<br/>workspace-routes · core ROUTES · v14-routes · v12-routes · admin-routes"]:::ext
+    BA["5 · Better Auth routes /api/auth/*<br/>(sign-in, sign-out, session, change-password)"]:::ext
+    AUTHN["7 · authenticate(): Bearer service credential<br/>OR user session cookie + X-IDauto-Session header"]:::ext
+    REPO["Repositories<br/>vehicle-repository · workshop-repository · document-repository"]:::ext
+    WRITES["writes.js<br/>withAudit(): write + audit row in one transaction"]:::ext
+    STO["storage.js · document-storage.js<br/>content-addressed media files"]:::ext
+    TECDOC["TecDoc catalogue adapter<br/>NOT CONFIGURED (returns 'not configured')"]:::ext
+    DB["db.js — pg Pool (node-postgres)"]:::ext
+    VPROV["Licensed vehicle-data provider adapter<br/>(plate / VIN lookup) NOT CONFIGURED"]:::ext
+    ROUTES --> WS
+    ROUTES --> DOCS
+    ROUTES --> VEHM
+    ROUTES --> WSH
+    ROUTES --> PARTS
+    ROUTES --> CORE
+    ROUTES --> ADM
+    BA --> AUTHMOD
+    AUTHN --> AUTHMOD
+    WS --> REPO
+    WS --> WRITES
+    DOCS --> STO
+    DOCS --> REPO
+    VEHM --> REPO
+    PARTS -.-> TECDOC
+    PARTS --> DB
+    VEHM -.-> VPROV
+    WSH --> REPO
+    CORE --> WRITES
+    ADM --> DB
+    AUTHMOD --> DB
+    classDef ext stroke-dasharray: 5 4

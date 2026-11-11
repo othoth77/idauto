@@ -1,0 +1,17 @@
+---
+title: "Couche présentation"
+---
+flowchart TB
+    subgraph PRES["Presentation layer — browser (static HTML + vanilla JS, no framework)"]
+        direction LR
+        APP["Workspace pages /atelier/*<br/>app-dashboard, app-vehicles, app-register,<br/>app-dossier, app-interventions, app-parts-used, app-account"]
+        ADMINUI["Operator console /admin/*<br/>(out of the simplified menu, still served)"]
+        CIT["Public pages / and /passport<br/>web/citizen"]
+        SHELL["Shared shell and helpers<br/>admin-shell.js · admin-console.js<br/>i18n.js + i18n-catalog-ar.js · design system CSS"]
+    end
+    ASSETS["1 · Console assets /admin/* (serveAdminAsset, own CSP)<br/>i18n-serve.js sets lang/dir from the ida_lang cookie"]:::ext
+    APP -- "fetch /api/* + X-IDauto-Session: 1" --> ASSETS
+    ADMINUI -- "fetch /api/*" --> ASSETS
+    CIT -- "GET /public/passport/:ivid" --> ASSETS
+    SHELL -.-> APP
+    classDef ext stroke-dasharray: 5 4

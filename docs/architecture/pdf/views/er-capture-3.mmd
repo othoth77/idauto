@@ -1,0 +1,38 @@
+---
+title: "Sources de capture, sessions, contributeurs, caméras et mouvements"
+---
+erDiagram
+    capture_sources {
+        SERIAL id PK
+    }
+    capture_sessions {
+        BIGSERIAL id PK
+        INTEGER contributor_id FK
+        INTEGER capture_source_id FK
+    }
+    contributors {
+        SERIAL id PK
+    }
+    camera_sources {
+        SERIAL id PK
+        INTEGER capture_source_id FK
+    }
+    vehicle_movements {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        INTEGER vehicle_id FK
+        INTEGER plate_id FK
+        INTEGER camera_source_id FK
+    }
+    capture_sources ||--o{ observations : "capture_source_id"
+    capture_sessions |o--o{ observations : "capture_session_id"
+    camera_sources |o--o{ observations : "camera_source_id"
+    contributors |o--o{ observations : "contributor_id"
+    contributors |o--o{ capture_sessions : "contributor_id"
+    capture_sources ||--o{ capture_sessions : "capture_source_id"
+    capture_sources ||--o{ camera_sources : "capture_source_id"
+    observations ||--o{ vehicle_movements : "observation_id"
+    vehicles |o--o{ vehicle_movements : "vehicle_id"
+    plates |o--o{ vehicle_movements : "plate_id"
+    camera_sources ||--o{ vehicle_movements : "camera_source_id"
+    capture_sources |o--o{ submissions : "capture_source_id"
