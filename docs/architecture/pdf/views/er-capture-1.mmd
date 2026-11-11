@@ -1,0 +1,41 @@
+---
+title: "Observations, médias et scans de documents"
+---
+erDiagram
+    observations {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER plate_id FK
+        INTEGER capture_source_id FK
+        BIGINT capture_session_id FK
+        INTEGER camera_source_id FK
+        INTEGER contributor_id FK
+        VARCHAR status
+        INTEGER org_id FK
+    }
+    observation_media {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        BIGINT derived_from_media_id FK
+    }
+    document_scans {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        INTEGER vehicle_id FK
+        BIGINT media_id FK
+    }
+    vehicles |o--o{ observations : "vehicle_id"
+    plates |o--o{ observations : "plate_id"
+    capture_sources ||--o{ observations : "capture_source_id"
+    capture_sessions |o--o{ observations : "capture_session_id"
+    camera_sources |o--o{ observations : "camera_source_id"
+    contributors |o--o{ observations : "contributor_id"
+    organizations |o--o{ observations : "org_id"
+    observations ||--o{ observation_media : "observation_id"
+    observation_media |o--o{ observation_media : "derived_from_media_id"
+    observations ||--o{ observation_locations : "observation_id"
+    observations ||--o{ vehicle_movements : "observation_id"
+    observations |o--o{ submissions : "observation_id"
+    observations ||--o{ document_scans : "observation_id"
+    vehicles |o--o{ document_scans : "vehicle_id"
+    observation_media |o--o{ document_scans : "media_id"

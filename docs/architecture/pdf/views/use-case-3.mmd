@@ -1,0 +1,20 @@
+---
+title: "Carte grise (document d'immatriculation)"
+---
+flowchart LR
+    TEC(["👤 Technician"])
+    MGR(["👤 Manager"])
+    ADM(["👤 Administrator"])
+    subgraph DOC["Registration document (carte grise)"]
+        UC20(["Attach face 1 / face 2 photo"])
+        UC21(["View document photos"])
+        UC22(["Delete a document photo"])
+    end
+    UC12(["Register a vehicle"]):::ext
+    MGR -. "is a (scopes ⊇)" .-> TEC
+    ADM -. "is a (scope *)" .-> MGR
+    TEC --- UC20
+    TEC --- UC21
+    MGR --- UC22
+    UC20 -. "«extend»" .-> UC12
+    classDef ext stroke-dasharray: 5 4

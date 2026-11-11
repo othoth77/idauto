@@ -1,0 +1,82 @@
+---
+title: IDauto — Logical architecture (as implemented)
+---
+flowchart TB
+    subgraph PRES["Presentation layer — browser (static HTML + vanilla JS, no framework)"]
+        direction LR
+        APP["Workspace pages /atelier/*<br/>app-dashboard, app-vehicles, app-register,<br/>app-dossier, app-interventions, app-parts-used, app-account"]
+        ADMINUI["Operator console /admin/*<br/>(out of the simplified menu, still served)"]
+        CIT["Public pages / and /passport<br/>web/citizen"]
+        SHELL["Shared shell and helpers<br/>admin-shell.js · admin-console.js<br/>i18n.js + i18n-catalog-ar.js · design system CSS"]
+    end
+
+    subgraph API["API layer — one Node.js http server (reference/api.js createServer)"]
+        direction TB
+        ASSETS["1 · Console assets /admin/* (serveAdminAsset, own CSP)<br/>i18n-serve.js sets lang/dir from the ida_lang cookie"]
+        PGATE["2 · Page gate: /atelier/* pages need a session<br/>(else 302 /login)"]
+        ASSETS2["3 · Workshop and public page assets<br/>serveAtelierAsset · serveCitizenAsset"]
+        PUB["4 · /public/* — the only anonymous data route<br/>(passport by IVID, rate-limited)"]
+        BA["5 · Better Auth routes /api/auth/*<br/>(sign-in, sign-out, session, change-password)"]
+        OWN["6 · Owner browser session /session<br/>(signed cookie, two read routes)"]
+        AUTHN["7 · authenticate(): Bearer service credential<br/>OR user session cookie + X-IDauto-Session header"]
+        AUTHZ["8 · Authorisation gate: organisation principals need<br/>the route's scope (ALL_ROUTE_SCOPES); absent = admin-only"]
+        ROUTES["9 · Route tables, first match wins<br/>workspace-routes · core ROUTES · v14-routes · v12-routes · admin-routes"]
+        ASSETS --> PGATE --> ASSETS2 --> PUB --> BA --> OWN --> AUTHN --> AUTHZ --> ROUTES
+    end
+
+    subgraph BIZ["Business logic layer — modules (CommonJS, exported functions)"]
+        direction LR
+        WS["workspace/<br/>registration-service · intervention-service<br/>vehicle-details · owner-contacts · workspace-repository"]
+        DOCS["documents/<br/>document-service · image-meta<br/>(registration-parser: retired OCR, 410)"]
+        VEHM["vehicle/<br/>vehicle-resolver · plate-normalizer · vin"]
+        WSH["workshop/<br/>workshop-vehicle-service"]
+        PARTS["parts/<br/>parts-catalog · local-parts-catalog · tecdoc-adapter"]
+        CORE["ingestion · passport-assembly · ivid-issuance<br/>public-surface-policy · rate-limit"]
+        ADM["admin/admin-repository"]
+        AUTHMOD["auth/auth.js (Better Auth) · auth/principal.js · identity.js · session.js"]
+    end
+
+    subgraph DATA["Data access layer"]
+        direction LR
+        REPO["Repositories<br/>vehicle-repository · workshop-repository · document-repository"]
+        WRITES["writes.js<br/>withAudit(): write + audit row in one transaction"]
+        DB["db.js — pg Pool (node-postgres)"]
+        STO["storage.js · document-storage.js<br/>content-addressed media files"]
+    end
+
+    PGSQL[("PostgreSQL<br/>database idauto_production<br/>41 tables")]
+    MEDIA[("Private media directory<br/>IDAUTO_MEDIA_STORAGE_PATH")]
+    LOGS["observability.js<br/>JSON lines via console.log → stdout → journald"]
+    TECDOC["TecDoc catalogue adapter<br/>NOT CONFIGURED (returns 'not configured')"]
+    VPROV["Licensed vehicle-data provider adapter<br/>(plate / VIN lookup) NOT CONFIGURED"]
+
+    APP -- "fetch /api/* + X-IDauto-Session: 1" --> ASSETS
+    ADMINUI -- "fetch /api/*" --> ASSETS
+    CIT -- "GET /public/passport/:ivid" --> ASSETS
+    SHELL -.-> APP
+    ROUTES --> WS
+    ROUTES --> DOCS
+    ROUTES --> VEHM
+    ROUTES --> WSH
+    ROUTES --> PARTS
+    ROUTES --> CORE
+    ROUTES --> ADM
+    BA --> AUTHMOD
+    AUTHN --> AUTHMOD
+    WS --> REPO
+    WS --> WRITES
+    DOCS --> STO
+    DOCS --> REPO
+    VEHM --> REPO
+    PARTS -.-> TECDOC
+    PARTS --> DB
+    VEHM -.-> VPROV
+    WSH --> REPO
+    CORE --> WRITES
+    ADM --> DB
+    AUTHMOD --> DB
+    REPO --> DB
+    WRITES --> DB
+    DB --> PGSQL
+    STO --> MEDIA
+    API -.-> LOGS

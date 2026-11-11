@@ -1,0 +1,96 @@
+---
+title: "IDauto data model — Vehicle registry, documents and private workshop data"
+---
+erDiagram
+    vehicles {
+        SERIAL id PK
+        VARCHAR make
+        VARCHAR model
+        VARCHAR fiche_status
+        VARCHAR ivid
+        INTEGER merged_into_id FK
+        INTEGER odometer_km
+    }
+    plates {
+        SERIAL id PK
+        VARCHAR plate_number
+        VARCHAR format_code FK
+        INTEGER governorate_id FK
+        INTEGER vehicle_id FK
+        VARCHAR status
+    }
+    plate_formats {
+        SERIAL id PK
+    }
+    vehicle_facts {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER source_id FK
+        BIGINT observation_id FK
+    }
+    fact_evidence {
+        BIGSERIAL id PK
+        BIGINT fact_id FK
+    }
+    vehicle_identification_history {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+    }
+    vehicle_documents {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+        SMALLINT face
+        TEXT storage_key
+    }
+    vehicle_owner_contacts {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+        VARCHAR full_name
+        VARCHAR email
+    }
+    vehicle_notes {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+    }
+    verifications {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+        INTEGER user_role_id FK
+    }
+    service_events {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER plate_id FK
+        INTEGER org_id FK
+        INTEGER user_role_id FK
+        VARCHAR event_type
+        INTEGER odometer_km
+    }
+    vehicles |o--o{ vehicles : "merged_into_id"
+    plate_formats ||--o{ plates : "format_code"
+    governorates |o--o{ plates : "governorate_id"
+    vehicles |o--o{ plates : "vehicle_id"
+    vehicles ||--o{ vehicle_facts : "vehicle_id"
+    capture_sources |o--o{ vehicle_facts : "source_id"
+    observations |o--o{ vehicle_facts : "observation_id"
+    vehicle_facts ||--o{ fact_evidence : "fact_id"
+    vehicles ||--o{ vehicle_identification_history : "vehicle_id"
+    organizations |o--o{ vehicle_identification_history : "org_id"
+    vehicles ||--o{ vehicle_documents : "vehicle_id"
+    organizations |o--o{ vehicle_documents : "org_id"
+    vehicles ||--o{ vehicle_owner_contacts : "vehicle_id"
+    organizations |o--o{ vehicle_owner_contacts : "org_id"
+    vehicles ||--o{ vehicle_notes : "vehicle_id"
+    organizations |o--o{ vehicle_notes : "org_id"
+    vehicles |o--o{ verifications : "vehicle_id"
+    organizations |o--o{ verifications : "org_id"
+    user_roles |o--o{ verifications : "user_role_id"
+    vehicles ||--o{ service_events : "vehicle_id"
+    plates |o--o{ service_events : "plate_id"
+    organizations ||--o{ service_events : "org_id"
+    user_roles ||--o{ service_events : "user_role_id"

@@ -1,0 +1,43 @@
+---
+title: "Dépôt de l'atelier, écritures auditées et accès à la base"
+---
+classDiagram
+    direction TB
+    class workshop_repository["workshop-repository.js"] {
+        <<module>>
+        PART_SOURCES
+        createVisit()
+        addOperation()
+        closeVisit()
+        createOrder()
+        …8 more
+    }
+    class writes["writes.js"] {
+        <<module>>
+        withAudit()
+        createVehicle()
+        mergeVehicle()
+        splitVehicle()
+        recordVinDisclosureAudit()
+        recordVinSearchAudit()
+        …9 more
+    }
+    class db["db.js"] {
+        <<module>>
+        getPool()
+        query()
+        getClientForTransaction()
+        closePool()
+    }
+    class registration_service["registration-service.js"]
+    class intervention_service["intervention-service.js"]
+    class vehicle_details["vehicle-details.js"]
+    class owner_contacts["owner-contacts.js"]
+    class vehicle_repository["vehicle-repository.js"]
+    registration_service ..> writes
+    intervention_service ..> writes
+    vehicle_details ..> writes
+    owner_contacts ..> writes
+    vehicle_repository ..> writes
+    workshop_repository ..> writes
+    writes ..> db

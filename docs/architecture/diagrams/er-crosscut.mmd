@@ -1,0 +1,12 @@
+---
+title: "IDauto data model — Cross-cutting: audit and rate limiting"
+---
+erDiagram
+    audit_log {
+        BIGSERIAL id PK
+        VARCHAR event_type
+    }
+    rate_limit_counters {
+        VARCHAR bucket_key PK
+        TIMESTAMPTZ window_start PK
+    }

@@ -1,0 +1,38 @@
+---
+title: "Carte grise, contact propriétaire et note d'atelier"
+---
+classDiagram
+    direction LR
+    class RegistrationDocument {
+        <<entity>>
+        +BIGSERIAL id PK
+        +INTEGER vehicle_id FK
+        +INTEGER org_id FK
+        +SMALLINT face
+        +TEXT storage_key
+        +VARCHAR sha256
+    }
+    class OwnerContact {
+        <<entity>>
+        +BIGSERIAL id PK
+        +INTEGER vehicle_id FK
+        +INTEGER org_id FK
+        +VARCHAR full_name
+        +VARCHAR phone
+        +TIMESTAMPTZ superseded_at
+    }
+    class VehicleNote {
+        <<entity>>
+        +BIGSERIAL id PK
+        +INTEGER vehicle_id FK
+        +INTEGER org_id FK
+        +VARCHAR notes
+    }
+    class Vehicle
+    class Organisation
+    Vehicle "1" *-- "0..*" RegistrationDocument : vehicle_id
+    Vehicle "1" *-- "0..*" OwnerContact : vehicle_id
+    Vehicle "1" *-- "0..*" VehicleNote : vehicle_id
+    Organisation "0..1" <-- "0..*" RegistrationDocument : org_id
+    Organisation "0..1" <-- "0..*" OwnerContact : org_id
+    Organisation "0..1" <-- "0..*" VehicleNote : org_id

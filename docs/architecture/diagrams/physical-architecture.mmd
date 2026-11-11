@@ -1,0 +1,45 @@
+---
+title: IDauto — Physical architecture (production, staging, local, CI)
+---
+flowchart TB
+    USER["User device<br/>web browser (desktop / tablet / phone)"]
+    DNS["DNS — OVH (.tn registry name servers)<br/>idauto.tn, www.idauto.tn → production VPS"]
+
+    subgraph PROD["Production — OVH VPS · Ubuntu 26.04 LTS (shared with other Mythos services)"]
+        direction TB
+        NGINX["nginx 1.28.3<br/>:443 TLS (Let's Encrypt, Certbot) · :80<br/>client_max_body_size 20M<br/>proxy_pass → 127.0.0.1:3001"]
+        NODE["idauto-api — systemd user service<br/>Node.js 22.22.1 · reference/api.js<br/>listens on 127.0.0.1:3001 only<br/>artifact: git checkout of main"]
+        subgraph DOCKER["Docker 29.6.1"]
+            PG[("container idauto-postgres<br/>PostgreSQL 15.18<br/>published on 127.0.0.1:5432 only<br/>database idauto_production")]
+        end
+        FS[("Media directory on the host filesystem<br/>(carte grise photos, observation media)")]
+        BK["mythos-backup timers (systemd, from othoth77/mythos-prod)<br/>nightly capture + push + verify, monthly restore test"]
+        NGINX --> NODE
+        NODE -- "TCP 127.0.0.1:5432 (pg)" --> PG
+        NODE -- "file I/O" --> FS
+        BK -- "pg_dump inside the container" --> PG
+        BK -- "reads" --> FS
+    end
+
+    OFF[("Off-host backup storage<br/>S3-compatible object store over HTTPS<br/>(provider and bucket configured on the host, not in the repo)")]
+
+    subgraph STG["Staging — private server, reachable only on a private Tailscale network"]
+        direction TB
+        TS["Tailscale HTTPS (tailscale serve)"]
+        SNODE["idauto-preview-api — systemd user service<br/>Node.js 22.22.1 · same code as the branch under review"]
+        SPG[("PostgreSQL 16.9 (own cluster, loopback)<br/>synthetic data only")]
+        TS --> SNODE --> SPG
+    end
+
+    subgraph DEV["Local development and tests"]
+        DTEST["node tests/*.js against a scratch PostgreSQL database<br/>headless Chrome for browser suites"]
+    end
+
+    subgraph CI["GitHub Actions (ubuntu-latest)"]
+        CIJ["database-free suites (npm run test:offline)<br/>secret and estate hygiene scan"]
+    end
+
+    USER -- "DNS lookup" --> DNS
+    USER -- "HTTPS 443" --> NGINX
+    BK -- "HTTPS" --> OFF
+    USER -. "HTTPS over Tailscale (team only)" .-> TS

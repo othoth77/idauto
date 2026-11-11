@@ -1,0 +1,106 @@
+@startuml idauto-use-case
+title IDauto — Use case diagram (implemented, main application)
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Visitor\n(anonymous)" as VIS
+actor "Technician" as TEC
+actor "Manager" as MGR
+actor "Administrator" as ADM
+actor "Server operator\n(CLI)" as OPS
+actor "Service client\n(Bearer token)" as SVC <<system>>
+
+' Generalization: every role holds all the scopes of the one below (reference/auth/principal.js)
+MGR -|> TEC
+ADM -|> MGR
+
+rectangle "IDauto" {
+  package "Authentication and account" {
+    usecase "Sign in" as UC1
+    usecase "Sign out" as UC2
+    usecase "Change own password" as UC3
+    usecase "Choose language FR / AR" as UC4
+    usecase "Request password reset\n(message: ask the administrator)" as UC5
+  }
+  package "Vehicle management" {
+    usecase "Search vehicles" as UC10
+    usecase "View vehicle file" as UC11
+    usecase "Register a vehicle" as UC12
+    usecase "Edit vehicle file" as UC13
+    usecase "Delete vehicle\n(archive, data kept)" as UC14
+    usecase "View owner contact\n(audited)" as UC15
+    usecase "Record owner contact" as UC16
+    usecase "View VIN\n(audited)" as UC17
+  }
+  package "Registration document (carte grise)" {
+    usecase "Attach face 1 / face 2 photo" as UC20
+    usecase "View document photos" as UC21
+    usecase "Delete a document photo" as UC22
+  }
+  package "Maintenance interventions" {
+    usecase "Record an intervention" as UC30
+    usecase "Choose the vehicle" as UC31
+    usecase "Declare each part's provenance\n(our shop / customer)" as UC32
+    usecase "Edit an intervention" as UC33
+    usecase "Cancel an intervention" as UC34
+    usecase "View maintenance history" as UC35
+  }
+  package "Parts and provenance" {
+    usecase "List parts used\n(filter by provenance, search)" as UC40
+  }
+  package "Dashboard and consultation" {
+    usecase "View dashboard counts" as UC50
+    usecase "Global search" as UC51
+    usecase "View public passport by IVID" as UC52
+  }
+  package "Users, roles and settings" {
+    usecase "List user accounts" as UC60
+    usecase "View roles and permissions" as UC61
+    usecase "Create / delete account,\nreset password" as UC62
+  }
+  package "Machine API" {
+    usecase "Submit an observation" as UC70
+    usecase "Read / add vehicle facts" as UC71
+  }
+}
+
+VIS --> UC52
+VIS --> UC1
+VIS --> UC5
+VIS --> UC4
+TEC --> UC2
+TEC --> UC3
+TEC --> UC10
+TEC --> UC11
+TEC --> UC12
+TEC --> UC13
+TEC --> UC15
+TEC --> UC16
+TEC --> UC20
+TEC --> UC21
+TEC --> UC30
+TEC --> UC33
+TEC --> UC34
+TEC --> UC35
+TEC --> UC40
+TEC --> UC50
+TEC --> UC51
+MGR --> UC14
+MGR --> UC17
+MGR --> UC22
+ADM --> UC60
+ADM --> UC61
+OPS --> UC62
+SVC --> UC70
+SVC --> UC71
+
+UC30 ..> UC31 : <<include>>
+UC30 ..> UC32 : <<include>>
+UC33 ..> UC32 : <<include>>
+UC11 ..> UC35 : <<include>>
+UC15 ..> UC11 : <<extend>>
+UC17 ..> UC11 : <<extend>>
+UC20 ..> UC12 : <<extend>>
+UC16 ..> UC12 : <<extend>>
+@enduml

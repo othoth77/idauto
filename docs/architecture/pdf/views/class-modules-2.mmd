@@ -1,0 +1,42 @@
+---
+title: "Service des documents et dépôt des véhicules"
+---
+classDiagram
+    direction TB
+    class document_service["document-service.js"] {
+        <<module>>
+        store()
+        setThumbnail()
+        identify()
+        list()
+        image()
+        remove()
+        ocr() «retired»
+        markConfirmed()
+        compare()
+        inspectImage()
+    }
+    class vehicle_repository["vehicle-repository.js"] {
+        <<module>>
+        findByRef()
+        findByPlate()
+        findByVin()
+        insertIdentifiedVehicle()
+        attachPlate()
+        insertHistory()
+        lockIdentifiers()
+        vinOf()
+        canonicalById()
+        …12 more
+    }
+    class registration_service["registration-service.js"]
+    class intervention_service["intervention-service.js"]
+    class vehicle_details["vehicle-details.js"]
+    class workspace_repository["workspace-repository.js"]
+    class writes["writes.js"]
+    registration_service ..> vehicle_repository
+    intervention_service ..> vehicle_repository
+    vehicle_details ..> vehicle_repository
+    workspace_repository ..> vehicle_repository
+    document_service ..> vehicle_repository
+    vehicle_repository ..> writes

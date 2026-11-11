@@ -1,0 +1,70 @@
+---
+title: "IDauto data model — Workshop maintenance, parts and provenance"
+---
+erDiagram
+    workshop_visits {
+        BIGSERIAL id PK
+        INTEGER org_id FK
+        INTEGER vehicle_id FK
+        BIGINT customer_ref_id FK
+        VARCHAR status
+        VARCHAR reason
+        DATE performed_on
+        INTEGER odometer_km
+    }
+    workshop_operations {
+        BIGSERIAL id PK
+        BIGINT visit_id FK
+        VARCHAR operation_type
+        BIGINT part_id FK
+        VARCHAR status
+        VARCHAR part_source
+        DATE performed_on
+    }
+    workshop_customer_refs {
+        BIGSERIAL id PK
+        INTEGER org_id FK
+    }
+    parts {
+        BIGSERIAL id PK
+        VARCHAR name
+        INTEGER org_id FK
+    }
+    part_compatibility {
+        BIGSERIAL id PK
+        BIGINT part_id FK
+        INTEGER vehicle_id FK
+        VARCHAR make
+        VARCHAR model
+    }
+    org_stock {
+        BIGSERIAL id PK
+        INTEGER org_id FK
+        BIGINT part_id FK
+    }
+    workshop_orders {
+        BIGSERIAL id PK
+        INTEGER org_id FK
+        BIGINT visit_id FK
+        VARCHAR status
+    }
+    workshop_order_lines {
+        BIGSERIAL id PK
+        BIGINT order_id FK
+        BIGINT part_id FK
+    }
+    organizations ||--o{ workshop_visits : "org_id"
+    vehicles |o--o{ workshop_visits : "vehicle_id"
+    workshop_customer_refs |o--o{ workshop_visits : "customer_ref_id"
+    workshop_visits ||--o{ workshop_operations : "visit_id"
+    parts |o--o{ workshop_operations : "part_id"
+    organizations ||--o{ workshop_customer_refs : "org_id"
+    organizations |o--o{ parts : "org_id"
+    parts ||--o{ part_compatibility : "part_id"
+    vehicles |o--o{ part_compatibility : "vehicle_id"
+    organizations ||--o{ org_stock : "org_id"
+    parts ||--o{ org_stock : "part_id"
+    organizations ||--o{ workshop_orders : "org_id"
+    workshop_visits |o--o{ workshop_orders : "visit_id"
+    workshop_orders ||--o{ workshop_order_lines : "order_id"
+    parts ||--o{ workshop_order_lines : "part_id"

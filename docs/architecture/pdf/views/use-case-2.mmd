@@ -1,0 +1,35 @@
+---
+title: "Gestion des véhicules"
+---
+flowchart LR
+    TEC(["👤 Technician"])
+    MGR(["👤 Manager"])
+    ADM(["👤 Administrator"])
+    subgraph VEH["Vehicle management"]
+        UC10(["Search vehicles"])
+        UC11(["View vehicle file"])
+        UC12(["Register a vehicle"])
+        UC13(["Edit vehicle file"])
+        UC14(["Delete vehicle (archive)"])
+        UC15(["View owner contact"])
+        UC16(["Record owner contact"])
+        UC17(["View VIN"])
+    end
+    UC20(["Attach face 1 / face 2 photo"]):::ext
+    UC35(["View maintenance history"]):::ext
+    MGR -. "is a (scopes ⊇)" .-> TEC
+    ADM -. "is a (scope *)" .-> MGR
+    TEC --- UC10
+    TEC --- UC11
+    TEC --- UC12
+    TEC --- UC13
+    TEC --- UC15
+    TEC --- UC16
+    MGR --- UC14
+    MGR --- UC17
+    UC15 -. "«extend»" .-> UC11
+    UC17 -. "«extend»" .-> UC11
+    UC20 -. "«extend»" .-> UC12
+    UC16 -. "«extend»" .-> UC12
+    UC11 -. "«include»" .-> UC35
+    classDef ext stroke-dasharray: 5 4
