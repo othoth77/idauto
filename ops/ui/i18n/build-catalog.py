@@ -13,7 +13,7 @@ strings = {}
 for f in sorted(glob.glob(os.path.join(D, 'strings-*.json'))):
     for k, v in json.load(open(f, encoding='utf-8')).items():
         k = re.sub(r'\s+', ' ', k).strip()
-        if not k or not v or v == k or k in strings: continue
+        if k == '$comment' or not k or not v or v == k or k in strings: continue
         strings[k] = v.strip()
 templates = json.load(open(os.path.join(D, 'templates.json'), encoding='utf-8'))
 body = ('/* IDauto — IDA-UI-2 — the Arabic catalogue: French source text → Arabic.\n'

@@ -1,6 +1,7 @@
 /* IDauto Design System — components.css
- * Every visual value is a token. Interactive hit areas ≥ 44px even when the
- * visual control is smaller (transparent expansion, never margin). */
+ * Every visual value is a token. Update 1 — compact density: controls are
+ * var(--ida-control-h) high (38px with a mouse); on a touch screen
+ * (pointer: coarse) the token is 44px, the touch-target floor. */
 
 /* ============ Button ============ */
 .ida-btn {
@@ -8,12 +9,12 @@
   align-items: center;
   justify-content: center;
   gap: var(--ida-space-2);
-  min-height: 44px;
-  padding: var(--ida-space-2) var(--ida-space-5);
+  min-height: var(--ida-control-h);
+  padding: var(--ida-space-1) var(--ida-space-4);
   border-radius: var(--ida-radius-control);
   border: 1px solid transparent;
   font-weight: var(--ida-weight-medium);
-  font-size: var(--ida-size-16);
+  font-size: var(--ida-size-14);
   cursor: pointer;
   text-decoration: none;
   transition: background-color var(--ida-duration-fast) var(--ida-easing-standard),
@@ -34,18 +35,19 @@
 .ida-btn--danger { background: var(--ida-danger); color: var(--ida-plate-glyph); }
 .ida-btn--danger:hover:not(:disabled) { background: var(--ida-text); }
 
-.ida-btn--sm { min-height: 36px; padding: var(--ida-space-1) var(--ida-space-3); font-size: var(--ida-size-14); position: relative; }
-.ida-btn--sm::after { content: ""; position: absolute; inset: -4px; /* extends hit area to 44px */ }
+.ida-btn--sm { min-height: var(--ida-control-h-sm); padding: 2px var(--ida-space-3); font-size: var(--ida-size-14); position: relative; }
+.ida-btn--sm::after { content: ""; position: absolute; inset: -4px; /* extends the hit area by 4px on every side */ }
 
 /* ============ Field / Input ============ */
-.ida-field { display: flex; flex-direction: column; gap: var(--ida-space-2); }
+.ida-field { display: flex; flex-direction: column; gap: var(--ida-space-1); }
 .ida-field > label { font-weight: var(--ida-weight-medium); font-size: var(--ida-size-14); }
 .ida-field .ida-hint { font-size: var(--ida-size-12); color: var(--ida-text-muted); }
 .ida-field .ida-error-msg { font-size: var(--ida-size-14); color: var(--ida-danger); display: flex; gap: var(--ida-space-1); align-items: center; }
 
 .ida-input {
-  min-height: 44px;
-  padding: var(--ida-space-2) var(--ida-space-3);
+  min-height: var(--ida-control-h);
+  padding: var(--ida-space-1) var(--ida-space-3);
+  font-size: var(--ida-size-14);
   background: var(--ida-surface);
   color: var(--ida-text);
   border: 1px solid var(--ida-border-strong);
@@ -474,7 +476,7 @@
 }
 .ida-tabs [role="tab"] {
   border: 0; background: transparent; cursor: pointer;
-  min-height: 44px;
+  min-height: var(--ida-control-h);
   padding: var(--ida-space-2) var(--ida-space-4);
   color: var(--ida-text-muted);
   font-weight: var(--ida-weight-medium);
@@ -539,7 +541,7 @@
 }
 .ida-nav-links a {
   display: inline-flex; align-items: center;
-  min-height: 44px;
+  min-height: var(--ida-control-h);
   padding: var(--ida-space-2) var(--ida-space-3);
   text-decoration: none;
   color: var(--ida-text-muted);
@@ -680,17 +682,36 @@
   object-fit: cover;
   display: block;
 }
+/* Update 1 — the frame is adjustable (plate-scanner.js sets left/top/width/
+ * height from the person's settings) and that rectangle is exactly what is
+ * cropped for OCR. These values are only the default before the script runs. */
 .ida-scan-guide {
   position: absolute;
   left: 7%;
-  right: 7%;
   top: 35%;
-  bottom: 35%;
+  width: 86%;
+  height: 30%;
+  box-sizing: border-box;
   border: 2px solid var(--ida-plate-glyph);
   border-radius: var(--ida-radius-plate);
-  opacity: 0.85;
-  pointer-events: none;
+  box-shadow: 0 0 0 100vmax var(--ida-scrim);
+  opacity: 0.9;
+  cursor: move;
+  touch-action: none;
 }
+.ida-scan-guide:focus-visible { outline: 3px solid var(--ida-focus); outline-offset: 2px; }
+.ida-scan-guide.is-dragging { opacity: 1; }
+.ida-scan-frame { display: grid; gap: var(--ida-space-2); margin-top: var(--ida-space-3); }
+.ida-scan-frame-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 3rem;
+  align-items: center;
+  gap: var(--ida-space-2);
+  font-size: 0.85rem;
+}
+.ida-scan-frame-row input[type="range"] { width: 100%; min-height: 32px; margin: 0; accent-color: var(--ida-primary); }
+.ida-scan-frame-row output { text-align: end; font-variant-numeric: tabular-nums; }
+.ida-scan-frame .ida-btn { justify-self: start; }
 .ida-scan-skeleton { height: var(--ida-space-8); border-radius: var(--ida-radius-card); }
 .ida-scan-fields {
   display: grid;
@@ -700,3 +721,30 @@
 @media (max-width: 380px) {
   .ida-scan-fields { grid-template-columns: 1fr; }
 }
+
+/* Update 1 — on a touch screen a text field keeps a 16px font: below that,
+ * mobile Safari zooms the whole page when the field gets focus. */
+@media (pointer: coarse) {
+  .ida-input, select.ida-input, textarea.ida-input { font-size: 16px; }
+}
+
+/* ============ Language selector (Update 1) ============
+ * One small native select, FR / عربي — no field, no label box. It keeps the
+ * existing behaviour: the choice is written to the ida_lang cookie and the
+ * page reloads in that language (i18n.js). */
+.ida-lang-select {
+  min-height: var(--ida-control-h-sm);
+  inline-size: auto;
+  padding: 0 var(--ida-space-2);
+  border: 1px solid var(--ida-border);
+  border-radius: var(--ida-radius-control);
+  background: var(--ida-surface);
+  color: var(--ida-text);
+  font: inherit;
+  font-size: var(--ida-size-14);
+  font-weight: var(--ida-weight-medium);
+  cursor: pointer;
+}
+.ida-lang-select:hover { border-color: var(--ida-border-strong); }
+.ida-lang-select:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 1px; }
+.ida-lang-row { display: flex; justify-content: flex-end; }

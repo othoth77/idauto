@@ -316,8 +316,12 @@ ok(!/vehicle_ivid/.test(apiSrc.slice(publicStart, publicEnd)),
 const baseCss = read("design-system/css/base.css");
 const compCss = read("design-system/css/components.css");
 ok(/prefers-reduced-motion/.test(baseCss), "reduced-motion kill switch present");
-ok(/\.ida-btn\s*{[^}]*min-height:\s*44px/s.test(compCss), "buttons meet 44px touch floor");
-ok(/\.ida-input\s*{[^}]*min-height:\s*44px/s.test(compCss), "inputs meet 44px touch floor");
+// Update 1 — compact density: controls use --ida-control-h (38px with a mouse),
+// and the token is 44px wherever the pointer is coarse (touch screens).
+const tokCss = read("design-system/tokens/tokens.css");
+ok(/\.ida-btn\s*{[^}]*min-height:\s*var\(--ida-control-h\)/s.test(compCss), "buttons use the control-height token");
+ok(/\.ida-input\s*{[^}]*min-height:\s*var\(--ida-control-h\)/s.test(compCss), "inputs use the control-height token");
+ok(/@media \(pointer: coarse\)\s*{\s*:root\s*{\s*--ida-control-h:\s*44px/.test(tokCss), "on touch screens the control height is the 44px touch floor");
 ok(!/glow|neon/i.test(compCss), "no glow/neon effects");
 ok((compCss.match(/@keyframes/g) || []).length <= 2, "motion stays minimal (≤2 keyframes)");
 
@@ -350,10 +354,14 @@ ok(/flex-wrap\s*:\s*wrap/.test(navInnerRule),
 
 /* The three items must survive this fix, exactly and in order. */
 const navMarkup = (read("citizen/index.html").match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [""])[0];
-// IDA-UI-2: a fourth item, the French / Arabic selector.
-ok((navMarkup.match(/<li>/g) || []).length === 3 && /data-public-lang/.test(navMarkup), "the navigation carries its two items plus the language selector (IDA-UI-4: no theme switch)");
-ok(navMarkup.indexOf(">Vérifier<") !== -1, "the first item is Vérifier");
-ok(navMarkup.indexOf(">Passeport<") !== -1, "the second item is Passeport");
+// Update 1 (2026-11-12): « Vérifier » and « Passeport » are removed from the
+// public navigation; only the compact language selector remains. The routes
+// themselves (/ and /passport) are unchanged.
+ok((navMarkup.match(/<li>/g) || []).length === 1 && /data-public-lang/.test(navMarkup), "the navigation carries only the language selector (Update 1)");
+ok(navMarkup.indexOf(">Vérifier<") === -1 && navMarkup.indexOf(">Passeport<") === -1, "Vérifier and Passeport are no longer in the navigation");
+const passNav = (read("citizen/passport.html").match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [""])[0];
+ok(passNav.indexOf(">Vérifier<") === -1 && passNav.indexOf(">Passeport<") === -1 && /data-public-lang/.test(passNav), "the same on the passport page");
+ok(/class="ida-lang-select"/.test(navMarkup) && />FR</.test(navMarkup) && />عربي</.test(navMarkup), "the language selector is the compact FR / عربي select");
 ok(!/data-theme-toggle/.test(navMarkup) && /<html lang="fr" data-theme="light">/.test(read("citizen/index.html")) && /<html lang="fr" data-theme="light">/.test(read("citizen/passport.html")), "one light theme, pinned on the public pages too (IDA-UI-4)");
 
 /* ---------- the IVID chip must fit its container (regression) ----------

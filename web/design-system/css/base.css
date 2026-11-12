@@ -13,7 +13,9 @@
  * !important because the component rules are the ones being overridden. */
 [hidden] { display: none !important; }
 
-html { -webkit-text-size-adjust: 100%; }
+/* Update 1 — compact density: the root size is 15px instead of 16px, so every
+ * rem-based size (type scale, icons) shrinks by the same ~6 %, in step. */
+html { -webkit-text-size-adjust: 100%; font-size: 93.75%; }
 
 body {
   margin: 0;
@@ -21,7 +23,7 @@ body {
   color: var(--ida-text);
   font-family: var(--ida-font-editorial);
   font-size: var(--ida-size-16);
-  line-height: 1.55;
+  line-height: 1.5;
   min-height: 100vh;
 }
 

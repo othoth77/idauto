@@ -46,14 +46,18 @@
   --ida-weight-semibold: 600;
 
   /* space (4px base) */
+  /* Update 1 — compact density: one control height for buttons and inputs,
+   * 38px with a mouse, the 44px touch floor wherever the pointer is coarse. */
+  --ida-control-h: 38px;
+  --ida-control-h-sm: 32px;
   --ida-space-1: 4px;
   --ida-space-2: 8px;
   --ida-space-3: 12px;
-  --ida-space-4: 16px;
-  --ida-space-5: 24px;
-  --ida-space-6: 32px;
-  --ida-space-7: 48px;
-  --ida-space-8: 64px;
+  --ida-space-4: 14px;
+  --ida-space-5: 20px;
+  --ida-space-6: 28px;
+  --ida-space-7: 40px;
+  --ida-space-8: 52px;
 
   /* radius */
   --ida-radius-chip: 2px;
@@ -118,6 +122,9 @@
 }
 
 /* dark — pinned by the user's explicit choice */
+@media (pointer: coarse) {
+  :root { --ida-control-h: 44px; --ida-control-h-sm: 40px; }
+}
 :root[data-theme="dark"] {
   --ida-bg: #171614;
   --ida-surface: #1F1E1B;

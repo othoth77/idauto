@@ -22,9 +22,7 @@
     </a>
     <nav aria-label="Navigation principale">
       <ul class="ida-nav-links">
-        <li><a href="/" aria-current="page">Vérifier</a></li>
-        <li><a href="/passport">Passeport</a></li>
-        <li><label class="ida-sr-only" for="pub-lang">Langue</label><select class="ida-input ida-app-lang" id="pub-lang" data-public-lang data-i18n-skip><option value="fr" lang="fr">Français</option><option value="ar" lang="ar">العربية</option></select></li>
+        <li><label class="ida-sr-only" for="pub-lang">Langue</label><select class="ida-lang-select" id="pub-lang" data-public-lang data-i18n-skip><option value="fr" lang="fr" title="Français">FR</option><option value="ar" lang="ar" title="العربية">عربي</option></select></li>
       </ul>
     </nav>
   </div>
@@ -176,7 +174,6 @@
       téléphone&nbsp;: elle n'est ni envoyée ni enregistrée. Seul le numéro lu sert à la recherche.</p>
       <div class="ida-search-actions ida-u-mbs-3">
         <button type="button" class="ida-btn ida-btn--primary" data-scan-action="start" data-scan-start>Autoriser et ouvrir la caméra</button>
-        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Saisir à la main</button>
       </div>
     </div>
 
@@ -226,8 +223,8 @@
         </div>
       </div>
       <div class="ida-search-actions ida-u-mbs-3">
-        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="close">Saisir la plaque à la main</button>
-        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="retry">Réessayer</button>
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="retry">Réessayer</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Fermer</button>
       </div>
     </div>
 

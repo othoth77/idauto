@@ -163,8 +163,9 @@
   var searchToggle = el('button', { type: 'button', class: 'ida-admin-tool ida-app-search-toggle', 'aria-label': 'Ouvrir la recherche', 'aria-expanded': 'false' }, icon('search'));
 
 
-  var langSelect = el('select', { class: 'ida-input ida-app-lang', 'aria-label': 'Langue', 'data-app-lang': '' }, [
-    el('option', { value: 'fr', lang: 'fr' }, 'Français'), el('option', { value: 'ar', lang: 'ar' }, 'العربية')]);
+  // Update 1 — a compact selector (FR / عربي); same cookie, same reload as before.
+  var langSelect = el('select', { class: 'ida-lang-select', 'aria-label': 'Langue', 'data-app-lang': '' }, [
+    el('option', { value: 'fr', lang: 'fr', title: 'Français' }, 'FR'), el('option', { value: 'ar', lang: 'ar', title: 'العربية' }, 'عربي')]);
   langSelect.value = I18N.lang();
   langSelect.setAttribute('data-i18n-skip', '');
   langSelect.addEventListener('change', function () { I18N.setLanguage(langSelect.value); });
