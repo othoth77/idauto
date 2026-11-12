@@ -67,7 +67,7 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   console.log('== SHELL (manager, 1440 px)');
   ok(await signIn('manager', '/atelier/tableau-de-bord'), 'the manager signs in and lands on the dashboard');
   ok(JSON.stringify(await ev(NAVLABELS)) === JSON.stringify(['Tableau de bord', 'Véhicules', 'Interventions', 'Pièces', 'Paramètres']), 'the menu: five links, nothing else');
-  ok(await ev('!!document.querySelector("[data-app-topbar] #app-search") && !!document.querySelector("[data-app-lang]") && !!document.querySelector(".ida-app-profile") && !document.querySelector(".ida-app-bell") && !document.querySelector("[data-theme-toggle]")'), 'top bar: search, language, profile (no notification bell, no theme switch)');
+  ok(await ev('!!document.querySelector("[data-app-topbar] #app-search") && !!document.querySelector("[data-app-topbar] [data-lang-flag]") && !!document.querySelector(".ida-app-profile") && !document.querySelector(".ida-app-bell") && !document.querySelector("[data-theme-toggle]")'), 'top bar: search, language, profile (no notification bell, no theme switch)');
   ok(await ev('document.documentElement.getAttribute("data-theme") === "light"'), 'one light theme');
   ok(await ev('document.querySelector(".ida-admin-nav-link.is-active").getAttribute("aria-current") === "page" && /Tableau de bord/.test(document.querySelector(".ida-admin-nav-link.is-active").textContent)'), 'the current page is marked (aria-current)');
   ok(await waitFor('document.querySelectorAll("#stats a").length === 5', 20000), 'dashboard: five numbers');
@@ -188,7 +188,7 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
 
   console.log('\n== FRENCH / ARABIC');
   ok(await signIn('manager', '/atelier/tableau-de-bord'), 'signed in again');
-  await ev('var s=document.querySelector("[data-app-lang]");s.value="ar";s.dispatchEvent(new Event("change",{bubbles:true}));true');
+  await ev('document.querySelector("[data-app-topbar] [data-lang-flag]").click();true');
   ok(await waitFor('document.documentElement.lang === "ar" && document.documentElement.dir === "rtl"', 15000), 'the selector switches to Arabic: lang=ar, dir=rtl (served by the server)');
   LANG_NOW = 'ar';
   ok(await waitFor('/لوحة القيادة/.test(document.querySelector("h1").textContent)', 10000), 'the page is in Arabic');
