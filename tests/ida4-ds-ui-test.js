@@ -357,11 +357,16 @@ const navMarkup = (read("citizen/index.html").match(/<ul class="ida-nav-links">[
 // Update 1 (2026-11-12): « Vérifier » and « Passeport » are removed from the
 // public navigation; only the compact language selector remains. The routes
 // themselves (/ and /passport) are unchanged.
-ok((navMarkup.match(/<li>/g) || []).length === 1 && /data-public-lang/.test(navMarkup), "the navigation carries only the language selector (Update 1)");
+ok((navMarkup.match(/<li>/g) || []).length === 1 && /data-lang-flag/.test(navMarkup), "the navigation carries only the language switcher (Update 1 / 1.1)");
 ok(navMarkup.indexOf(">Vérifier<") === -1 && navMarkup.indexOf(">Passeport<") === -1, "Vérifier and Passeport are no longer in the navigation");
 const passNav = (read("citizen/passport.html").match(/<ul class="ida-nav-links">[\s\S]*?<\/ul>/) || [""])[0];
-ok(passNav.indexOf(">Vérifier<") === -1 && passNav.indexOf(">Passeport<") === -1 && /data-public-lang/.test(passNav), "the same on the passport page");
-ok(/class="ida-lang-select"/.test(navMarkup) && />FR</.test(navMarkup) && />عربي</.test(navMarkup), "the language selector is the compact FR / عربي select");
+ok(passNav.indexOf(">Vérifier<") === -1 && passNav.indexOf(">Passeport<") === -1 && /data-lang-flag/.test(passNav), "the same on the passport page");
+ok(/class="ida-lang-flag"/.test(navMarkup) && !/<select/.test(navMarkup), "the language switcher is one flag button, no dropdown (Update 1.1)");
+const i18nJs = read("../reference/i18n.js");
+ok(/var next = lang === 'ar' \? 'fr' : 'ar'/.test(i18nJs) && /b\.innerHTML = FLAG\[next\]/.test(i18nJs), "the flag shown is the DESTINATION language (FR active → TN flag, AR active → FR flag)");
+ok(/setLanguage\(b\.getAttribute\('data-next-lang'\)\)/.test(i18nJs), "clicking it uses the same setLanguage (ida_lang cookie + reload)");
+const homeHtml11 = read("citizen/index.html");
+ok(!/passport-expl|Le Passeport Véhicule IDauto|class="ida-footer"/.test(homeHtml11), "the homepage ends after the plate verification section (Update 1.1)");
 ok(!/data-theme-toggle/.test(navMarkup) && /<html lang="fr" data-theme="light">/.test(read("citizen/index.html")) && /<html lang="fr" data-theme="light">/.test(read("citizen/passport.html")), "one light theme, pinned on the public pages too (IDA-UI-4)");
 
 /* ---------- the IVID chip must fit its container (regression) ----------

@@ -22,7 +22,7 @@
     </a>
     <nav aria-label="Navigation principale">
       <ul class="ida-nav-links">
-        <li><label class="ida-sr-only" for="pub-lang">Langue</label><select class="ida-lang-select" id="pub-lang" data-public-lang data-i18n-skip><option value="fr" lang="fr" title="Français">FR</option><option value="ar" lang="ar" title="العربية">عربي</option></select></li>
+        <li><button type="button" class="ida-lang-flag" data-lang-flag data-i18n-skip aria-label="Langue"></button></li>
       </ul>
     </nav>
   </div>
@@ -126,33 +126,6 @@
       </div>
     </div>
   </section>
-
-  <!-- V1 PERSONAL: no key or token is ever asked of the user. The
-       professional plate-lookup UI was removed by owner decision; the
-       authenticated server routes are unchanged (A5-PLATE). -->
-
-  <section class="ida-container ida-u-pad-section" aria-labelledby="passport-expl">
-    <div class="ida-stack-lg">
-      <h2 id="passport-expl" class="ida-h3 ida-u-center">Le Passeport Véhicule IDauto</h2>
-      <div class="ida-grid ida-grid-3">
-        <div class="ida-card ida-stack">
-          <p class="ida-label">Identité</p>
-          <h3 class="ida-h4">Un identifiant stable&nbsp;: l'IVID</h3>
-          <p class="ida-small ida-muted">Le véhicule reçoit un identifiant durable, indépendant de sa plaque et de ses détenteurs successifs.</p>
-        </div>
-        <div class="ida-card ida-stack">
-          <p class="ida-label">Preuves</p>
-          <h3 class="ida-h4">Des faits adossés à des sources</h3>
-          <p class="ida-small ida-muted">Chaque fait du passeport porte son statut de vérification et sa confiance. Ce qui n'est pas prouvé est affiché comme tel.</p>
-        </div>
-        <div class="ida-card ida-stack">
-          <p class="ida-label">Confiance</p>
-          <h3 class="ida-h4">Des niveaux T0–T3, jamais des slogans</h3>
-          <p class="ida-small ida-muted">La corroboration se lit sur l'échelle du protocole — l'ancrage cryptographique est affiché à part, jamais confondu avec la vérité.</p>
-        </div>
-      </div>
-    </div>
-  </section>
 </main>
 
 <!-- IDA-V11 — plate scanner. Built from the same Design System components as
@@ -232,11 +205,6 @@
   </div>
 </div>
 
-<footer class="ida-footer">
-  <div class="ida-container ida-footer-inner">
-    <p>IDauto — l'identité et l'historique numériques de votre véhicule.</p>
-  </div>
-</footer>
 
 <script src="/assets/plate.js"></script>
 <script src="/assets/ivid-client.js"></script>

@@ -728,23 +728,23 @@
   .ida-input, select.ida-input, textarea.ida-input { font-size: 16px; }
 }
 
-/* ============ Language selector (Update 1) ============
- * One small native select, FR / عربي — no field, no label box. It keeps the
- * existing behaviour: the choice is written to the ida_lang cookie and the
- * page reloads in that language (i18n.js). */
-.ida-lang-select {
+/* ============ Language switcher (Update 1.1) ============
+ * One small button showing the flag of the language it switches TO. No menu,
+ * no text label (the accessible name is on aria-label). i18n.js fills it. */
+.ida-lang-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--ida-control-h-sm);
   min-height: var(--ida-control-h-sm);
-  inline-size: auto;
-  padding: 0 var(--ida-space-2);
+  padding: 4px 6px;
   border: 1px solid var(--ida-border);
   border-radius: var(--ida-radius-control);
   background: var(--ida-surface);
-  color: var(--ida-text);
-  font: inherit;
-  font-size: var(--ida-size-14);
-  font-weight: var(--ida-weight-medium);
   cursor: pointer;
+  line-height: 0;
 }
-.ida-lang-select:hover { border-color: var(--ida-border-strong); }
-.ida-lang-select:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 1px; }
+.ida-lang-flag svg { display: block; width: 26px; height: 18px; border-radius: 2px; box-shadow: 0 0 0 1px var(--ida-border); }
+.ida-lang-flag:hover { border-color: var(--ida-border-strong); }
+.ida-lang-flag:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 1px; }
 .ida-lang-row { display: flex; justify-content: flex-end; }

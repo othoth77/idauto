@@ -138,6 +138,26 @@
   root.IdAutoI18n = { lang: current, t: t, date: date, day: day, number: number, setLanguage: setLanguage, toArabic: toArabic };
   // A plain <select data-public-lang> (public pages, no shell) switches the language too.
   function wireSelects() { Array.prototype.forEach.call(document.querySelectorAll('select[data-public-lang]'), function (s) { s.value = lang; s.addEventListener('change', function () { setLanguage(s.value); }); }); }
-  if (document.readyState !== 'loading') wireSelects(); else document.addEventListener('DOMContentLoaded', wireSelects);
+  // Update 1.1 — the flag switcher: one button that shows the flag of the language it switches TO
+  // (French active → 🇹🇳, Arabic active → 🇫🇷). Same cookie and reload as setLanguage().
+  var FLAG = {
+    ar: '<svg viewBox="0 0 30 20" width="26" height="18" aria-hidden="true" focusable="false"><rect width="30" height="20" fill="#E70013"/><circle cx="15" cy="10" r="5" fill="#fff"/><circle cx="15" cy="10" r="3.75" fill="#E70013"/><circle cx="16" cy="10" r="3" fill="#fff"/><polygon points="14.40,10.00 15.81,9.50 15.85,8.00 16.76,9.19 18.20,8.77 17.35,10.00 18.20,11.23 16.76,10.81 15.85,12.00 15.81,10.50" fill="#E70013"/></svg>',
+    fr: '<svg viewBox="0 0 30 20" width="26" height="18" aria-hidden="true" focusable="false"><rect width="10" height="20" fill="#002654"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#CE1126"/></svg>'
+  };
+  var FLAG_LABEL = { ar: 'التونسي — بدّل للعربي', fr: 'Français — passer en français' };
+  function wireFlags() {
+    var next = lang === 'ar' ? 'fr' : 'ar';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-lang-flag]'), function (b) {
+      b.innerHTML = FLAG[next];
+      b.setAttribute('data-next-lang', next);
+      b.setAttribute('lang', next);
+      b.setAttribute('aria-label', FLAG_LABEL[next]);
+      b.setAttribute('title', FLAG_LABEL[next]);
+      if (!b.__idaFlag) { b.__idaFlag = true; b.addEventListener('click', function () { setLanguage(b.getAttribute('data-next-lang')); }); }
+    });
+  }
+  root.IdAutoI18n.wireFlags = wireFlags;
+  function wireAll() { wireSelects(); wireFlags(); }
+  if (document.readyState !== 'loading') wireAll(); else document.addEventListener('DOMContentLoaded', wireAll);
   if (lang === 'ar') { if (document.body) start(); else document.addEventListener('DOMContentLoaded', start); }
 }(typeof self !== 'undefined' ? self : this));
