@@ -265,31 +265,31 @@
     },
     "4": {
       "$value": {
-        "value": 16,
+        "value": 14,
         "unit": "px"
       }
     },
     "5": {
       "$value": {
-        "value": 24,
+        "value": 20,
         "unit": "px"
       }
     },
     "6": {
       "$value": {
-        "value": 32,
+        "value": 28,
         "unit": "px"
       }
     },
     "7": {
       "$value": {
-        "value": 48,
+        "value": 40,
         "unit": "px"
       }
     },
     "8": {
       "$value": {
-        "value": 64,
+        "value": 52,
         "unit": "px"
       }
     }

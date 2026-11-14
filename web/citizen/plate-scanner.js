@@ -78,8 +78,12 @@
       s.onerror = function () { reject(new Error("engine_script_failed")); };
       document.head.appendChild(s);
     }).then(function () {
-      if (!root.Tesseract) throw new Error("engine_script_failed");
-      return root.Tesseract.createWorker("eng", 1, {
+      /* Update 1 fix: `root` belongs to the UMD wrapper and is NOT in scope
+       * here — the old `root.Tesseract` threw a ReferenceError, so every scan
+       * ended in « Lecteur indisponible ». The engine script sets a global. */
+      var T = (typeof self !== "undefined" ? self : globalThis).Tesseract;
+      if (!T) throw new Error("engine_script_failed");
+      return T.createWorker("eng", 1, {
         /* Every path is same-origin. workerBlobURL:false keeps the worker a
          * real same-origin URL instead of a blob:, so the CSP does not need
          * blob: in worker-src. */
@@ -107,20 +111,54 @@
     return state.workerLoading;
   }
 
+  /* ---------------- scan frame (Update 1) ----------------
+   * The frame the person adjusts on screen IS the area sent to the engine.
+   * It is kept as fractions of the visible stage (x, y = top-left corner,
+   * w, h = size), and cropRect() converts it to video pixels, taking the
+   * stage's object-fit: cover into account (the video is scaled to fill the
+   * stage and the overflow is cut off, so stage fractions are NOT video
+   * fractions unless the aspect ratios match). */
+  var FRAME_DEFAULT = { x: 0.07, y: 0.35, w: 0.86, h: 0.30 };
+  var FRAME_LIMITS = { wMin: 0.30, wMax: 1, hMin: 0.12, hMax: 0.80 };
+  var frame = { x: FRAME_DEFAULT.x, y: FRAME_DEFAULT.y, w: FRAME_DEFAULT.w, h: FRAME_DEFAULT.h };
+
+  function clampFrame(f) {
+    var w = Math.min(FRAME_LIMITS.wMax, Math.max(FRAME_LIMITS.wMin, +f.w || FRAME_DEFAULT.w));
+    var h = Math.min(FRAME_LIMITS.hMax, Math.max(FRAME_LIMITS.hMin, +f.h || FRAME_DEFAULT.h));
+    var x = Math.min(1 - w, Math.max(0, isFinite(+f.x) ? +f.x : FRAME_DEFAULT.x));
+    var y = Math.min(1 - h, Math.max(0, isFinite(+f.y) ? +f.y : FRAME_DEFAULT.y));
+    return { x: x, y: y, w: w, h: h };
+  }
+
+  /* Stage fractions → source rectangle in video pixels (object-fit: cover). */
+  function cropRect(f, stageW, stageH, vw, vh) {
+    f = clampFrame(f);
+    if (!stageW || !stageH) { stageW = vw; stageH = vh; }
+    var scale = Math.max(stageW / vw, stageH / vh);
+    var ox = (stageW - vw * scale) / 2, oy = (stageH - vh * scale) / 2;
+    var x0 = (f.x * stageW - ox) / scale, y0 = (f.y * stageH - oy) / scale;
+    var x1 = ((f.x + f.w) * stageW - ox) / scale, y1 = ((f.y + f.h) * stageH - oy) / scale;
+    x0 = Math.max(0, Math.min(vw, x0)); x1 = Math.max(0, Math.min(vw, x1));
+    y0 = Math.max(0, Math.min(vh, y0)); y1 = Math.max(0, Math.min(vh, y1));
+    return { sx: Math.round(x0), sy: Math.round(y0), sw: Math.max(1, Math.round(x1 - x0)), sh: Math.max(1, Math.round(y1 - y0)) };
+  }
+
+  function getFrame() { return { x: frame.x, y: frame.y, w: frame.w, h: frame.h }; }
+  function setFrame(f) { frame = clampFrame(f); renderFrame(); return getFrame(); }
+
   /* ---------------- image preparation ----------------
-   * The plate occupies a band in the middle of the frame (where the guide
-   * rectangle is drawn). Cropping to it removes most of the scene before OCR,
-   * and upscaling + a contrast stretch makes the digits legible to the engine
-   * at phone-camera resolutions. This is ordinary preprocessing, not
-   * interpretation: no pixel decision here can produce a digit. */
-  function prepare(video) {
+   * Only the adjusted frame is read: cropping to it removes the rest of the
+   * scene before OCR, and upscaling + a contrast stretch makes the digits
+   * legible to the engine at phone-camera resolutions. This is ordinary
+   * preprocessing, not interpretation: no pixel decision here can produce a
+   * digit. */
+  function prepare(video, stage) {
     var vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return null;
 
-    var bandW = Math.round(vw * 0.86);
-    var bandH = Math.round(vh * 0.30);
-    var sx = Math.round((vw - bandW) / 2);
-    var sy = Math.round((vh - bandH) / 2);
+    var r = cropRect(frame, stage ? stage.clientWidth : 0, stage ? stage.clientHeight : 0, vw, vh);
+    var bandW = r.sw, bandH = r.sh, sx = r.sx, sy = r.sy;
+    state.lastCrop = r;
 
     var scale = Math.min(3, Math.max(1, 900 / bandW));
     var c = document.createElement("canvas");
@@ -269,6 +307,87 @@
     return { serie: serie, numero: numero, exact: true, via: "geometry" };
   }
 
+  /* ---------------- frame controls (Update 1) ----------------
+   * Width and height sliders, the frame itself can be dragged (mouse, finger)
+   * or moved with the arrow keys, and « Recentrer » restores the default.
+   * Built here so the citizen page and the atelier page get the same
+   * controls from the same markup contract. */
+  function pct(v) { return Math.round(v * 1000) / 10 + "%"; }
+
+  function renderFrame() {
+    if (!state.els || !state.els.root) return;
+    var g = state.els.root.querySelector(".ida-scan-guide");
+    if (g) { g.style.left = pct(frame.x); g.style.top = pct(frame.y); g.style.width = pct(frame.w); g.style.height = pct(frame.h); }
+    var w = state.els.root.querySelector("[data-scan-frame-w]"), h = state.els.root.querySelector("[data-scan-frame-h]");
+    if (w && document.activeElement !== w) w.value = String(Math.round(frame.w * 100));
+    if (h && document.activeElement !== h) h.value = String(Math.round(frame.h * 100));
+    var wo = state.els.root.querySelector("[data-scan-frame-w-out]"), ho = state.els.root.querySelector("[data-scan-frame-h-out]");
+    if (wo) wo.textContent = Math.round(frame.w * 100) + " %";
+    if (ho) ho.textContent = Math.round(frame.h * 100) + " %";
+  }
+
+  /* Resize keeps the frame's centre where it is. */
+  function resizeFrame(dim, value) {
+    var c = { x: frame.x + frame.w / 2, y: frame.y + frame.h / 2 };
+    var f = getFrame();
+    f[dim] = value;
+    var n = clampFrame(f);
+    if (dim === "w") n.x = c.x - n.w / 2; else n.y = c.y - n.h / 2;
+    setFrame(n);
+  }
+
+  function buildFrameControls(root) {
+    var stage = root.querySelector(".ida-scan-stage");
+    var guide = root.querySelector(".ida-scan-guide");
+    if (!stage || !guide || root.querySelector("[data-scan-frame]")) return;
+    guide.removeAttribute("aria-hidden");
+    guide.setAttribute("tabindex", "0");
+    guide.setAttribute("role", "group");
+    guide.setAttribute("aria-label", "Cadre de lecture — flèches pour le déplacer");
+    guide.setAttribute("data-scan-guide", "");
+
+    var box = document.createElement("div");
+    box.className = "ida-scan-frame";
+    box.setAttribute("data-scan-frame", "");
+    box.innerHTML =
+      '<p class="ida-caption">Glissez le cadre sur la plaque. Seule la zone du cadre est lue.</p>' +
+      '<div class="ida-scan-frame-row"><label for="scan-frame-w">Largeur</label>' +
+      '<input type="range" id="scan-frame-w" min="30" max="100" step="1" data-scan-frame-w>' +
+      '<output data-scan-frame-w-out data-i18n-skip></output></div>' +
+      '<div class="ida-scan-frame-row"><label for="scan-frame-h">Hauteur</label>' +
+      '<input type="range" id="scan-frame-h" min="12" max="80" step="1" data-scan-frame-h>' +
+      '<output data-scan-frame-h-out data-i18n-skip></output></div>' +
+      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-scan-action="frame-reset">Recentrer le cadre</button>';
+    stage.parentNode.insertBefore(box, stage.nextSibling);
+
+    box.querySelector("[data-scan-frame-w]").addEventListener("input", function (e) { resizeFrame("w", e.target.value / 100); });
+    box.querySelector("[data-scan-frame-h]").addEventListener("input", function (e) { resizeFrame("h", e.target.value / 100); });
+
+    var drag = null;
+    guide.addEventListener("pointerdown", function (e) {
+      drag = { id: e.pointerId, px: e.clientX, py: e.clientY, x: frame.x, y: frame.y, W: stage.clientWidth || 1, H: stage.clientHeight || 1 };
+      try { guide.setPointerCapture(e.pointerId); } catch (err) {}
+      guide.classList.add("is-dragging");
+      e.preventDefault();
+    });
+    guide.addEventListener("pointermove", function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      setFrame({ x: drag.x + (e.clientX - drag.px) / drag.W, y: drag.y + (e.clientY - drag.py) / drag.H, w: frame.w, h: frame.h });
+    });
+    function end(e) { if (drag && e.pointerId === drag.id) { drag = null; guide.classList.remove("is-dragging"); } }
+    guide.addEventListener("pointerup", end);
+    guide.addEventListener("pointercancel", end);
+    guide.addEventListener("keydown", function (e) {
+      var step = e.shiftKey ? 0.05 : 0.01, f = getFrame();
+      if (e.key === "ArrowLeft") f.x -= step; else if (e.key === "ArrowRight") f.x += step;
+      else if (e.key === "ArrowUp") f.y -= step; else if (e.key === "ArrowDown") f.y += step;
+      else return;
+      e.preventDefault(); e.stopPropagation();
+      setFrame(f);
+    });
+    renderFrame();
+  }
+
   /* ---------------- UI ---------------- */
 
   function el(id) { return state.els.root.querySelector("[data-scan-" + id + "]"); }
@@ -343,7 +462,7 @@
 
   async function capture() {
     var video = state.els.video;
-    var canvas = prepare(video);
+    var canvas = prepare(video, video.parentNode);
     if (!canvas) {
       setStatus("L'image n'est pas encore prête — réessayez dans un instant.");
       return;
@@ -455,6 +574,7 @@
 
   function bind(els) {
     state.els = els;
+    buildFrameControls(els.root);
     els.root.addEventListener("click", function (e) {
       var t = e.target.closest("[data-scan-action]");
       if (t) {
@@ -464,6 +584,7 @@
         if (a === "retry") { show("intro"); setStatus(""); return; }
         if (a === "confirm") return confirmSubmit();
         if (a === "close") return close();
+        if (a === "frame-reset") { setFrame(FRAME_DEFAULT); return; }
       }
       if (e.target === els.root) close();   // backdrop
     });
@@ -487,6 +608,12 @@
     parseTunStd: parseTunStd,
     splitByGeometry: splitByGeometry,
     readConfidence: readConfidence,
+    cropRect: cropRect,
+    clampFrame: clampFrame,
+    getFrame: getFrame,
+    setFrame: setFrame,
+    lastCrop: function () { return state.lastCrop || null; },
+    FRAME_DEFAULT: FRAME_DEFAULT,
     CONFIDENT: CONFIDENT
   };
 });

@@ -205,8 +205,35 @@ async function main() {
   ok(/pagehide/.test(scanJs) && /visibilitychange/.test(scanJs),
     'leaving or hiding the page also releases it');
   ok(/if\s*\(!cameraSupported\(\)\)/.test(scanJs), 'an unsupported browser is told, not left waiting');
-  ok(/Saisir la plaque à la main|Saisir à la main|à la main/.test(homeHtml),
-    'every failure path offers the manual fallback');
+  // Update 1 (2026-11-12): the scanner no longer offers « Saisir à la main »;
+  // every failure path still offers a way out (Réessayer / Fermer) and the
+  // plate field of the page itself is unchanged.
+  var scanBlock = homeHtml.slice(homeHtml.indexOf('data-scan-root'), homeHtml.indexOf('</footer>'));
+  ok(!/Saisir à la main|Saisir la plaque à la main/.test(scanBlock), 'the scanner offers no « Saisir à la main » option');
+  ok(/data-scan-action="retry"/.test(scanBlock) && /data-scan-action="close"/.test(scanBlock),
+    'every failure path still offers Réessayer and Fermer');
+
+  /* ===================================================================== */
+  say('\n6b. ADJUSTABLE SCAN FRAME — what is framed is what is read (Update 1)');
+  var D = scanner.FRAME_DEFAULT;
+  var r0 = scanner.cropRect(D, 480, 270, 1280, 720);
+  ok(r0.sx === 90 && r0.sy === 252 && r0.sw === 1101 && r0.sh === 216,
+    'the default frame crops the same band as before (86 % × 30 %, centred) on a 16:9 stage');
+  var rL = scanner.cropRect({ x: 0, y: 0, w: 0.5, h: 0.4 }, 480, 270, 1280, 720);
+  ok(rL.sx === 0 && rL.sy === 0 && rL.sw === 640 && rL.sh === 288, 'a frame moved to the top-left crops the top-left of the video');
+  var rR = scanner.cropRect({ x: 0.5, y: 0.6, w: 0.5, h: 0.4 }, 480, 270, 1280, 720);
+  ok(rR.sx === 640 && rR.sy === 432 && rR.sw === 640 && rR.sh === 288, 'a frame moved to the bottom-right crops the bottom-right');
+  // 640×480 camera on a 480×270 stage: scaled ×0.75 to 480×360, 45 px cut top and bottom.
+  var r43 = scanner.cropRect({ x: 0, y: 0.1, w: 1, h: 0.8 }, 480, 270, 640, 480);
+  ok(r43.sx === 0 && r43.sy === 96 && r43.sw === 640 && r43.sh === 288,
+    'object-fit: cover is honoured: on a 4:3 camera only the visible 16:9 part is read');
+  var cl = scanner.clampFrame({ x: 0.9, y: -1, w: 2, h: 0.01 });
+  ok(cl.w === 1 && cl.h === 0.12 && cl.x === 0 && cl.y === 0, 'width, height and position are clamped inside the stage');
+  ok(/prepare\(video, video\.parentNode\)/.test(scanJs) && /cropRect\(frame,/.test(scanJs),
+    'capture() crops with the adjusted frame — the overlay is not decoration');
+  ok(/data-scan-frame-w/.test(scanJs) && /data-scan-frame-h/.test(scanJs) && /pointermove/.test(scanJs) && /ArrowLeft/.test(scanJs),
+    'width and height sliders, drag and arrow keys are provided');
+  ok(/frame-reset/.test(scanJs), 'and the frame can be put back in the centre');
 
   /* ===================================================================== */
   say('\n7. UNREGISTERED VEHICLE — the plate is carried, never retyped');

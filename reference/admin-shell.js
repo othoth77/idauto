@@ -163,11 +163,9 @@
   var searchToggle = el('button', { type: 'button', class: 'ida-admin-tool ida-app-search-toggle', 'aria-label': 'Ouvrir la recherche', 'aria-expanded': 'false' }, icon('search'));
 
 
-  var langSelect = el('select', { class: 'ida-input ida-app-lang', 'aria-label': 'Langue', 'data-app-lang': '' }, [
-    el('option', { value: 'fr', lang: 'fr' }, 'Français'), el('option', { value: 'ar', lang: 'ar' }, 'العربية')]);
-  langSelect.value = I18N.lang();
-  langSelect.setAttribute('data-i18n-skip', '');
-  langSelect.addEventListener('change', function () { I18N.setLanguage(langSelect.value); });
+  // Update 1.1 — the flag switcher (filled and wired by i18n.js: it shows the DESTINATION language's flag).
+  var langSelect = el('button', { type: 'button', class: 'ida-lang-flag', 'aria-label': 'Langue', 'data-lang-flag': '', 'data-i18n-skip': '' });
+  if (I18N.wireFlags) setTimeout(I18N.wireFlags, 0);
 
   var avatar = el('span', { class: 'ida-admin-avatar', 'aria-hidden': 'true' }, '·');
   var nameEl = el('span', { class: 'ida-admin-identity-name', 'data-admin-identity-name': '' }, 'Session…');
