@@ -20,11 +20,33 @@
     <header class="ida-page-head">
       <div>
         <h1>Ajouter un véhicule</h1>
-        <p class="ida-muted ida-u-maxch-52">Seule l&#x27;immatriculation est obligatoire. Les photos de la carte grise sont facultatives et ne sont pas lues automatiquement.</p>
+        <p class="ida-muted ida-u-maxch-52">Seule l&#x27;immatriculation est obligatoire. « Scanner le véhicule » lit la plaque avec la caméra et propose les valeurs : vous les vérifiez avant d&#x27;enregistrer.</p>
       </div>
-      <div class="ida-page-actions"></div>
+      <div class="ida-page-actions"><button type="button" class="ida-btn ida-btn--secondary" id="scan-open" hidden>Scanner le véhicule</button></div>
     </header>
     <div id="page-status" aria-live="polite"></div>
+
+    <!-- Update 2 — what the camera recognised, shown before anything reaches the form. -->
+    <section class="ida-card ida-recog" id="recog-card" aria-labelledby="recog-title" hidden>
+      <h2 id="recog-title" class="ida-h3">Véhicule reconnu</h2>
+      <div class="ida-recog-body">
+        <div class="ida-recog-photo" id="recog-photo"></div>
+        <dl class="ida-recog-list">
+          <div><dt>Immatriculation</dt><dd><span class="ida-recog-plate" id="recog-plate" dir="ltr" data-i18n-skip></span> <span class="ida-recog-conf" id="recog-plate-conf"></span></dd></div>
+          <div><dt>Marque</dt><dd><span id="recog-make" dir="auto" data-i18n-skip></span> <span class="ida-recog-conf" id="recog-make-conf"></span></dd></div>
+          <div><dt>Modèle</dt><dd><span id="recog-model" dir="auto" data-i18n-skip></span> <span class="ida-recog-conf" id="recog-model-conf"></span></dd></div>
+          <div><dt>Couleur</dt><dd><span id="recog-colour"></span> <span class="ida-recog-conf" id="recog-colour-conf"></span></dd></div>
+          <div><dt>Carrosserie</dt><dd><span id="recog-body"></span> <span class="ida-recog-conf" id="recog-body-conf"></span></dd></div>
+        </dl>
+      </div>
+      <p class="ida-small ida-muted" id="recog-note"></p>
+      <div id="recog-existing" hidden></div>
+      <div class="ida-form-actions">
+        <button type="button" class="ida-btn ida-btn--primary" id="recog-confirm">Confirmer</button>
+        <button type="button" class="ida-btn ida-btn--secondary" id="recog-correct">Corriger</button>
+        <button type="button" class="ida-btn ida-btn--ghost" id="recog-retry">Recommencer</button>
+      </div>
+    </section>
     <form id="register-form" class="ida-stack-lg" novalidate>
       <section class="ida-card ida-form-section" aria-labelledby="sec-ident">
         <h2 id="sec-ident">Véhicule</h2>
@@ -45,6 +67,10 @@
           </div>
           <div class="ida-field"><label for="f-make">Marque</label><input class="ida-input" id="f-make" name="make" maxlength="80" autocomplete="off" dir="auto"></div>
           <div class="ida-field"><label for="f-model">Modèle</label><input class="ida-input" id="f-model" name="model" maxlength="80" autocomplete="off" dir="auto"></div>
+          <div class="ida-field"><label for="f-colour">Couleur</label>
+            <select class="ida-input" id="f-colour" name="colour"><option value="">—</option><option value="noir">Noir</option><option value="blanc">Blanc</option><option value="gris">Gris</option><option value="argent">Argent</option><option value="rouge">Rouge</option><option value="bleu">Bleu</option><option value="vert">Vert</option><option value="jaune">Jaune</option><option value="orange">Orange</option><option value="marron">Marron</option><option value="beige">Beige</option></select></div>
+          <div class="ida-field"><label for="f-body">Carrosserie</label>
+            <select class="ida-input" id="f-body" name="body_type"><option value="">—</option><option value="berline">Berline</option><option value="citadine">Citadine</option><option value="break">Break</option><option value="suv">SUV</option><option value="monospace">Monospace</option><option value="coupe">Coupé</option><option value="cabriolet">Cabriolet</option><option value="pick-up">Pick-up</option><option value="utilitaire">Utilitaire</option></select></div>
           <div class="ida-field"><label for="f-year">Année</label><input class="ida-input" id="f-year" name="year" inputmode="numeric" maxlength="4" autocomplete="off"></div>
           <div class="ida-field"><label for="f-vin">Numéro de châssis (facultatif)</label>
             <input class="ida-input" id="f-vin" name="vin" maxlength="17" autocomplete="off" spellcheck="false" dir="ltr" aria-describedby="hint-vin">
@@ -95,11 +121,58 @@
 </main>
 </div>
 </div>
+<!-- Update 2 — the scanner dialog: same markup contract as the other pages, driven by the same plate-scanner.js. -->
+<div class="ida-scan" data-scan-root hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="scan-title">
+  <div class="ida-scan-panel ida-card ida-stack">
+    <div class="ida-scan-head">
+      <h2 id="scan-title" class="ida-h3">Scanner le véhicule</h2>
+      <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-scan-action="close" aria-label="Fermer le scanner">✕</button>
+    </div>
+    <div data-scan-intro>
+      <p class="ida-small ida-muted">La caméra ne s'ouvre qu'après votre accord. La plaque est repérée et lue sur l'appareil. <span id="scan-privacy"></span></p>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="start" data-scan-start>Autoriser et ouvrir la caméra</button>
+      </div>
+    </div>
+    <div data-scan-live hidden>
+      <div class="ida-scan-stage"><video data-scan-video playsinline muted autoplay></video><div class="ida-scan-guide" aria-hidden="true"></div></div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="capture">Lire la plaque</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Annuler</button>
+      </div>
+    </div>
+    <div data-scan-busy hidden>
+      <div class="ida-skeleton ida-scan-skeleton" aria-hidden="true"></div>
+      <p class="ida-small ida-muted ida-u-mbs-2">Lecture en cours — la caméra est déjà refermée.</p>
+    </div>
+    <div data-scan-confirm hidden>
+      <p class="ida-alert ida-alert--warning ida-small" data-scan-confirm-note></p>
+      <div class="ida-scan-fields ida-u-mbs-3">
+        <div class="ida-field"><label for="scan-serie">Série</label><input class="ida-input ida-id" id="scan-serie" data-scan-confirm-serie inputmode="numeric" maxlength="3" autocomplete="off"></div>
+        <div class="ida-field"><label for="scan-numero">Numéro</label><input class="ida-input ida-id" id="scan-numero" data-scan-confirm-numero inputmode="numeric" maxlength="4" autocomplete="off"></div>
+      </div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="confirm">Valider ces chiffres</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-scan-action="retry">Reprendre une photo</button>
+      </div>
+    </div>
+    <div data-scan-error hidden>
+      <div class="ida-alert ida-alert--danger"><div><p class="ida-alert-title" data-scan-error-title></p><p class="ida-small" data-scan-error-body></p></div></div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="retry">Réessayer</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="close">Fermer</button>
+      </div>
+    </div>
+    <p class="ida-caption" data-scan-status aria-live="polite"></p>
+  </div>
+</div>
 <script src="/atelier/i18n-catalog-ar.js"></script>
 <script src="/atelier/i18n.js"></script>
 <script src="/atelier/assets/ui.js"></script>
 <script src="/atelier/shell.js"></script>
 <script src="/atelier/console.js"></script>
+<script src="/atelier/assets/plate-detector.js"></script>
+<script src="/atelier/assets/plate-scanner.js"></script>
 <script src="/atelier/app-register.js"></script>
 </body>
 </html>

@@ -53,6 +53,7 @@ var ATELIER_ASSETS = {
   '/atelier/assets/ui.js': { root: WEB_ROOT, file: 'design-system/js/ui.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/plate.js': { root: WEB_ROOT, file: 'design-system/js/plate.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/plate-scanner.js': { root: WEB_ROOT, file: 'citizen/plate-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/assets/plate-detector.js': { root: WEB_ROOT, file: 'citizen/plate-detector.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },
   // IDA-V14 — carte grise scanner: Scanic (MIT, vendored UMD, wasm inlined), the shared parser, the scanner module.
   '/atelier/assets/scanic.umd.js': { root: WEB_ROOT, file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },

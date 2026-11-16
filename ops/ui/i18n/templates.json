@@ -118,5 +118,9 @@
  [
   "{0} observation(s) à revoir —",
   "{0} ملاحظة لازمها مراجعة —"
+ ],
+ [
+  "Lecture incertaine ({0}%). Vérifiez les chiffres avant de lancer la recherche.",
+  "قراية موش متأكّدة ({0}%). ثبّت في الأرقام قبل ما تكمّل."
  ]
 ]

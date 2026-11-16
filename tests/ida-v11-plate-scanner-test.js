@@ -184,7 +184,7 @@ async function main() {
   ok(/a plate is only as trustworthy as its least certain digit/.test(scanJs),
     'and the reason is recorded where the next reader will find it');
 
-  ok(/parsed\.exact && confidence >= CONFIDENT/.test(scanJs),
+  ok(/read\.parsed\.exact && read\.confidence >= CONFIDENT/.test(scanJs),
     'a search runs unaided ONLY when the read is exact AND above that floor');
   ok(/show\("confirm"\)/.test(scanJs), 'every other outcome goes to the confirm/correct step');
   ok(/tessedit_char_whitelist:\s*"0123456789"/.test(scanJs),
