@@ -59,7 +59,7 @@
   /* Update 2 — automatic detection. The plate is looked for on a small copy of
    * the frame five times a second; ONE frame is read, and only once the plate
    * has stopped moving. After three uncertain readings the person takes over. */
-  var AUTO = { interval: 200, maxAttempts: 3, cooldown: 1200 };
+  var AUTO = { interval: 200, maxAttempts: 3, maxReads: 6, cooldown: 1200 };
   var LOW_CONTRAST = 80;            // grey levels between the digits and the plate ground
   function detectorModule() {
     var g = (typeof self !== "undefined" ? self : globalThis);
@@ -752,7 +752,7 @@
     stopAuto();
     if (!D) { setMode("manual"); return false; }
     var c = document.createElement("canvas");
-    state.auto = { tracker: D.createTracker(), attempts: 0, busy: false, canvas: c, ctx: c.getContext("2d", { willReadFrequently: true }), timer: null, ticks: 0, reads: 0, every: AUTO.interval, cost: 0, following: false, counted: false, candidate: null };
+    state.auto = { tracker: D.createTracker(), attempts: 0, busy: false, canvas: c, ctx: c.getContext("2d", { willReadFrequently: true }), timer: null, ticks: 0, reads: 0, every: AUTO.interval, cost: 0, following: false, counted: false, candidate: null, fineLock: false };
     setMode("auto");
     setStatus("Recherche de la plaque… Visez l'avant ou l'arrière du véhicule.");
     state.auto.timer = setInterval(autoTick, AUTO.interval);
@@ -768,9 +768,13 @@
     if (!vw || !vh) return;
     var t0 = Date.now();
     // the larger second look is taken every other tick only, and never while a plate is being followed
-    var found = locate(video, vw, vh, a, a.ticks % 2 === 1 && (!a.following || !a.counted));
+    // …but once the larger look is the one that found the plate, it is taken at EVERY tick (« both »): alternating
+    // between the two sizes gave two slightly different rectangles, and the plate never counted as steady.
+    var found = locate(video, vw, vh, a, a.fineLock ? "both" : (a.ticks % 2 === 1 && (!a.following || !a.counted)));
+    if (found.box && found.w > D.WORK_W) a.fineLock = true;
     var tr = a.tracker.update(found.box);
     a.following = !!tr.box;
+    if (!tr.box) a.fineLock = false;
     a.counted = counted(found.box);
     a.ticks++;
     a.cost = Date.now() - t0;
@@ -796,21 +800,25 @@
       if (e.stage === "engine") { fail("Lecteur indisponible", "Le lecteur de plaque n'a pas pu être chargé. Saisissez la plaque à la main ci-dessous."); return; }
     }
     if (state.auto !== a) return;            // closed or switched to manual meanwhile
-    a.attempts++; a.reads++;
+    a.reads++;
     state.lastRead = read;
     if (read && read.parsed && read.parsed.exact && read.confidence >= CONFIDENT) {
       // A confident reading is accepted only when a SECOND frame gives the same digits: one frame can
       // turn a 7 into a 4 with full confidence, two different frames rarely agree on the same mistake.
       var key = read.parsed.serie + "/" + read.parsed.numero;
       if (a.candidate === key) { deliver(read.parsed.serie, read.parsed.numero, read.confidence, true); return; }
-      a.candidate = key; a.attempts--;                       // not a failed attempt: a first reading awaiting its confirmation
+      a.candidate = key;                                     // not a failed attempt: a first reading awaiting its confirmation
+      if (a.reads >= AUTO.maxReads) { stopCamera(); read.confidence = Math.min(read.confidence, CONFIDENT - 1); showUncertain(read); return; }
       a.tracker.reset();
       setStatus("Plaque lue — vérification sur une deuxième image…");
       setTimeout(function () { if (state.auto === a) a.busy = false; }, 350);
       return;
     }
     a.candidate = null;
-    if (a.attempts >= AUTO.maxAttempts) {
+    a.attempts++;
+    // Three uncertain readings, or six readings in all (confident ones that a second frame did not confirm included):
+    // the loop always ends, and the last reading is shown to the person.
+    if (a.attempts >= AUTO.maxAttempts || a.reads >= AUTO.maxReads) {
       // Three uncertain readings: nothing is accepted by itself. The person checks the digits,
       // or goes back and frames the plate by hand.
       stopCamera();
@@ -916,7 +924,7 @@
     structure: structure,
     videoToStage: videoToStage,
     getMode: function () { return state.mode; },
-    autoStats: function () { return state.auto ? { ticks: state.auto.ticks, reads: state.auto.reads, attempts: state.auto.attempts, busy: state.auto.busy, every: state.auto.every, cost: state.auto.cost } : null; },
+    autoStats: function () { return state.auto ? { fineLock: state.auto.fineLock, ticks: state.auto.ticks, reads: state.auto.reads, attempts: state.auto.attempts, busy: state.auto.busy, every: state.auto.every, cost: state.auto.cost } : null; },
     lastCapture: function () { return state.lastCapture; },
     AUTO: AUTO,
     LOW_CONTRAST: LOW_CONTRAST,
