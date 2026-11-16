@@ -52,7 +52,7 @@
   // ---- Update 2 — scan the vehicle: plate found and read on the device, vehicle seen by the server's vision ----
   // Nothing recognised is saved by itself: it is shown on a card, the person confirms or corrects, and only the
   // form's own fields are sent. `recognition` records what was proposed and by which engine (provenance).
-  var recognition = null, lastScan = null;
+  var recognition = null, lastScan = null, P = window.IdAutoPhotos || null;
   var S = window.IdaPlateScanner, scanRoot = document.querySelector('[data-scan-root]'), scanOpen = document.getElementById('scan-open');
   var card = document.getElementById('recog-card');
   var COLOUR_LABEL = { noir: 'Noir', blanc: 'Blanc', gris: 'Gris', argent: 'Argent', rouge: 'Rouge', bleu: 'Bleu', vert: 'Vert', jaune: 'Jaune', orange: 'Orange', marron: 'Marron', beige: 'Beige' };
@@ -65,16 +65,21 @@
 
   async function onScan(r) {
     lastScan = r; recognition = null;
-    var canonical = r.serie + ' TUN ' + r.numero, fields = { make: null, model: null, colour: null, body_type: null }, analysis = null;
+    // Update 3 — the same card serves the photograph workflow: `r.pre` then carries what was recognised on the
+    // photographs (already analysed, one by one), and a front view may bring no registration at all.
+    var hasPlate = !!(r.serie && r.numero), canonical = hasPlate ? r.serie + ' TUN ' + r.numero : null, fields = { make: null, model: null, colour: null, body_type: null }, analysis = null;
     card.hidden = false;
     var photo = document.getElementById('recog-photo'); clear(photo);
     if (r.frame) { r.frame.className = 'ida-recog-img'; r.frame.setAttribute('role', 'img'); r.frame.setAttribute('aria-label', t('Image capturée du véhicule')); photo.appendChild(r.frame); }
     // three parts kept in reading order (digits · word · digits): left as one string, the Arabic word would reorder the digits
     var plateBox = document.getElementById('recog-plate'); clear(plateBox);
-    plateBox.appendChild(el('bdi', { dir: 'ltr', class: 'ida-id' }, r.plate.first)); plateBox.appendChild(document.createTextNode(' '));
-    plateBox.appendChild(el('bdi', { dir: 'rtl', lang: 'ar', class: 'ida-recog-word' }, r.plate.text)); plateBox.appendChild(document.createTextNode(' '));
-    plateBox.appendChild(el('bdi', { dir: 'ltr', class: 'ida-id' }, r.plate.last));
-    setText('recog-plate-conf', r.auto ? t('lecture automatique') + ' · ' + Math.round(r.confidence) + ' %' : t('chiffres validés à la main'));
+    if (hasPlate) {
+      plateBox.appendChild(el('bdi', { dir: 'ltr', class: 'ida-id' }, r.plate.first)); plateBox.appendChild(document.createTextNode(' '));
+      plateBox.appendChild(el('bdi', { dir: 'rtl', lang: 'ar', class: 'ida-recog-word' }, r.plate.text)); plateBox.appendChild(document.createTextNode(' '));
+      plateBox.appendChild(el('bdi', { dir: 'ltr', class: 'ida-id' }, r.plate.last));
+    } else plateBox.appendChild(document.createTextNode(t('Non lue')));
+    setText('recog-plate-conf', !hasPlate ? t('aucune plaque lisible sur ces photos — saisissez-la') : r.confText ? r.confText : r.auto ? t('lecture automatique') + ' · ' + Math.round(r.confidence) + ' %' : t('chiffres validés à la main'));
+    renderPhotoSummary(r);
     ['make', 'model', 'colour', 'body'].forEach(function (f) { show(f, '…', ''); });
     setText('recog-note', t('Analyse du véhicule…'));
     document.getElementById('recog-existing').hidden = true;
@@ -84,12 +89,13 @@
     if (r.colour && r.colour.value && r.colour.value !== 'unknown') fields.colour = { value: r.colour.value, confidence: r.colour.confidence, source: 'camera' };
     // 1. does this registration already exist? (never a second vehicle for one plate)
     var existing = null;
-    try {
+    if (hasPlate) try {
       var found = await C.api('/api/search?q=' + encodeURIComponent(canonical));
       (found.groups || []).forEach(function (g) { if (g.key === 'vehicles') g.items.forEach(function (i) { if (i.plate === canonical) existing = i; }); });
     } catch (e) { /* the save itself refuses a duplicate: this check is a courtesy */ }
     // 2. what the vehicle looks like — only if the operator configured the analysis
-    var blob = existing ? null : await frameBlob(r.frame);
+    if (r.pre) { analysis = r.pre.analysis || null; Object.keys(r.pre.fields || {}).forEach(function (f) { if (r.pre.fields[f] && r.pre.fields[f].value) fields[f] = r.pre.fields[f]; }); }
+    var blob = existing || r.pre ? null : await frameBlob(r.frame);
     if (blob) {
       try {
         analysis = (await C.send('POST', '/api/workspace/vehicle-recognition', blob, { raw: true, headers: { 'Content-Type': 'image/jpeg' } })).vehicle_analysis;
@@ -110,24 +116,46 @@
     if (existing) {
       ex.hidden = false;
       ex.appendChild(el('div', { class: 'ida-alert ida-alert--warning', role: 'alert' }, el('div', null, [el('p', { class: 'ida-alert-title' }, t('Ce véhicule existe déjà dans IDauto')),
-        el('p', null, existing.title || ''), el('p', null, el('a', { class: 'ida-btn ida-btn--primary ida-btn--sm', id: 'recog-open-existing', href: existing.href }, t('Ouvrir sa fiche')))])));
+        el('p', null, existing.title || ''), el('p', { class: 'ida-form-actions' }, [el('a', { class: 'ida-btn ida-btn--primary ida-btn--sm', id: 'recog-open-existing', href: existing.href }, t('Ouvrir sa fiche')),
+          P && P.count() ? el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', id: 'recog-add-photos' }, t('Ajouter ces photos à ce véhicule')) : null])])));
+      var addBtn = document.getElementById('recog-add-photos');
+      if (addBtn) addBtn.addEventListener('click', async function () {
+        // the existing vehicle keeps its record: only the photographs are added to it, never a second vehicle
+        addBtn.disabled = true; addBtn.textContent = t('Envoi des photos…');
+        var ref = new URLSearchParams(existing.href.split('?')[1] || '').get('ref'), failed = await P.uploadAll(ref);
+        if (failed.length) { addBtn.disabled = false; addBtn.textContent = t('Ajouter ces photos à ce véhicule'); showErrors(failed); return; }
+        window.location.assign(existing.href + '&photos=1');
+      });
     }
     document.getElementById('recog-confirm').disabled = !!existing;
     document.getElementById('recog-correct').disabled = !!existing;
   }
 
+  // which photograph shows what, and where each was taken — the location is the photograph's
+  function renderPhotoSummary(r) {
+    var box = document.getElementById('recog-photos'), cf = document.getElementById('recog-conflicts');
+    if (!box || !cf) return;
+    clear(box); clear(cf);
+    (r.photos || []).forEach(function (ph) { box.appendChild(el('li', null, [el('strong', null, ph.viewLabel), ' — ', ph.placeLabel, ph.dateLabel ? ' · ' + ph.dateLabel : ''])); });
+    box.hidden = !(r.photos || []).length;
+    (r.conflicts || []).forEach(function (c) {
+      cf.appendChild(el('p', { class: 'ida-alert ida-alert--warning ida-small' }, t('Les photos ne s\'accordent pas sur : ') + c.label + ' (' + c.values.join(' / ') + '). ' + t('Vérifiez cette valeur avant d\'enregistrer.')));
+    });
+  }
+
   function applyScan(focusFirst) {
     var r = lastScan; if (!r || r.existing) return;
     form.querySelector('input[name=plate_type][value=TU]').checked = true; form.querySelector('[data-plate-word]').textContent = 'TU';
-    form.plate_series.value = r.serie; form.plate_number.value = r.numero;
+    if (r.serie && r.numero) { form.plate_series.value = r.serie; form.plate_number.value = r.numero; }
     var f = r.fields || {};
     // a value typed by hand before the scan is never overwritten
     if (f.make && !val('make')) form.make.value = f.make.value;
-    if (f.model && !val('model')) form.model.value = f.model.value;
+    if (f.model && !val('model')) form.model.value = f.model.value + (f.trim && f.trim.value ? ' ' + f.trim.value : '');
+    if (f.year && !val('year')) form.year.value = f.year.value;
     if (f.colour && !val('colour')) form.colour.value = f.colour.value;
     if (f.body_type && !val('body_type')) form.body_type.value = f.body_type.value;
     recognition = { provider: r.analysis && r.analysis.enabled ? r.analysis.provider : null, model: r.analysis && r.analysis.enabled ? r.analysis.model : null,
-      plate: { confidence: r.confidence, auto: !!r.auto }, fields: {} };
+      plate: r.serie && r.numero ? { confidence: r.confidence, auto: !!r.auto } : null, fields: {} };
     ['make', 'model', 'colour', 'body_type'].forEach(function (k) { if (f[k]) recognition.fields[k] = { proposed: f[k].value, confidence: f[k].confidence, source: f[k].source }; });
     card.hidden = true;
     var status = document.getElementById('page-status'); clear(status);
@@ -151,6 +179,9 @@
         : t('Aucune image ne quitte l\'appareil.'));
     }).catch(function () {});
   }
+
+  window.IdAutoRegister = { showResult: onScan, labels: { colour: COLOUR_LABEL, body: BODY_LABEL } };
+  if (P) P.ready();
 
   // ---- submit ----------------------------------------------------------------------
   function val(n) { var x = form.elements[n]; return x ? x.value.trim() : ''; }
@@ -196,6 +227,16 @@
         clear(status); status.appendChild(el('div', { class: 'ida-alert ida-alert--warning', role: 'alert' }, el('div', null, [el('p', { class: 'ida-alert-title' }, t('Véhicule enregistré, mais une photo n\'a pas été jointe')),
           el('p', null, failed.join(' · ')), el('p', null, el('a', { href: '/atelier/vehicule?ref=' + ref }, t('Ouvrir le dossier pour la joindre à nouveau')))])));
         submit.disabled = false; submit.textContent = t('Enregistrer le véhicule'); return;
+      }
+      // Update 3 — the photographs go to the vehicle just created, each with its own view, date, location and analysis
+      if (P && P.count()) {
+        submit.textContent = t('Envoi des photos…');
+        var photoFailed = await P.uploadAll(out.ivid);
+        if (photoFailed.length) {
+          clear(status); status.appendChild(el('div', { class: 'ida-alert ida-alert--warning', role: 'alert' }, el('div', null, [el('p', { class: 'ida-alert-title' }, t('Véhicule enregistré, mais une photo n\'a pas été jointe')),
+            el('p', null, photoFailed.join(' · ')), el('p', null, el('a', { href: '/atelier/vehicule?ref=' + ref }, t('Ouvrir le dossier pour la joindre à nouveau')))])));
+          submit.disabled = false; submit.textContent = t('Enregistrer le véhicule'); return;
+        }
       }
       window.location.assign('/atelier/vehicule?ref=' + ref + '&created=1');
     } catch (err) {

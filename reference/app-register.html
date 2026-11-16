@@ -20,11 +20,25 @@
     <header class="ida-page-head">
       <div>
         <h1>Ajouter un véhicule</h1>
-        <p class="ida-muted ida-u-maxch-52">Seule l&#x27;immatriculation est obligatoire. « Scanner le véhicule » lit la plaque avec la caméra et propose les valeurs : vous les vérifiez avant d&#x27;enregistrer.</p>
+        <p class="ida-muted ida-u-maxch-52">Seule l&#x27;immatriculation est obligatoire. Photographiez le véhicule : la plaque est lue sur la photo et les valeurs sont proposées. Vous les vérifiez avant d&#x27;enregistrer.</p>
       </div>
-      <div class="ida-page-actions"><button type="button" class="ida-btn ida-btn--secondary" id="scan-open" hidden>Scanner le véhicule</button></div>
+      <div class="ida-page-actions"></div>
     </header>
     <div id="page-status" aria-live="polite"></div>
+
+    <!-- Update 3 — photograph the vehicle (front, rear, or both): each photograph is analysed and keeps its own
+         capture date and location. Nothing is saved until the form below is submitted. -->
+    <section class="ida-card ida-form-section" id="photos-box" aria-labelledby="photos-title">
+      <h2 id="photos-title">Photos du véhicule</h2>
+      <p class="ida-small ida-muted">Photographiez l'avant ou l'arrière du véhicule en entier. La plaque est cherchée sur la photo : rien à cadrer. <span id="photos-privacy"></span></p>
+      <div class="ida-form-actions ida-photo-actions">
+        <label class="ida-btn ida-btn--primary ida-file-btn" id="photo-take-label">Prendre une photo<input type="file" accept="image/*" capture="environment" id="photo-take" hidden></label>
+        <label class="ida-btn ida-btn--secondary ida-file-btn">Choisir une image<input type="file" accept="image/jpeg,image/png,image/webp" id="photo-pick" multiple hidden></label>
+        <button type="button" class="ida-btn ida-btn--ghost" id="scan-open" hidden>Scanner la plaque en vidéo</button>
+      </div>
+      <p class="ida-field-hint" id="photo-geo-hint">Pour une photo prise ici, la position de l'appareil est demandée afin de situer la photo. Vous pouvez refuser : la photo est prise quand même.</p>
+      <ul class="ida-photo-list" id="photo-list"></ul>
+    </section>
 
     <!-- Update 2 — what the camera recognised, shown before anything reaches the form. -->
     <section class="ida-card ida-recog" id="recog-card" aria-labelledby="recog-title" hidden>
@@ -39,6 +53,8 @@
           <div><dt>Carrosserie</dt><dd><span id="recog-body"></span> <span class="ida-recog-conf" id="recog-body-conf"></span></dd></div>
         </dl>
       </div>
+      <ul class="ida-recog-photos ida-small" id="recog-photos" hidden></ul>
+      <div id="recog-conflicts"></div>
       <p class="ida-small ida-muted" id="recog-note"></p>
       <div id="recog-existing" hidden></div>
       <div class="ida-form-actions">
@@ -172,7 +188,9 @@
 <script src="/atelier/shell.js"></script>
 <script src="/atelier/console.js"></script>
 <script src="/atelier/assets/plate-detector.js"></script>
+<script src="/atelier/assets/photo-meta.js"></script>
 <script src="/atelier/assets/plate-scanner.js"></script>
+<script src="/atelier/app-photos.js"></script>
 <script src="/atelier/app-register.js"></script>
 </body>
 </html>

@@ -2,9 +2,11 @@
 // IDauto — Update 2 — vehicle visual recognition (make, model, colour, body type).
 //
 // What this is: a photo of the whole vehicle is shown to a vision model, which
-// names what it SEES. It never receives the registration number, and nothing
-// here looks a vehicle up in a database: every value returned is marked
-// `source: 'vision'` so it cannot be mistaken for a fact from a register.
+// names what it SEES: front or rear, make, model, trim, colour, body type and —
+// Update 3 — the registration number when it is clearly readable. Nothing here
+// looks a vehicle up in a database, and nothing is inferred from the number:
+// every value returned is marked `source: 'vision'` so it cannot be mistaken
+// for a fact from a register.
 //
 // OFF BY DEFAULT. A photo leaves this server only when the operator sets
 //   IDAUTO_VISION_PROVIDER=anthropic   and an API key (ANTHROPIC_API_KEY, or
@@ -24,26 +26,36 @@ var MAX_IMAGE_BYTES = 1500000;     // the browser sends a 1280 px JPEG, a few hu
 var COLOURS = ['noir', 'blanc', 'gris', 'argent', 'rouge', 'bleu', 'vert', 'jaune', 'orange', 'marron', 'beige', 'unknown'];
 var BODY_TYPES = ['berline', 'citadine', 'break', 'suv', 'monospace', 'coupe', 'cabriolet', 'pick-up', 'utilitaire', 'unknown'];
 
+var VIEWS = ['front', 'rear', 'unknown'];
+
 var SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['vehicle_visible', 'make', 'make_confidence', 'model', 'model_confidence', 'colour', 'colour_confidence', 'body_type', 'body_type_confidence'],
+  required: ['vehicle_visible', 'view', 'make', 'make_confidence', 'model', 'model_confidence', 'trim', 'trim_confidence', 'colour', 'colour_confidence', 'body_type', 'body_type_confidence',
+    'year', 'year_confidence', 'plate_visible', 'plate_first_digits', 'plate_last_digits', 'plate_confidence'],
   properties: {
     vehicle_visible: { type: 'boolean' },
+    view: { type: 'string', enum: VIEWS },
     make: { type: 'string' }, make_confidence: { type: 'number' },
     model: { type: 'string' }, model_confidence: { type: 'number' },
+    trim: { type: 'string' }, trim_confidence: { type: 'number' },
     colour: { type: 'string', enum: COLOURS }, colour_confidence: { type: 'number' },
-    body_type: { type: 'string', enum: BODY_TYPES }, body_type_confidence: { type: 'number' }
+    body_type: { type: 'string', enum: BODY_TYPES }, body_type_confidence: { type: 'number' },
+    year: { type: 'string' }, year_confidence: { type: 'number' },
+    plate_visible: { type: 'boolean' },
+    plate_first_digits: { type: 'string' }, plate_last_digits: { type: 'string' }, plate_confidence: { type: 'number' }
   }
 };
 
 var SYSTEM = [
-  'You identify what is visible in one photograph of a road vehicle, for a workshop that will check your answer before saving it.',
-  'Name the make from what the photo shows: the badge, the grille, the lamps, the body shape. Name the model and its trim only when lettering or an unmistakable shape supports it.',
-  'A wrong name is worse than no name: the person may trust it. When you are not confident, answer "unknown" and give a low confidence. Confidence is your own estimate between 0 and 1 that the value is right.',
-  'Do not read, use or repeat the registration plate, and do not infer anything from it. Do not describe people.',
-  'make: the manufacturer as written on its cars (for example "Chevrolet"). model: the model name with its trim when the lettering shows it (for example "Aveo LS").',
+  'You describe what is visible in one photograph of a road vehicle, for a workshop that will check every value before saving it.',
+  'A wrong value is worse than no value: the person may trust it. When you are not confident, answer "unknown" and give a low confidence. Each confidence is your own estimate, between 0 and 1, that the value is right.',
+  'view: "front" when the photograph shows the front of the vehicle, "rear" when it shows the back, "unknown" otherwise.',
+  'make: the manufacturer as written on its cars (for example "Chevrolet"), named from the badge, the grille, the lamps, the body shape. model: the model name (for example "Aveo"). trim: the version only when lettering on the car shows it (for example "LS"); otherwise "unknown".',
   'colour: the paint colour of the body, one of the listed French words. body_type: one of the listed French words.',
-  'If the photo does not show a vehicle, set vehicle_visible to false and every value to "unknown".'
+  'year: a four-digit model year ONLY when the photograph gives direct evidence of it; a generation or a guess is not evidence — then "unknown".',
+  'Registration plate: Tunisian plates are white characters on black, digits · the Arabic word تونس · digits. If such a plate is clearly readable, set plate_visible to true, plate_first_digits to the digits before the word (1 to 3) and plate_last_digits to the digits after it (1 to 4). If no plate is visible, or you cannot read every digit, set plate_visible to false and both to "". Many front photographs show no plate: that is normal.',
+  'Identify the make and model from the vehicle itself. Never infer them, or anything else, from the registration number. Do not describe people or the surroundings.',
+  'If the photograph does not show a vehicle, set vehicle_visible to false and every value to "unknown".'
 ].join('\n');
 
 function config(env) {
@@ -54,8 +66,9 @@ function config(env) {
 }
 
 function unknownField() { return { value: null, confidence: 0, source: 'vision' }; }
+function emptyFields() { return { make: unknownField(), model: unknownField(), trim: unknownField(), colour: unknownField(), body_type: unknownField(), year: unknownField() }; }
 function emptyResult(extra) {
-  return Object.assign({ enabled: false, vehicle_visible: null, fields: { make: unknownField(), model: unknownField(), colour: unknownField(), body_type: unknownField() } }, extra || {});
+  return Object.assign({ enabled: false, vehicle_visible: null, view: 'unknown', plate: null, fields: emptyFields() }, extra || {});
 }
 
 function clamp01(n) { n = Number(n); return isFinite(n) ? Math.max(0, Math.min(1, n)) : 0; }
@@ -65,23 +78,34 @@ function cleanText(v, max) {
   return s.slice(0, max);
 }
 
-// Turns the model's answer into the four fields. Anything unexpected becomes "unknown":
-// a value is kept only when it is well formed AND its confidence reaches MIN_CONFIDENCE.
+// Turns the model's answer into fields. Anything unexpected becomes "unknown": a value is kept only
+// when it is well formed AND its confidence reaches MIN_CONFIDENCE. Every value is marked source: 'vision'
+// — what the model names from the image, to be confirmed by the person, never a fact from a register.
 function normalise(raw) {
-  var out = { vehicle_visible: !!(raw && raw.vehicle_visible), fields: {} };
-  function field(name, max, allowed) {
+  var out = { vehicle_visible: !!(raw && raw.vehicle_visible), view: raw && VIEWS.indexOf(raw.view) !== -1 ? raw.view : 'unknown', plate: null, fields: {} };
+  function field(name, max, allowed, test) {
     var value = cleanText(raw && raw[name], max), confidence = clamp01(raw && raw[name + '_confidence']);
     if (allowed && value && allowed.indexOf(value.toLowerCase()) === -1) value = null;
     if (allowed && value) value = value.toLowerCase();
+    if (test && value && !test(value)) value = null;
     if (!out.vehicle_visible || !value || confidence < MIN_CONFIDENCE) return { value: null, confidence: value ? Math.round(confidence * 100) / 100 : 0, source: 'vision' };
     return { value: value, confidence: Math.round(confidence * 100) / 100, source: 'vision' };
   }
   out.fields.make = field('make', 80);
   out.fields.model = field('model', 80);
+  out.fields.trim = field('trim', 40);
   out.fields.colour = field('colour', 40, COLOURS);
   out.fields.body_type = field('body_type', 40, BODY_TYPES);
-  // A model without its make is not offered: the model name alone means nothing.
+  out.fields.year = field('year', 4, null, function (v) { return /^(19[5-9]\d|20\d\d)$/.test(v) && Number(v) <= new Date().getFullYear() + 1; });
+  // A model without its make is not offered, nor a trim without its model: alone they mean nothing.
   if (!out.fields.make.value) out.fields.model = { value: null, confidence: out.fields.model.confidence, source: 'vision' };
+  if (!out.fields.model.value) out.fields.trim = { value: null, confidence: out.fields.trim.confidence, source: 'vision' };
+  if (!out.vehicle_visible) out.view = 'unknown';
+  // The registration number as the model read it: kept only when it has the shape of a Tunisian number and the model is confident.
+  var first = String(raw && raw.plate_first_digits || '').replace(/\s/g, ''), last = String(raw && raw.plate_last_digits || '').replace(/\s/g, ''), pc = clamp01(raw && raw.plate_confidence);
+  if (out.vehicle_visible && raw && raw.plate_visible === true && /^\d{1,3}$/.test(first) && /^\d{1,4}$/.test(last) && pc >= MIN_CONFIDENCE) {
+    out.plate = { serie: first, numero: last, format: 'TUN_STD', text: first + ' تونس ' + last, confidence: Math.round(pc * 100), source: 'vision' };
+  }
   return out;
 }
 
@@ -112,7 +136,7 @@ async function analyse(jpeg, opts) {
       output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') } },
-        { type: 'text', text: 'Identify the vehicle in this photo.' }
+        { type: 'text', text: 'Describe the vehicle in this photograph.' }
       ] }]
     });
   } catch (err) {
@@ -127,7 +151,7 @@ async function analyse(jpeg, opts) {
   try { parsed = JSON.parse(text); } catch (e) { var m = text.match(/\{[\s\S]*\}/); if (m) { try { parsed = JSON.parse(m[0]); } catch (e2) { parsed = null; } } }
   if (!parsed || typeof parsed !== 'object') return emptyResult({ enabled: true, provider: 'anthropic', model: response.model || cfg.model, error: 'provider_bad_answer' });
   var n = normalise(parsed);
-  return { enabled: true, provider: 'anthropic', model: response.model || cfg.model, vehicle_visible: n.vehicle_visible, fields: n.fields };
+  return { enabled: true, provider: 'anthropic', model: response.model || cfg.model, vehicle_visible: n.vehicle_visible, view: n.view, plate: n.plate, fields: n.fields };
 }
 
-module.exports = { analyse: analyse, config: config, normalise: normalise, isJpeg: isJpeg, SCHEMA: SCHEMA, COLOURS: COLOURS, BODY_TYPES: BODY_TYPES, MIN_CONFIDENCE: MIN_CONFIDENCE, MAX_IMAGE_BYTES: MAX_IMAGE_BYTES, DEFAULT_MODEL: DEFAULT_MODEL };
+module.exports = { analyse: analyse, config: config, normalise: normalise, isJpeg: isJpeg, SCHEMA: SCHEMA, VIEWS: VIEWS, COLOURS: COLOURS, BODY_TYPES: BODY_TYPES, MIN_CONFIDENCE: MIN_CONFIDENCE, MAX_IMAGE_BYTES: MAX_IMAGE_BYTES, DEFAULT_MODEL: DEFAULT_MODEL };

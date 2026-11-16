@@ -134,14 +134,19 @@ async function listVehicles(actor, opts) {
     params.push(q); cond.push('upper(v.ivid) = upper($' + params.length + ')');
     where.push('(' + cond.join(' OR ') + ')');
   }
+  // the photographs table exists once its migration is applied; before that the list simply has no photo columns
+  var hasPhotos = (await db.query("SELECT to_regclass('public.idauto_vehicle_photos') IS NOT NULL AS t")).rows[0].t;
   var sql = 'SELECT v.id, v.ivid, v.make, v.model, v.variant, v.year, v.fuel_type, v.colour, v.body_type, v.created_at, v.odometer_km, ' +
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate, " +
-    "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS faces, ' +
+    "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'carte_grise'" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS faces, ' +
+    // Update 3 — where the LATEST PHOTOGRAPH was taken (the photograph's location, never the vehicle's), and how many there are.
+    (hasPhotos ? "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'vehicle_photo'" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS photos, ' +
+    "(SELECT json_build_object('place_name', p.place_name, 'governorate', p.governorate, 'source', p.location_source, 'captured_at', p.captured_at) FROM idauto_vehicle_photos p JOIN idauto_vehicle_documents d ON d.id = p.document_id WHERE p.vehicle_id = v.id AND p.location_source IS NOT NULL" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ' ORDER BY p.captured_at DESC NULLS LAST, d.created_at DESC LIMIT 1) AS last_photo_location, ' : '0 AS photos, NULL AS last_photo_location, ') +
     "(SELECT max(coalesce(w.performed_on, w.opened_at::date)) FROM idauto_workshop_visits w WHERE w.vehicle_id = v.id AND w.status <> 'cancelled'" + (isAdmin(actor) ? '' : ' AND w.org_id = $1') + ') AS last_intervention_at ' +
     'FROM idauto_vehicles v WHERE ' + where.join(' AND ') + ' ORDER BY v.created_at DESC LIMIT ' + (pg.limit + 1) + ' OFFSET ' + pg.offset;
   var rows = (await db.query(sql, params)).rows;
   var total = (await db.query('SELECT count(*)::int n FROM idauto_vehicles v WHERE ' + where.join(' AND '), params)).rows[0].n;
-  return { page: pg.page, has_more: rows.length > pg.limit, total: total, vehicles: rows.slice(0, pg.limit).map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, variant: r.variant, year: r.year, fuel_type: r.fuel_type, colour: r.colour || null, body_type: r.body_type || null, documents: r.faces, odometer_km: r.odometer_km, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; }) };
+  return { page: pg.page, has_more: rows.length > pg.limit, total: total, vehicles: rows.slice(0, pg.limit).map(function (r) { return { ivid: r.ivid, plate: r.plate, make: r.make, model: r.model, variant: r.variant, year: r.year, fuel_type: r.fuel_type, colour: r.colour || null, body_type: r.body_type || null, documents: r.faces, photos: r.photos || 0, last_photo_location: r.last_photo_location || null, odometer_km: r.odometer_km, last_intervention_at: r.last_intervention_at, created_at: r.created_at }; }) };
 }
 
 async function listDocuments(actor, opts) {
