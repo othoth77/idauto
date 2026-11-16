@@ -143,20 +143,18 @@
       <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-scan-action="close" aria-label="Fermer le scanner">✕</button>
     </div>
 
-    <!-- 1. Update 3.1 — first: a photograph of the whole vehicle, analysed at once. The video scanner below stays as an alternative. -->
+    <!-- 1. Update 3.1 (final) — the camera opens at once: live preview, one button to take the photograph.
+         No front/rear question: the view is recognised. The video plate scanner stays as the alternative. -->
     <div data-scan-intro>
-      <div class="ida-stack" data-hp-pick>
-        <p class="ida-small">Photographiez l'avant ou l'arrière du véhicule en entier&nbsp;: la plaque est cherchée sur la photo, rien à cadrer.</p>
-        <fieldset class="ida-radio-group ida-radio-inline">
-          <legend class="ida-small">Vue</legend>
-          <label class="ida-radio"><input type="radio" name="hp-view" value="rear" checked> Arrière</label>
-          <label class="ida-radio"><input type="radio" name="hp-view" value="front"> Avant</label>
-        </fieldset>
+      <div class="ida-stack" data-hp-camera>
+        <div class="ida-scan-stage ida-hp-stage"><video data-hp-video playsinline muted autoplay></video></div>
+        <p class="ida-caption" data-hp-cam-status role="status" aria-live="polite">Ouverture de la caméra…</p>
         <div class="ida-search-actions">
-          <label class="ida-btn ida-btn--primary ida-file-btn" data-hp-take-label>Prendre une photo du véhicule<input type="file" accept="image/*" capture="environment" data-hp-take hidden></label>
+          <button type="button" class="ida-btn ida-btn--primary" data-hp-shutter disabled>Prendre la photo</button>
           <label class="ida-btn ida-btn--secondary ida-file-btn">Choisir une image<input type="file" accept="image/jpeg,image/png,image/webp" data-hp-pick-file hidden></label>
+          <label class="ida-btn ida-btn--ghost ida-file-btn" data-hp-native hidden>Ouvrir l'appareil photo<input type="file" accept="image/*" capture="environment" data-hp-take hidden></label>
         </div>
-        <p class="ida-caption" data-hp-privacy>La photo est analysée sur votre appareil&nbsp;; elle n'est pas enregistrée. Pour une photo prise ici, la position de l'appareil vous est demandée afin de situer la photo&nbsp;: vous pouvez refuser.</p>
+        <p class="ida-caption" data-hp-privacy>Photographiez le véhicule en entier, de face ou de dos. La plaque est cherchée sur la photo.</p>
       </div>
       <div class="ida-search-actions ida-u-mbs-3">
         <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="start" data-scan-start>Scanner la plaque en vidéo</button>
@@ -168,6 +166,7 @@
       <div class="ida-recog-body">
         <div class="ida-recog-photo" data-hp-photo></div>
         <div class="ida-stack">
+          <p class="ida-small" data-hp-saved role="status" aria-live="polite" hidden></p>
           <p class="ida-small ida-muted" data-hp-busy role="status" aria-live="polite"></p>
           <div class="ida-scan-fields">
             <div class="ida-field"><label for="hp-serie">Série</label><input class="ida-input ida-id" id="hp-serie" data-hp-serie inputmode="numeric" maxlength="3" autocomplete="off"></div>
@@ -175,6 +174,12 @@
           </div>
           <p class="ida-caption" data-hp-plate-note></p>
           <dl class="ida-recog-list" data-hp-fields></dl>
+          <div class="ida-scan-fields" data-hp-edit hidden>
+            <div class="ida-field"><label for="hp-make">Marque</label><input class="ida-input" id="hp-make" data-hp-make maxlength="80" dir="auto" autocomplete="off"></div>
+            <div class="ida-field"><label for="hp-model">Modèle</label><input class="ida-input" id="hp-model" data-hp-model maxlength="80" dir="auto" autocomplete="off"></div>
+            <div class="ida-field"><label for="hp-colour">Couleur</label><select class="ida-input" id="hp-colour" data-hp-colour><option value="">—</option><option value="noir">Noir</option><option value="blanc">Blanc</option><option value="gris">Gris</option><option value="argent">Argent</option><option value="rouge">Rouge</option><option value="bleu">Bleu</option><option value="vert">Vert</option><option value="jaune">Jaune</option><option value="orange">Orange</option><option value="marron">Marron</option><option value="beige">Beige</option></select></div>
+            <div class="ida-field"><label for="hp-body">Carrosserie</label><select class="ida-input" id="hp-body" data-hp-body><option value="">—</option><option value="berline">Berline</option><option value="citadine">Citadine</option><option value="break">Break</option><option value="suv">SUV</option><option value="monospace">Monospace</option><option value="coupe">Coupé</option><option value="cabriolet">Cabriolet</option><option value="pick-up">Pick-up</option><option value="utilitaire">Utilitaire</option></select></div>
+          </div>
           <p class="ida-small" data-hp-place-line></p>
           <div class="ida-photo-loc-edit" data-hp-loc-edit hidden>
             <select class="ida-input" data-hp-gov aria-label="Gouvernorat"><option value="">—</option></select>
@@ -184,8 +189,11 @@
           <p class="ida-caption" data-hp-note></p>
         </div>
       </div>
+      <div data-hp-existing hidden></div>
       <div class="ida-search-actions ida-u-mbs-3">
-        <button type="button" class="ida-btn ida-btn--primary" data-hp-search>Rechercher cette plaque</button>
+        <button type="button" class="ida-btn ida-btn--primary" data-hp-save hidden>Enregistrer le véhicule</button>
+        <button type="button" class="ida-btn ida-btn--primary" data-hp-attach hidden>Ajouter la photo à son dossier</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-hp-search>Rechercher cette plaque</button>
         <button type="button" class="ida-btn ida-btn--secondary" data-hp-again>Prendre une autre photo</button>
       </div>
     </div>

@@ -28,6 +28,7 @@ var storageModule = require('../documents/document-storage.js');
 var documentRepository = require('../documents/document-repository.js');
 var geo = require('./tn-geo.js');
 var clean = require('./photo-clean.js');
+var replica = require('../replica/haddad-replica.js');
 
 var LIMITS = { max_bytes: parseInt(process.env.IDAUTO_DOCUMENT_MAX_BYTES || String(6 * 1024 * 1024), 10), min_edge: 200, max_edge: 5000, max_per_vehicle: 40 };
 var COLS = 'd.id, d.vehicle_id, d.org_id, d.face, d.storage_key, d.mime_type, d.byte_size, d.width, d.height, d.sha256, d.created_by, d.created_at, ' +
@@ -70,7 +71,8 @@ async function list(vehicleRef, actor) {
   var vehicle = await vehicleFor(vehicleRef), params = [vehicle.id], org = orgOf(actor);
   var vis = org ? (params.push(org), 'd.org_id = $2') : 'TRUE';
   var rows = (await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents d JOIN idauto_vehicle_photos p ON p.document_id = d.id WHERE d.vehicle_id = $1 AND d.document_type = 'vehicle_photo' AND " + vis + ' ORDER BY d.face', params)).rows;
-  return { vehicle: vehicle.ivid, photos: rows.map(view) };
+  var st = await replica.status(rows.map(function (r) { return r.storage_key; })).catch(function () { return {}; });
+  return { vehicle: vehicle.ivid, photos: rows.map(function (r) { var v = view(r); v.haddad = st[r.storage_key] || 'not_configured'; return v; }) };
 }
 
 async function one(vehicle, id, actor, runner) {
@@ -85,33 +87,49 @@ async function one(vehicle, id, actor, runner) {
 // add(vehicleRef, bytes, rawMeta, actor) → { vehicle, photo, duplicate }
 async function add(vehicleRef, bytes, rawMeta, actor) {
   var vehicle = await vehicleFor(vehicleRef);
-  var meta = inspect(bytes), m = clean.photoMeta(rawMeta), org = orgOf(actor);
-  var sha = crypto.createHash('sha256').update(bytes).digest('hex');
-  // The same photograph again (same bytes, same vehicle, same workshop): the one already there is the answer.
-  var dupParams = [vehicle.id, sha], dupVis = org ? (dupParams.push(org), 'd.org_id = $3') : 'd.org_id IS NULL';
-  var existing = (await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents d JOIN idauto_vehicle_photos p ON p.document_id = d.id WHERE d.vehicle_id = $1 AND d.sha256 = $2 AND d.document_type = 'vehicle_photo' AND " + dupVis, dupParams)).rows[0];
+  var meta = inspect(bytes);
+  var file = { sha256: crypto.createHash('sha256').update(bytes).digest('hex'), mime: meta.mime, byte_size: bytes.length, width: meta.width, height: meta.height };
+  var existing = await sameFile(vehicle, file.sha256, actor);
   if (existing) return { vehicle: vehicle.ivid, photo: view(existing), duplicate: true };
-  var storage = storageModule.getStorage(), stored = await storage.put(bytes, meta.mime), loc = locationColumns(m.location), idOut = null;
-  try {
-    await writes.withAudit(
-      { principal: actor.principal, event_type: 'vehicle_photo.add', target_type: 'idauto_vehicle_documents', change_summary: 'vehicle photograph stored (' + m.view + ', location ' + (loc.location_source || 'unknown') + ')' },
-      actor.identity,
-      async function (client) {
-        await client.query('SELECT id FROM idauto_vehicles WHERE id = $1 FOR UPDATE', [vehicle.id]);      // one numbering at a time per vehicle
-        var n = (await client.query("SELECT coalesce(max(face), 0)::int n, count(*)::int c FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'vehicle_photo'", [vehicle.id])).rows[0];
-        if (n.c >= LIMITS.max_per_vehicle) throw errors.IdautoError('CONFLICT', { reason: 'too_many_photos', max: LIMITS.max_per_vehicle });
-        var doc = (await client.query(
-          "INSERT INTO idauto_vehicle_documents (vehicle_id, org_id, document_type, face, storage_key, mime_type, byte_size, width, height, sha256, ocr_status, created_by) VALUES ($1,$2,'vehicle_photo',$3,$4,$5,$6,$7,$8,$9,'none',$10) RETURNING id",
-          [vehicle.id, org, n.n + 1, stored.key, meta.mime, bytes.length, meta.width, meta.height, sha, actor.identity])).rows[0];
-        await client.query('INSERT INTO idauto_vehicle_photos (document_id, vehicle_id, view, captured_at, latitude, longitude, place_name, governorate, country, location_source, analysis, confidence, confirmed) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
-          [doc.id, vehicle.id, m.view, m.captured_at, loc.latitude, loc.longitude, loc.place_name, loc.governorate, loc.country, loc.location_source, m.analysis ? JSON.stringify(m.analysis) : null, m.confidence, m.confirmed]);
-        idOut = doc.id;
-        return { record: { id: String(doc.id), vehicle_id: vehicle.id, number: n.n + 1, view: m.view, sha256: sha, location_source: loc.location_source }, auditTargetRef: doc.id };
-      });
-  } catch (err) {
+  var storage = storageModule.getStorage(), stored = await storage.put(bytes, meta.mime);
+  file.key = stored.key;
+  try { return await addStored(vehicle, file, clean.photoMeta(rawMeta), actor); }
+  catch (err) {
     if (await documentRepository.referencesOfKey(stored.key, 0) === 0) await storage.remove(stored.key);   // a refused upload leaves no file behind
     throw err;
   }
+}
+
+// The same photograph again (same bytes, same vehicle, same workshop — or both anonymous): the one already there.
+async function sameFile(vehicle, sha, actor) {
+  var org = orgOf(actor), dupParams = [vehicle.id, sha], dupVis = org ? (dupParams.push(org), 'd.org_id = $3') : 'd.org_id IS NULL';
+  return (await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents d JOIN idauto_vehicle_photos p ON p.document_id = d.id WHERE d.vehicle_id = $1 AND d.sha256 = $2 AND d.document_type = 'vehicle_photo' AND " + dupVis, dupParams)).rows[0] || null;
+}
+
+// A file ALREADY in the media store (a scan photograph being attached) becomes a vehicle photograph:
+// no second file, the same key. `m` is already cleaned (photo-clean.js). Returns { vehicle, photo, duplicate }.
+async function addStored(vehicle, file, m, actor, opts) {
+  opts = opts || {};
+  var existing = await sameFile(vehicle, file.sha256, actor);
+  if (existing) return { vehicle: vehicle.ivid, photo: view(existing), duplicate: true };
+  var org = orgOf(actor), loc = locationColumns(m.location), idOut = null;
+  await writes.withAudit(
+    { principal: actor.principal, event_type: 'vehicle_photo.add', target_type: 'idauto_vehicle_documents', change_summary: 'vehicle photograph stored (' + m.view + ', location ' + (loc.location_source || 'unknown') + (opts.from ? ', from ' + opts.from : '') + ')' },
+    actor.identity,
+    async function (client) {
+      await client.query('SELECT id FROM idauto_vehicles WHERE id = $1 FOR UPDATE', [vehicle.id]);      // one numbering at a time per vehicle
+      var n = (await client.query("SELECT coalesce(max(face), 0)::int n, count(*)::int c FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'vehicle_photo'", [vehicle.id])).rows[0];
+      if (n.c >= LIMITS.max_per_vehicle) throw errors.IdautoError('CONFLICT', { reason: 'too_many_photos', max: LIMITS.max_per_vehicle });
+      var doc = (await client.query(
+        "INSERT INTO idauto_vehicle_documents (vehicle_id, org_id, document_type, face, storage_key, mime_type, byte_size, width, height, sha256, ocr_status, created_by) VALUES ($1,$2,'vehicle_photo',$3,$4,$5,$6,$7,$8,$9,'none',$10) RETURNING id",
+        [vehicle.id, org, n.n + 1, file.key, file.mime, file.byte_size, file.width, file.height, file.sha256, actor.identity])).rows[0];
+      await client.query('INSERT INTO idauto_vehicle_photos (document_id, vehicle_id, view, captured_at, latitude, longitude, place_name, governorate, country, location_source, analysis, confidence, confirmed) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        [doc.id, vehicle.id, m.view, m.captured_at, loc.latitude, loc.longitude, loc.place_name, loc.governorate, loc.country, loc.location_source, m.analysis ? JSON.stringify(m.analysis) : null, m.confidence, m.confirmed]);
+      if (opts.inTransaction) await opts.inTransaction(client, doc.id);
+      idOut = doc.id;
+      return { record: { id: String(doc.id), vehicle_id: vehicle.id, number: n.n + 1, view: m.view, sha256: file.sha256, location_source: loc.location_source }, auditTargetRef: doc.id };
+    });
+  await replica.enqueue(file.key).catch(function () {});        // second copy on Haddad; a failure is recorded, never fatal here
   return { vehicle: vehicle.ivid, photo: view(await one(vehicle, idOut, actor)), duplicate: false };
 }
 
@@ -150,8 +168,8 @@ async function remove(vehicleRef, id, actor) {
       await client.query("DELETE FROM idauto_vehicle_documents WHERE id = $1 AND document_type = 'vehicle_photo'", [row.id]);    // the photo row goes with it (ON DELETE CASCADE)
       return { record: { id: String(row.id), vehicle_id: vehicle.id, sha256: row.sha256 }, auditTargetRef: row.id };
     });
-  if (await documentRepository.referencesOfKey(row.storage_key, 0) === 0) await storageModule.getStorage().remove(row.storage_key);
+  if (await documentRepository.referencesOfKey(row.storage_key, 0) === 0) { await storageModule.getStorage().remove(row.storage_key); await replica.forget(row.storage_key).catch(function () {}); }
   return { vehicle: vehicle.ivid, deleted: String(row.id) };
 }
 
-module.exports = { add: add, list: list, update: update, image: image, remove: remove, LIMITS: LIMITS, locationColumns: locationColumns };
+module.exports = { add: add, addStored: addStored, vehicleFor: vehicleFor, list: list, update: update, image: image, remove: remove, LIMITS: LIMITS, locationColumns: locationColumns };

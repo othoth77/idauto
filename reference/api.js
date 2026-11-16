@@ -2288,6 +2288,8 @@ if (require.main === module) {
   createServer().listen(port, '127.0.0.1', function () {
     console.log('ID Auto API listening on 127.0.0.1:' + port);
   });
+  // Update 3.1 — the second copy of photographs on Haddad: retried in the background (does nothing unless configured)
+  require('./replica/haddad-replica.js').start();
 }
 
 module.exports = {

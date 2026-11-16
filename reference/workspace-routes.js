@@ -27,6 +27,10 @@
 //   POST   /api/workspace/interventions         workshop:write   record an intervention with its parts, one transaction (IDA-UI-4)
 //   PUT    /api/workspace/interventions/:id     workshop:write   edit it (parts: update / cancel / add)
 //   DELETE /api/workspace/interventions/:id     workshop:write   cancel it (the record is kept)
+//   POST   /api/workspace/scans                 document:write   « Scanner la plaque »: the photograph, saved at capture (Update 3.1) → { scan: { token, … } }
+//   GET|PUT /api/workspace/scans/:token          document:write   its state (incl. the Haddad copy) / the analysis, view, location, confirmation
+//   POST   /api/workspace/scans/:token/attach   document:write   { vehicle: ivid } → the same file becomes a photograph of that vehicle
+//   POST   /api/workspace/scans/:token/vehicle  vehicle:write    the registration form's body → vehicle created (existing rules) and the photograph attached
 //   GET    /api/vehicles/:ref/photos            document:read    the vehicle's photographs: view, date, location, analysis (Update 3)
 //   POST   /api/vehicles/:ref/photos            document:write   one image (body) + its metadata (header) → stored once, private store
 //   PUT    /api/vehicles/:ref/photos/:id        document:write   correct the view, the location, the confirmation
@@ -50,6 +54,7 @@ var details = require('./workspace/vehicle-details.js');
 var interventions = require('./workspace/intervention-service.js');
 var vision = require('./recognition/vehicle-vision.js');
 var photos = require('./photos/photo-service.js');
+var scans = require('./photos/scan-service.js');
 var geo = require('./photos/tn-geo.js');
 var writes = require('./writes.js');
 
@@ -116,6 +121,24 @@ function createWorkspace(ctx) {
     if (typeof h !== 'string' || !h || h.length > 12000) return {};
     try { return JSON.parse(Buffer.from(h, 'base64url').toString('utf8')); } catch (e) { return {}; }
   }
+  // Update 3.1 — « Scanner la plaque » for a signed-in workshop: the photograph is saved when it is taken
+  // (photos/scan-service.js), then analysed, then saved as a vehicle or attached to an existing one.
+  async function postScan(req, res) {
+    var rl = await rateLimit.enforcePublicResolution(db, 'scan:' + (req.mythosIdentity || 'anonymous'), PHOTO_LIMIT);
+    if (!rl.allowed) return sendJson(res, 429, { error: 'RATE_LIMITED', message_fr: 'Trop d\'envois en peu de temps. Patientez quelques minutes.', retry_at: rl.retry_at });
+    sendJson(res, 201, { scan: await scans.create(await readBinaryBody(req), photoMeta(req), actorOf(req)) });
+  }
+  async function getScan(req, res, m) { sendJson(res, 200, { scan: await scans.get(m[1], actorOf(req)) }); }
+  async function putScan(req, res, m) { sendJson(res, 200, { scan: await scans.update(m[1], await readJsonBody(req), actorOf(req)) }); }
+  async function postScanAttach(req, res, m) { var b = await readJsonBody(req); sendJson(res, 200, await scans.attach(m[1], b.vehicle, actorOf(req))); }
+  async function postScanVehicle(req, res, m) {
+    var actor = actorOf(req);
+    if (!isAdmin(req) && !(req.principal && req.principal.org_id)) throw errors.IdautoError('FORBIDDEN');
+    await scans.assertUsable(m[1], actor);                                         // a bad token creates nothing
+    var created = await registration.register(await readJsonBody(req), actor);      // the existing registration: one vehicle per plate (409 otherwise)
+    var att = await scans.attach(m[1], created.ivid, actor);
+    sendJson(res, 201, { ivid: created.ivid, plate: created.plate, attached: att.attached });
+  }
   async function getPhotos(req, res, m) { sendJson(res, 200, await photos.list(decode(m[1]), actorOf(req))); }
   async function postPhoto(req, res, m) {
     var rl = await rateLimit.enforcePublicResolution(db, 'photo:' + (req.mythosIdentity || 'anonymous'), PHOTO_LIMIT);
@@ -169,6 +192,11 @@ function createWorkspace(ctx) {
     { method: 'POST', pattern: /^\/api\/workspace\/vehicle-recognition$/, handler: guard(postRecognition) },
     { method: 'GET', pattern: new RegExp('^' + VEH + '\\/dossier$'), handler: guard(getDossier) },
     { method: 'GET', pattern: new RegExp('^' + VEH + '\\/photos$'), handler: guard(getPhotos) },
+    { method: 'POST', pattern: /^\/api\/workspace\/scans$/, handler: guard(postScan) },
+    { method: 'GET', pattern: /^\/api\/workspace\/scans\/([A-Za-z0-9_-]{32})$/, handler: guard(getScan) },
+    { method: 'PUT', pattern: /^\/api\/workspace\/scans\/([A-Za-z0-9_-]{32})$/, handler: guard(putScan) },
+    { method: 'POST', pattern: /^\/api\/workspace\/scans\/([A-Za-z0-9_-]{32})\/attach$/, handler: guard(postScanAttach) },
+    { method: 'POST', pattern: /^\/api\/workspace\/scans\/([A-Za-z0-9_-]{32})\/vehicle$/, handler: guard(postScanVehicle) },
     { method: 'POST', pattern: new RegExp('^' + VEH + '\\/photos$'), handler: guard(postPhoto) },
     { method: 'PUT', pattern: new RegExp('^' + VEH + '\\/photos\\/(\\d{1,18})$'), handler: guard(putPhoto) },
     { method: 'DELETE', pattern: new RegExp('^' + VEH + '\\/photos\\/(\\d{1,18})$'), handler: guard(deletePhoto) },
@@ -199,6 +227,11 @@ function createWorkspace(ctx) {
     { method: 'POST', pattern: /^\/api\/workspace\/vehicle-recognition$/, scope: 'vehicle:write' },
     { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/dossier$/, scope: 'vehicle:read' },
     { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/photos$/, scope: 'document:read' },
+    { method: 'POST', pattern: /^\/api\/workspace\/scans$/, scope: 'document:write' },
+    { method: 'GET', pattern: /^\/api\/workspace\/scans\/[A-Za-z0-9_-]{32}$/, scope: 'document:write' },
+    { method: 'PUT', pattern: /^\/api\/workspace\/scans\/[A-Za-z0-9_-]{32}$/, scope: 'document:write' },
+    { method: 'POST', pattern: /^\/api\/workspace\/scans\/[A-Za-z0-9_-]{32}\/attach$/, scope: 'document:write' },
+    { method: 'POST', pattern: /^\/api\/workspace\/scans\/[A-Za-z0-9_-]{32}\/vehicle$/, scope: 'vehicle:write' },
     { method: 'POST', pattern: /^\/api\/vehicles\/[^/]+\/photos$/, scope: 'document:write' },
     { method: 'PUT', pattern: /^\/api\/vehicles\/[^/]+\/photos\/\d{1,18}$/, scope: 'document:write' },
     { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+\/photos\/\d{1,18}$/, scope: 'document:delete' },
