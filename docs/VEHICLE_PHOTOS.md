@@ -163,3 +163,37 @@ Routes: `GET|POST /api/vehicles/:ref/photos`, `PUT|DELETE /api/vehicles/:ref/pho
 - `database/migrations/ida-u3-vehicle-photos.sql`
 - `ops/ui/i18n/strings-04-update3.json`, `reference/i18n-catalog-ar.js`
 - `tests/ida-u3-photos-test.js` (offline), `tests/ida-u3-photos-db-test.js` (database)
+
+
+## 9. Update 3.1 — the homepage scanner (final workflow)
+
+```
+« Scanner la plaque » → the rear camera opens at once (live preview); the location permission is asked
+  → « Prendre la photo » → a fresh device position is taken for THAT photograph (if allowed)
+  → in parallel:  the photograph is SAVED (the original: a camera frame as taken, or the chosen file as it is; place and time stored as data)
+                  and ANALYSED (the one shared pipeline: photo-analysis.js)
+  → result: plate, view (recognised; « non déterminée » without the vision analysis), make, model, colour,
+            body type, place and time — every value correctable
+  → existing registration: shown (passport / dossier), « Ajouter la photo à son dossier »
+    new registration: « Enregistrer le véhicule »
+```
+
+No front/rear question, no plate framing. If the camera cannot open, « Ouvrir l'appareil photo » (the phone's own
+camera) or « Choisir une image ». The plate-only video scanner stays as the alternative.
+
+**Who may store.** A signed-in workshop: always (`/api/workspace/scans`). An anonymous visitor: only if the server
+sets `IDAUTO_PUBLIC_SCAN_STORE=1` (`/public/scans`); **off on 2026-11-16 by owner decision** because legal gates
+L01 (public photo submission) and L02 (GPS collection) of `docs/IDA4_LEGAL_GATE_MATRIX.md` are open. Off, an
+anonymous visitor gets the analysis without storage, as before. On: anonymous photographs never attached to a
+vehicle are deleted after 30 days; saves and attaches are limited to 5 an hour per address, uploads to 20.
+
+**Where a photograph lives.** On the idauto.tn server's private media store, recorded as an observation with its
+original image (`idauto_observations` / `idauto_observation_media`, covered by the nightly off-host backup) plus
+`idauto_scan_photos` (token, date, place, analysis, view, confirmation). Attaching or saving turns the SAME file into a
+vehicle photograph (no copy). **A second copy goes to the Haddad server** (`reference/replica/haddad-replica.js` →
+`ops/haddad/idauto-media-receiver.js`, private network, bearer token): `idauto_media_replicas` says, per file,
+`stored`, `pending` or `failed` with its reason; failures are retried every 30 s and shown on the page. A failed copy
+never removes the local file. The Haddad copy is not itself backed up off-site.
+
+**Failures are independent.** Saving fails → « Réessayer l'enregistrement », the photograph is kept in the page.
+Analysis fails → recorded on the saved photograph, « Relancer l'analyse ».

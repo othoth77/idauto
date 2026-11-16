@@ -804,3 +804,8 @@
 .ida-photo-large img { display: block; max-inline-size: 100%; max-block-size: 55vh; }
 .ida-dialog--wide { inline-size: min(46rem, 94vw); }
 @media (max-width: 640px) { .ida-photo { grid-template-columns: 1fr; } }
+
+/* ============ Homepage scanner: live camera (Update 3.1) ============ */
+.ida-hp-stage { aspect-ratio: 4 / 3; }
+.ida-hp-stage video { object-fit: cover; }
+@media (max-width: 640px) { .ida-hp-stage { aspect-ratio: 3 / 4; } }

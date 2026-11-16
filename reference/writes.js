@@ -84,7 +84,8 @@ async function withAudit(auditMeta, identity, work) {
   }
   var principal = auditMeta.principal;
   var isOrg = !!(principal && principal.kind === 'organisation' && principal.org_id);
-  var actorType = isOrg ? 'professional_user' : 'admin';
+  // Update 3.1 — an anonymous visitor of the public scanner (when the owner enables it) is audited as such, never as an admin.
+  var actorType = isOrg ? 'professional_user' : principal && principal.kind === 'public' ? 'anonymous' : 'admin';
   var actorOrgId = isOrg ? principal.org_id : null;
   var client = await db.getClientForTransaction();
   try {

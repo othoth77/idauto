@@ -146,6 +146,7 @@ async function record(row, opts) {
 
 function actorType(actor) {
   if (!actor) return 'system';
+  if (actor.principal && actor.principal.kind === 'public') return 'public';       // Update 3.1 — anonymous scanner visitor (when enabled)
   return actor.principal && actor.principal.kind === 'organisation' ? 'organisation' : 'admin';
 }
 function actorOrg(actor) { return actor && actor.principal && actor.principal.kind === 'organisation' ? actor.principal.org_id : null; }
