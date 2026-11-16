@@ -1,0 +1,20 @@
+{
+ "$comment": "Update 3.2 (2026-11-16) — real vehicle recognition: status of every value, paint colour, photo quality. Tunisian Arabic (derja).",
+ "Reconnu": "متعرّف عليه",
+ "À vérifier": "لازم تثبّت",
+ "Saisi à la main": "مكتوب باليد",
+ "Non reconnu": "ما تعرّفش عليه",
+ "Indisponible": "موش متوفّر",
+ "hésitation entre": "متردّد بين",
+ "l'analyse d'image a échoué": "تحليل التصويرة ما نجحش",
+ "Deuxième couleur": "لون ثاني",
+ "mesure de la peinture": "قياس لون الدهن",
+ "analyse d'image et mesure de la peinture": "تحليل التصويرة وقياس لون الدهن",
+ "Photo trop petite pour être analysée.": "التصويرة صغيرة برشا باش تتحلّل.",
+ "Photo trop sombre pour être analysée.": "التصويرة مظلمة برشا باش تتحلّل.",
+ "Photo surexposée : elle ne peut pas être analysée.": "التصويرة فيها ضو برشا: ما تنجّمش تتحلّل.",
+ "Photo floue ou sans détail : elle ne peut pas être analysée.": "التصويرة مضبّبة ولّا ما فيهاش تفاصيل: ما تنجّمش تتحلّل.",
+ "Cette photo ne peut pas être analysée.": "التصويرة هاذي ما تنجّمش تتحلّل.",
+ "Plaque lue deux fois, les deux lectures concordent": "البلاكة تقرات مرّتين والقراءتين متطابقين",
+ "Les deux lectures de la plaque diffèrent : vérifiez-la.": "القراءتين متاع البلاكة موش كيف كيف: ثبّت فيها."
+}

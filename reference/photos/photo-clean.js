@@ -5,13 +5,15 @@
 var geo = require('./tn-geo.js');
 
 var VIEWS = ['front', 'rear', 'unknown'];
-var FIELDS = ['make', 'model', 'trim', 'colour', 'body_type', 'year'];
+var FIELDS = ['make', 'model', 'generation', 'trim', 'colour', 'colour_secondary', 'body_type', 'year'];
+var STATUSES = ['recognised', 'uncertain', 'manual', 'unknown'];   // Update 3.2
+var EVIDENCE = ['badge_or_lettering', 'distinctive_design', 'general_shape', 'none'];
 // Where a value comes from. Kept with every value so the three are never confused:
 //   ocr     read on the image by the on-device reader (the registration digits)
 //   vision  named by the vision model from what the photograph shows
 //   camera  a simple estimate computed on the device (the colour hint)
 //   manual  typed or confirmed by the person
-var SOURCES = ['ocr', 'vision', 'camera', 'manual'];
+var SOURCES = ['ocr', 'vision', 'camera', 'manual', 'pixels', 'vision+pixels', 'ocr+vision'];
 
 function str(v, max) {
   if (v === null || v === undefined) return null;
@@ -65,8 +67,10 @@ function analysis(raw) {
     var value = str(r.value, 80);
     if (!value || SOURCES.indexOf(r.source) === -1 || r.source === 'ocr') return;
     out.fields[f] = { value: value, confidence: conf01(r.confidence), source: r.source };
+    if (STATUSES.indexOf(r.status) !== -1) out.fields[f].status = r.status;
     any = true;
   });
+  if (EVIDENCE.indexOf(raw.evidence) !== -1) out.evidence = raw.evidence;
   if (raw.provider === 'anthropic') out.provider = 'anthropic';
   if (typeof raw.model === 'string' && /^[a-z0-9.\-]{1,60}$/i.test(raw.model)) out.model = raw.model;
   if (raw.vehicle_visible === true || raw.vehicle_visible === false) out.vehicle_visible = raw.vehicle_visible;

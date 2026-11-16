@@ -23,7 +23,10 @@
   var BODY = { berline: "Berline", citadine: "Citadine", "break": "Break", suv: "SUV", monospace: "Monospace", coupe: "Coupé", cabriolet: "Cabriolet", "pick-up": "Pick-up", utilitaire: "Utilitaire" };
   var VIEW = { front: "avant", rear: "arrière" };
   var SOURCE = { exif: "position enregistrée dans la photo", browser: "position de l'appareil à la prise de vue", manual: "lieu saisi à la main" };
-  var FROM = { ocr: "lu sur la photo", vision: "analyse d'image", camera: "estimation de la caméra" };
+  var FROM = { ocr: "lu sur la photo", vision: "analyse d'image", camera: "estimation de la caméra", pixels: "mesure de la peinture", "ocr+vision": "lu sur la photo", "vision+pixels": "analyse d'image et mesure de la peinture" };
+  // Update 3.2 — every value says what it is: recognised, to check, entered by hand, not recognised, unavailable
+  var STATUS = { recognised: "Reconnu", uncertain: "À vérifier", manual: "Saisi à la main", unknown: "Non reconnu", unavailable: "Indisponible" };
+  var REJECT = { too_small: "Photo trop petite pour être analysée.", too_dark: "Photo trop sombre pour être analysée.", overexposed: "Photo surexposée : elle ne peut pas être analysée.", no_detail: "Photo floue ou sans détail : elle ne peut pas être analysée." };
   var HADDAD = { stored: "copie Haddad enregistrée", pending: "copie Haddad en cours", failed: "copie Haddad en échec — nouvel essai automatique", not_configured: "copie Haddad non configurée" };
 
   function el(tag, attrs, text) { var n = document.createElement(tag); Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]); }); if (text !== undefined && text !== null) n.textContent = text; return n; }
@@ -143,12 +146,21 @@
     b.addEventListener("click", function () { var e = q("[data-hp-loc-edit]"); e.hidden = !e.hidden; });
     line.appendChild(b);
   }
-  function field(label, v, fmt) {
+  function badge(st) { return el("span", { class: "ida-status ida-status--" + ({ recognised: "verified", uncertain: "pending" }[st] || "neutral"), "data-hp-status": st }, t(STATUS[st])); }
+  function field(label, v, fmt, unavailable) {
     var dl = q("[data-hp-fields]");
     dl.appendChild(el("dt", null, t(label)));
     var dd = el("dd", { "data-hp-field": label });
-    if (v && v.value) { dd.appendChild(el("span", { dir: "auto" }, fmt ? t(fmt[v.value] || v.value) : v.value)); dd.appendChild(el("span", { class: "ida-recog-conf" }, " " + t(FROM[v.source] || "") + (typeof v.confidence === "number" ? " · " + Math.round(v.confidence * 100) + " %" : ""))); }
-    else dd.textContent = vision.enabled ? t("Non reconnu") : t("Non disponible");
+    if (v && v.value) {
+      var st = v.status || (v.source === "ocr" ? (v.accepted ? "recognised" : "uncertain") : "uncertain");
+      dd.appendChild(el("span", { dir: "auto" }, fmt ? t(fmt[v.value] || v.value) : v.value)); dd.appendChild(document.createTextNode(" ")); dd.appendChild(badge(st));
+      dd.appendChild(el("span", { class: "ida-recog-conf" }, " " + t(FROM[v.source] || "") + (typeof v.confidence === "number" ? " · " + Math.round(v.confidence * 100) + " %" : "")));
+    } else {
+      var why = unavailable || (!vision.enabled && label !== "Couleur" ? "off" : null);
+      dd.className = "ida-muted"; dd.appendChild(badge(why ? "unavailable" : "unknown"));
+      if (v && v.candidates) dd.appendChild(el("span", { class: "ida-recog-conf" }, " " + t("hésitation entre") + " " + v.candidates.map(function (c) { return t(fmt && fmt[c] || c); }).join(" / ")));
+      else if (why === "error") dd.appendChild(el("span", { class: "ida-recog-conf" }, " " + t("l'analyse d'image a échoué")));
+    }
     dl.appendChild(dd);
   }
   function showResult() {
@@ -161,17 +173,23 @@
   function render(r) {
     var a = r.analysis, p = a.plate;
     q("[data-hp-busy]").textContent = r.failed ? t("L'analyse n'a pas abouti.") : "";
+    if (r.rejected) q("[data-hp-busy]").textContent = t(REJECT[r.rejected] || "Cette photo ne peut pas être analysée.");
     if (r.failed) { var again = el("button", { type: "button", class: "ida-btn ida-btn--secondary ida-btn--sm", "data-hp-retry-analysis": "" }, t("Relancer l'analyse")); again.addEventListener("click", function () { analyse(current); }); q("[data-hp-busy]").appendChild(document.createTextNode(" ")); q("[data-hp-busy]").appendChild(again); }
     q("[data-hp-serie]").value = p ? p.serie : ""; q("[data-hp-numero]").value = p ? p.numero : "";
     var note = q("[data-hp-plate-note]");
     note.textContent = p
-      ? (p.accepted ? t("Plaque lue sur la photo") : t("Lecture à vérifier")) + " · " + p.confidence + " %" + (r.plateDisagree ? " — " + t("l'analyse d'image lit : ") + r.plateDisagree : "")
+      ? (p.accepted ? t("Plaque lue deux fois, les deux lectures concordent") + " · " : r.plateDisagree ? t("Les deux lectures de la plaque diffèrent : vérifiez-la.") + " · " : "") + p.confidence + " %" + (r.plateDisagree ? " — " + t("l'analyse d'image lit : ") + r.plateDisagree : "")
       : (r.plateSeen ? t("Plaque repérée mais non lue : saisissez-la.") : t("Aucune plaque lisible sur cette photo : saisissez-la si vous la connaissez."));
     note.className = p && p.accepted ? "ida-caption" : "ida-caption ida-field-error";
+    note.insertBefore(badge(p ? (p.accepted ? "recognised" : "uncertain") : "unknown"), note.firstChild); note.insertBefore(document.createTextNode(" "), note.childNodes[1]);
     var dl = q("[data-hp-fields]"); clear(dl);
     dl.appendChild(el("dt", null, t("Vue"))); dl.appendChild(el("dd", { "data-hp-field": "Vue" }, r.view ? t(VIEW[r.view]) + " — " + t("reconnue sur l'image") : t("non déterminée")));
-    field("Marque", a.fields.make); field("Modèle", a.fields.model && a.fields.trim && a.fields.trim.value ? { value: a.fields.model.value + " " + a.fields.trim.value, source: a.fields.model.source, confidence: a.fields.model.confidence } : a.fields.model);
-    field("Couleur", a.fields.colour, COLOUR); field("Carrosserie", a.fields.body_type, BODY);
+    var un = r.visionError ? "error" : null, m = a.fields.model;
+    field("Marque", a.fields.make, null, un);
+    field("Modèle", m && m.value ? Object.assign({}, m, { value: [m.value, a.fields.generation && a.fields.generation.value, a.fields.trim && a.fields.trim.value].filter(Boolean).join(" ") }) : m, null, un);
+    field("Couleur", a.fields.colour, COLOUR, un && !(a.fields.colour && a.fields.colour.value) ? un : null);
+    if (a.fields.colour_secondary && a.fields.colour_secondary.value) field("Deuxième couleur", a.fields.colour_secondary, COLOUR);
+    field("Carrosserie", a.fields.body_type, BODY, un);
     if (a.fields.year && a.fields.year.value) field("Année", a.fields.year);
     if (mode !== "analysis") {
       // the editable values start from what was recognised, never from anything else
@@ -294,7 +312,19 @@
     var vals = { make: q("[data-hp-make]").value.trim(), model: q("[data-hp-model]").value.trim(), colour: q("[data-hp-colour]").value, body_type: q("[data-hp-body]").value, year: y };
     this.disabled = true;
     try {
-      if (c.save.token) await req("PUT", base() + "/" + c.save.token, JSON.stringify({ confirmed: true }), { "Content-Type": "application/json" });
+      // what the person confirmed is recorded with the photograph: a value they changed or typed is « manual »
+      var conf = { confirmed: true };
+      if (c.result && c.result.analysis) {
+        var an = JSON.parse(JSON.stringify(c.result.analysis)), F = an.fields = an.fields || {};
+        [["make", vals.make], ["model", vals.model], ["colour", vals.colour], ["body_type", vals.body_type]].forEach(function (kv) {
+          var had = F[kv[0]] && F[kv[0]].value || "";
+          if (kv[1] && kv[1] !== had && !(kv[0] === "model" && had && kv[1].indexOf(had) === 0)) F[kv[0]] = { value: kv[1], confidence: 1, source: "manual", status: "manual" };
+        });
+        if (an.plate && (an.plate.serie !== pp.s || an.plate.numero !== pp.n)) an.plate = { serie: pp.s, numero: pp.n, confidence: 100, source: "manual", accepted: true };
+        else if (!an.plate || !an.plate.serie) an.plate = { serie: pp.s, numero: pp.n, confidence: 100, source: "manual", accepted: true };
+        conf.analysis = an; conf.view = c.result.view || "unknown";
+      }
+      if (c.save.token) await req("PUT", base() + "/" + c.save.token, JSON.stringify(conf), { "Content-Type": "application/json" });
       var out = mode === "workshop"
         ? await req("POST", base() + "/" + c.save.token + "/vehicle", JSON.stringify(Object.assign({ plate: { type: "TU", series: pp.s, number: pp.n } }, vals)), { "Content-Type": "application/json" })
         : await req("POST", base() + "/" + c.save.token + "/vehicle", JSON.stringify(Object.assign({ serie: pp.s, numero: pp.n }, vals)), { "Content-Type": "application/json" });

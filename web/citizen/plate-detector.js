@@ -314,5 +314,35 @@
     return { value: near.value, confidence: conf };
   }
 
-  return { _: { integral: integral, brightMap: brightMap, components: components, glyphs: glyphs, chains: chains, WINDOWS: WINDOWS }, WORK_W: WORK_W, WORK_W_FINE: WORK_W_FINE, toGray: toGray, detect: detect, iou: iou, createTracker: createTracker, colourOf: colourOf, nameOf: nameOf, COLOURS: COLOURS, MIN_SCORE: MIN_SCORE };
+  // Update 3.2 — the paint colour measured on the pixels of a paint-only area (`box`: [x, y, w, h], fractions of the
+  // image, given by the vision analysis). The brightest and darkest 12 % are dropped (reflections, shadows), then the
+  // remaining pixels vote; grey and silver count as one family. A clear majority names the colour, otherwise "unknown".
+  function paintColour(rgba, w, h, box) {
+    if (!rgba || !box || box.length !== 4) return { value: "unknown", confidence: 0, reason: "no_area" };
+    var x0 = Math.max(0, Math.floor(box[0] * w)), y0 = Math.max(0, Math.floor(box[1] * h)), x1 = Math.min(w, Math.ceil((box[0] + box[2]) * w)), y1 = Math.min(h, Math.ceil((box[1] + box[3]) * h));
+    if (x1 - x0 < 4 || y1 - y0 < 4) return { value: "unknown", confidence: 0, reason: "area_too_small" };
+    var px = [], sx = Math.max(1, ((x1 - x0) / 80) | 0), sy = Math.max(1, ((y1 - y0) / 80) | 0);
+    for (var y = y0; y < y1; y += sy) for (var x = x0; x < x1; x += sx) { var i = (y * w + x) * 4; px.push([rgba[i], rgba[i + 1], rgba[i + 2], (rgba[i] * 77 + rgba[i + 1] * 150 + rgba[i + 2] * 29) >> 8]); }
+    if (px.length < 40) return { value: "unknown", confidence: 0, reason: "area_too_small" };
+    px.sort(function (a, b) { return a[3] - b[3]; });
+    var keep = px.slice(Math.floor(px.length * 0.12), Math.ceil(px.length * 0.88)), lum = 0;
+    keep.forEach(function (p) { lum += p[3]; });
+    // black paint is dark (luminance ~20–50): only an area with almost no light at all is refused here; a dark SCENE
+    // (night) is judged on the whole photograph, below
+    if (lum / keep.length < 12) return { value: "unknown", confidence: 0, reason: "too_dark" };
+    var scene = 0, sn = 0, st = Math.max(4, ((w * h / 3000) | 0) * 4);
+    for (var q = 0; q < rgba.length; q += st) { scene += (rgba[q] * 77 + rgba[q + 1] * 150 + rgba[q + 2] * 29) >> 8; sn++; }
+    if (sn && scene / sn < 45 && lum / keep.length < 60) return { value: "unknown", confidence: 0, reason: "night" };   // at night every paint looks black or grey
+    var votes = {}, fam = {};
+    keep.forEach(function (p) { var c = nameOf(p[0], p[1], p[2]); votes[c] = (votes[c] || 0) + 1; var f = c === "argent" ? "gris" : c; fam[f] = (fam[f] || 0) + 1; });
+    var top = null, topF = null;
+    Object.keys(votes).forEach(function (k) { if (!top || votes[k] > votes[top]) top = k; });
+    Object.keys(fam).forEach(function (k) { if (!topF || fam[k] > fam[topF]) topF = k; });
+    var share = fam[topF] / keep.length;
+    if (share < 0.55) return { value: "unknown", confidence: Math.round(share * 100) / 100, reason: "mixed" };
+    var value = topF === "gris" ? (votes.argent > (votes.gris || 0) ? "argent" : "gris") : topF;
+    return { value: value, confidence: Math.round(share * 100) / 100, family: topF };
+  }
+
+  return { paintColour: paintColour, _: { integral: integral, brightMap: brightMap, components: components, glyphs: glyphs, chains: chains, WINDOWS: WINDOWS }, WORK_W: WORK_W, WORK_W_FINE: WORK_W_FINE, toGray: toGray, detect: detect, iou: iou, createTracker: createTracker, colourOf: colourOf, nameOf: nameOf, COLOURS: COLOURS, MIN_SCORE: MIN_SCORE };
 });
