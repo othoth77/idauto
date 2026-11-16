@@ -119,7 +119,10 @@ var JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), crypto.randomBy
   ok(/data-hp-video/.test(html) && /data-hp-shutter/.test(html) && /data-hp-pick-file/.test(html) && /capture="environment"/.test(html), 'the dialog shows the live camera with a shutter, a file choice and the native camera as a fallback');
   ok(!/hp-view/.test(html) && !/name="hp-view"/.test(home), 'no front/rear question anywhere');
   ok(/openBtn\.addEventListener\("click", function \(\) \{ seq\+\+; current = null; setTimeout\(openCamera, 0\); \}\)/.test(home) && /getUserMedia\(\{ video: \{ facingMode: \{ ideal: "environment" \}/.test(home), '« Scanner la plaque » opens the rear camera at once');
-  ok(/save\(c\);\s+\/\/ the photograph is saved…\s+analyse\(c\);/.test(home), 'saving and analysis start together, independently');
+  ok(/c\.ready = prep\.then[\s\S]{0,80}save\(c\);[\s\S]{0,1500}analyse\(c\);\s+\/\/ …analysed while it is being saved/.test(home), 'the photograph is saved at once, before decoding, and analysed independently');
+  ok(/if \(!meta\.location && c\.location\) pushAnalysisLocation\(c\)/.test(home), 'a position read after the upload started is still attached to the saved photograph');
+  ok(/e\.status !== 413 && e\.status !== 415/.test(home) && /out = \(await send\(c\.blob\)\)\.scan/.test(home), 'an original the server refuses (too large, HEIC) is saved as the reduced JPEG instead of being lost');
+  ok(/if \(r\.status === 404\) return null;/.test(home), 'only a 404 counts as « not registered »');
   ok(/data-hp-retry-save/.test(home) && /data-hp-retry-analysis/.test(home), 'a failed save and a failed analysis each have their own retry');
   ok(/var fix = taken \? A\.askPosition\(\) : null;/.test(home), 'a fresh position is taken for each photograph, at the shutter');
   ok(/Scanner la plaque en vidéo/.test(html), 'the video scanner remains as an alternative');

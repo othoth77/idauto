@@ -134,6 +134,7 @@ function createWorkspace(ctx) {
   async function postScanVehicle(req, res, m) {
     var actor = actorOf(req);
     if (!isAdmin(req) && !(req.principal && req.principal.org_id)) throw errors.IdautoError('FORBIDDEN');
+    await scans.assertUsable(m[1], actor);                                         // a bad token creates nothing
     var created = await registration.register(await readJsonBody(req), actor);      // the existing registration: one vehicle per plate (409 otherwise)
     var att = await scans.attach(m[1], created.ivid, actor);
     sendJson(res, 201, { ivid: created.ivid, plate: created.plate, attached: att.attached });

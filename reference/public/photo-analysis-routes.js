@@ -69,7 +69,7 @@ function createPublicPhotoAnalysis(ctx) {
   function publicActor(req) { var h = ipHash(req); return { identity: 'public:' + h.slice(0, 16), principal: { kind: 'public', scopes: [] } }; }
   function readJson(req) { return readCapped(req, 16 * 1024).then(function (b) { if (!b) throw Object.assign(new Error('too large'), { httpStatus: 413 }); try { return JSON.parse(b.toString('utf8') || '{}'); } catch (e) { throw Object.assign(new Error('bad json'), { httpStatus: 400 }); } }); }
   function fail(res, err) {
-    var known = { VALIDATION: 400, NOT_FOUND: 404, VEHICLE_NOT_FOUND: 404, CONFLICT: 409 };
+    var known = { VALIDATION: 400, NOT_FOUND: 404, VEHICLE_NOT_FOUND: 404, CONFLICT: 409, FORBIDDEN: 403 };
     var code = err && err.httpStatus ? err.httpStatus : err && err.code && known[err.code] ? known[err.code] : 500;
     var body = { error: code === 409 ? 'CONFLICT' : code === 404 ? 'NOT_FOUND' : code >= 500 ? 'request could not be processed' : 'INVALID_REQUEST' };
     if (code === 409 && err.details && err.details.reason === 'vehicle_already_registered') body.reason = 'vehicle_already_registered';
@@ -97,6 +97,7 @@ function createPublicPhotoAnalysis(ctx) {
       if (m[1] && m[2] && req.method === 'POST') {
         if (!(await budget(req, res, 'public_scan_write', WRITE_LIMIT))) { req.resume(); return true; }
         var body = await readJson(req);
+        await scans.assertUsable(m[1], actor);                                       // a bad token creates nothing
         var po = await scans.plateOwner(body.serie, body.numero);
         if (m[2] === '/attach') {
           // attach only to the vehicle that carries this registration; nothing about it is returned but its public IVID

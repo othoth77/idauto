@@ -181,6 +181,15 @@ async function waitHaddad(p, token, want, ms) { var t0 = Date.now(), s = null; w
   ok((await request('POST', '/public/scans/' + a2.body.scan.token + '/vehicle', null, { serie: P1.series, numero: P1.number, make: 'Spam' })).status === 409, 'an anonymous save of an existing registration: 409, never a duplicate');
   var wsSees = await request('GET', '/api/vehicles/' + encodeURIComponent(reg.body.ivid) + '/photos', T.TECH);
   ok(wsSees.body.photos.length === 1, 'the anonymous photograph is not mixed into a workshop\'s own photographs');
+  var vBefore = (await db.query('SELECT count(*)::int n FROM idauto_vehicles')).rows[0].n, P9 = await freePlate();
+  var bad = await request('POST', '/public/scans/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/vehicle', null, { serie: P9.series, numero: P9.number, make: 'X' });
+  ok(bad.status === 404 && (await db.query('SELECT count(*)::int n FROM idauto_vehicles')).rows[0].n === vBefore, 'a save with an unknown token creates no vehicle (404)');
+  var wbad = await request('POST', '/api/workspace/scans/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/vehicle', T.MGR, { plate: { type: 'TU', series: P9.series, number: P9.number } });
+  ok(wbad.status === 404 && (await db.query('SELECT count(*)::int n FROM idauto_vehicles')).rows[0].n === vBefore, 'the same on the workshop route');
+  await db.query("UPDATE idauto_capture_sources SET active = FALSE WHERE code = 'PUBLIC_UPLOAD'");
+  var off = await request('POST', '/public/scans', null, png(640, 480, 5), { 'Content-Type': 'image/png' });
+  await db.query("UPDATE idauto_capture_sources SET active = TRUE WHERE code = 'PUBLIC_UPLOAD'");
+  ok(off.status === 403, 'deactivating the PUBLIC_UPLOAD capture source stops anonymous storage (the existing kill switch)');
   var lim = [];
   for (var k2 = 0; k2 < 5; k2++) lim.push((await request('POST', '/public/scans/' + a2.body.scan.token + '/attach', null, { serie: '1', numero: '1' })).status);
   ok(lim.indexOf(429) !== -1, 'anonymous saves and attaches are rate-limited (' + lim.join(',') + ')');

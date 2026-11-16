@@ -88,11 +88,22 @@
     if (mode === "analysis") return;
     c.save = { state: "saving" }; savedLine();
     try {
-      var meta = { captured_at: c.capturedAt, location: c.location ? { source: c.location.source, latitude: c.location.latitude, longitude: c.location.longitude } : null };
-      var out = (await req("POST", base(), c.original, { "Content-Type": "image/jpeg", "X-IDauto-Photo-Meta": b64url(meta) })).scan;
+      // the original as taken; if the server refuses it (too large, or a format it does not keep such as HEIC),
+      // the reduced JPEG of the same photograph — never nothing
+      var meta = { captured_at: c.capturedAt || (c.taken ? new Date().toISOString() : null), location: c.location ? { source: c.location.source, latitude: c.location.latitude, longitude: c.location.longitude } : null };
+      var send = function (body) { return req("POST", base(), body, { "Content-Type": body.type || "image/jpeg", "X-IDauto-Photo-Meta": b64url(meta) }); };
+      var out;
+      try { out = (await send(c.original)).scan; }
+      catch (e) {
+        if ((e.status !== 413 && e.status !== 415) || !(c.blob || c.ready)) throw e;
+        if (!c.blob) await c.ready;
+        if (!c.blob) throw e;
+        out = (await send(c.blob)).scan; c.reduced = true;
+      }
       if (c !== current) return;
       c.save = { state: "saved", token: out.token, haddad: out.haddad }; savedLine();
       pollHaddad(c);
+      if (!meta.location && c.location) pushAnalysisLocation(c);   // the position arrived after the upload started
       if (c.result) { pushAnalysis(c); checkExisting(); }      // the save / attach buttons need the saved photograph
     } catch (e) { if (c === current) { c.save = { state: "failed", error: e.status === 429 ? t("trop d'envois, patientez") : e.status === 413 ? t("image trop volumineuse") : (e.message || "") }; savedLine(); } }
   }
@@ -102,6 +113,10 @@
       if (c !== current || !c.save.token || c.save.haddad === "stored" || c.save.haddad === "not_configured" || n++ > 20) return;
       setTimeout(function () { req("GET", base() + "/" + c.save.token).then(function (o) { if (c === current) { c.save.haddad = o.scan.haddad; savedLine(); tick(); } }).catch(function () {}); }, 1500);
     }());
+  }
+  function pushAnalysisLocation(c) {
+    if (!c.save || !c.save.token || !c.location) return;
+    req("PUT", base() + "/" + c.save.token, JSON.stringify({ location: { source: c.location.source, latitude: c.location.latitude, longitude: c.location.longitude }, captured_at: c.capturedAt }), { "Content-Type": "application/json" }).catch(function () {});
   }
   function pushAnalysis(c) {
     if (!c.save || !c.save.token) return;
@@ -177,7 +192,12 @@
     var pp = plateParts(), box = q("[data-hp-existing]"), c = current;
     q("[data-hp-save]").hidden = true; q("[data-hp-attach]").hidden = true; box.hidden = true; clear(box);
     if (!/^\d{1,3}$/.test(pp.s) || !/^\d{1,4}$/.test(pp.n)) return;
-    fetch("/public/plates/" + encodeURIComponent(pp.s + " TUN " + pp.n), { credentials: "omit" }).then(function (r) { return r.status === 200 ? r.json() : null; }).then(function (o) {
+    fetch("/public/plates/" + encodeURIComponent(pp.s + " TUN " + pp.n), { credentials: "omit" }).then(function (r) {
+      // only a 404 means « not registered »; a refused or failed check offers nothing rather than a wrong « save »
+      if (r.status === 200) return r.json();
+      if (r.status === 404) return null;
+      throw new Error(String(r.status));
+    }).then(function (o) {
       if (c !== current) return;
       c.existing = o && o.ivid ? o.ivid : null;
       if (c.existing) {
@@ -212,18 +232,22 @@
     showResult(); savedLine();
     q("[data-hp-busy]").textContent = t("Lecture de la photo…");
     clear(q("[data-hp-fields]")); q("[data-hp-plate-note]").textContent = ""; q("[data-hp-note]").textContent = ""; clear(q("[data-hp-place-line]")); q("[data-hp-loc-edit]").hidden = true;
-    var prepared;
-    try { prepared = await A.prepare(file, taken, fix); }
-    catch (e) { q("[data-hp-busy]").textContent = t("Cette image ne peut pas être lue : choisissez une autre photo."); c.save = { state: "none" }; savedLine(); return; }
+    c.taken = !!taken;
+    // the photograph is saved at once — it does not wait for decoding or the location, nor depend on them
+    var prepared, prep = A.prepare(file, taken, fix);
+    c.ready = prep.then(function (x) { Object.assign(c, x); }).catch(function () {});
+    save(c);
+    try { prepared = await prep; }
+    catch (e) { q("[data-hp-busy]").textContent = t("Cette image ne peut pas être lue : choisissez une autre photo."); return; }
     if (my !== seq) return;
     Object.assign(c, prepared);
     showResult(); renderPlace();
+    if (c.save && c.save.token) pushAnalysisLocation(c);
     if (c.location && c.location.source !== "manual") {
       fetch("/public/geo/resolve?lat=" + encodeURIComponent(c.location.latitude) + "&lon=" + encodeURIComponent(c.location.longitude), { credentials: "omit" }).then(function (r) { return r.json(); })
         .then(function (o) { if (c === current && c.location) { c.location.resolved = o.resolved; renderPlace(); } }).catch(function () {});
     }
-    save(c);           // the photograph is saved…
-    analyse(c);        // …while it is analysed
+    analyse(c);        // …analysed while it is being saved
   }
 
   // ---- wiring ----------------------------------------------------------------------------------------------------

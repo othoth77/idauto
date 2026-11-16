@@ -68,7 +68,7 @@ async function attempt(cfg, row) {
       var p = filePath(key);
       if (!p || !fs.existsSync(p)) err = 'local file missing';
       else {
-        var bytes = fs.readFileSync(p);
+        var bytes = await fs.promises.readFile(p);           // never block the API's event loop
         if (bytes.length > MAX_BYTES) err = 'file too large for the receiver';
         else { var r = await call(cfg, 'PUT', key, bytes); ok = r.status === 200 || r.status === 201; if (!ok) err = 'HTTP ' + r.status; }
       }
@@ -116,7 +116,13 @@ async function pass() {
 var timer = null;
 function start() {
   if (timer) return;
-  timer = setInterval(function () { db.query("SELECT to_regclass('public.idauto_media_replicas') IS NOT NULL t").then(function (r) { return r.rows[0].t ? pass() : 0; }).catch(function () {}); }, 30000);
+  timer = setInterval(function () {
+    db.query("SELECT to_regclass('public.idauto_media_replicas') IS NOT NULL t").then(function (r) {
+      if (!r.rows[0].t) return 0;
+      // expired anonymous photographs are removed here too, whether or not public storage is still on
+      return require('../photos/scan-service.js').purgeExpired().catch(function () {}).then(pass);
+    }).catch(function () {});
+  }, 30000);
   if (timer.unref) timer.unref();
 }
 

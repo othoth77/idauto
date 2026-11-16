@@ -87,8 +87,8 @@ async function create(bytes, rawMeta, actor, ctx) {
   var sha = crypto.createHash('sha256').update(bytes).digest('hex');
   var storage = storageModule.getStorage(), stored = await storage.put(bytes, meta.mime), token = newToken(), loc = locationColumns(m.location), out = null;
   try {
-    var source = (await db.query('SELECT id FROM idauto_capture_sources WHERE code = $1', [anon ? 'PUBLIC_UPLOAD' : 'PROFESSIONAL_SCAN'])).rows[0];
-    if (!source) throw errors.IdautoError('CONFLICT', { reason: 'capture_source_missing' });
+    var source = (await db.query('SELECT id FROM idauto_capture_sources WHERE code = $1 AND active = TRUE', [anon ? 'PUBLIC_UPLOAD' : 'PROFESSIONAL_SCAN'])).rows[0];
+    if (!source) throw Object.assign(errors.IdautoError('FORBIDDEN', { reason: 'capture_source_inactive' }), { httpStatus: 403 });   // the capture source is the kill switch, as for ingestion
     var client = await db.getClientForTransaction();
     try {
       await client.query('BEGIN');
@@ -160,4 +160,7 @@ async function plateOwner(serie, numero) {
   return { canonical: parsed.canonical, plate: { type: 'TU', series: String(serie), number: String(numero) }, vehicle: hit ? hit.vehicle : null };
 }
 
-module.exports = { create: create, update: update, get: async function (t, a) { return view(await row(t, a)); }, attach: attach, plateOwner: plateOwner, purgeExpired: purgeExpired, LIMITS: LIMITS, ANON_RETENTION_DAYS: ANON_RETENTION_DAYS };
+// checks that the token names a live, unattached scan of this caller — BEFORE anything is created for it
+async function assertUsable(token, actor) { var r = await row(token, actor); if (r.attached_document_id) throw errors.IdautoError('CONFLICT', { reason: 'scan_already_attached' }); return true; }
+
+module.exports = { assertUsable: assertUsable, create: create, update: update, get: async function (t, a) { return view(await row(t, a)); }, attach: attach, plateOwner: plateOwner, purgeExpired: purgeExpired, LIMITS: LIMITS, ANON_RETENTION_DAYS: ANON_RETENTION_DAYS };
