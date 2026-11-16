@@ -107,6 +107,8 @@ say('\n4. THE SCANNER LOOP — no reading per frame, nothing accepted on a doubt
 var scanJs = read('web/citizen/plate-scanner.js'), detJs = read('web/citizen/plate-detector.js');
 ok(S.AUTO.interval >= 150 && S.AUTO.maxAttempts === 3, 'the frame is looked at about five times a second at most, and three uncertain readings hand over to the person');
 ok(/if \(tr\.stable\) \{ a\.busy = true; autoRead\(tr\.box\); \}/.test(scanJs) && /if \(!a \|\| a\.busy \|\|/.test(scanJs), 'a reading starts only on a stable plate, and no look happens while one is running');
+ok(S.AUTO.maxReads === 6 && /a\.attempts >= AUTO\.maxAttempts \|\| a\.reads >= AUTO\.maxReads/.test(scanJs) && !/a\.attempts--/.test(scanJs), 'the loop always ends: six readings at most, however confident and unconfirmed they alternate');
+ok(/a\.fineLock \? "both" :/.test(scanJs) && /if \(found\.box && found\.w > D\.WORK_W\) a\.fineLock = true;/.test(scanJs) && /if \(!tr\.box\) a\.fineLock = false;/.test(scanJs), 'a plate found by the larger look keeps being looked at the same way, so it can count as steady');
 ok(/a\.candidate === key/.test(scanJs) && /deuxième image/.test(scanJs), 'a confident reading is accepted only when a second frame gives the same digits');
 ok(/parts\[q\]\.digits\.length === box\.groups\[q\]\.digits/.test(scanJs), 'a reading whose digit count differs from what the detector counted is not accepted');
 ok(S.LOW_CONTRAST >= 80 && /counted\(box\) && \(box\.contrast \|\| 0\) >= LOW_CONTRAST/.test(scanJs), 'a plate seen in poor light (little contrast) is never accepted by itself: the person checks the digits');
