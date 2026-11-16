@@ -782,3 +782,25 @@
   .ida-recog-body { grid-template-columns: 1fr; }
   .ida-recog-list > div { grid-template-columns: 7rem minmax(0, 1fr); }
 }
+
+/* ============ Vehicle photographs (Update 3) ============ */
+.ida-photo-actions { justify-content: flex-start; flex-wrap: wrap; }
+.ida-photo-list, .ida-photo-grid, .ida-recog-photos { list-style: none; margin: 0; padding: 0; }
+.ida-photo-list { display: grid; gap: var(--ida-space-4); margin-block-start: var(--ida-space-4); }
+.ida-photo { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: var(--ida-space-4); align-items: start; padding: var(--ida-space-3); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); }
+.ida-photo-thumb { background: var(--ida-surface-sunken); border-radius: var(--ida-radius-control); overflow: hidden; aspect-ratio: 4 / 3; display: grid; place-items: center; }
+.ida-photo-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ida-photo-body { display: grid; gap: var(--ida-space-2); min-width: 0; }
+.ida-photo-body p { margin: 0; }
+.ida-photo-view { inline-size: auto; min-height: var(--ida-control-h-sm); }
+.ida-photo-loc-edit { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--ida-space-2); align-items: center; }
+.ida-recog-photos { display: grid; gap: var(--ida-space-1); margin-block: var(--ida-space-2); }
+.ida-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--ida-space-3); }
+.ida-photo-tile { display: grid; gap: var(--ida-space-2); inline-size: 100%; padding: var(--ida-space-2); text-align: start; background: var(--ida-surface); border: 1px solid var(--ida-border); border-radius: var(--ida-radius-card); cursor: pointer; font: inherit; color: inherit; }
+.ida-photo-tile:hover { border-color: var(--ida-border-strong); }
+.ida-photo-tile:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 2px; }
+.ida-photo-cap { display: grid; gap: 2px; font-size: var(--ida-size-14); overflow-wrap: anywhere; }
+.ida-photo-large { background: var(--ida-surface-sunken); border-radius: var(--ida-radius-card); overflow: hidden; max-block-size: 55vh; display: grid; place-items: center; }
+.ida-photo-large img { display: block; max-inline-size: 100%; max-block-size: 55vh; }
+.ida-dialog--wide { inline-size: min(46rem, 94vw); }
+@media (max-width: 640px) { .ida-photo { grid-template-columns: 1fr; } }

@@ -27,6 +27,13 @@
 //   POST   /api/workspace/interventions         workshop:write   record an intervention with its parts, one transaction (IDA-UI-4)
 //   PUT    /api/workspace/interventions/:id     workshop:write   edit it (parts: update / cancel / add)
 //   DELETE /api/workspace/interventions/:id     workshop:write   cancel it (the record is kept)
+//   GET    /api/vehicles/:ref/photos            document:read    the vehicle's photographs: view, date, location, analysis (Update 3)
+//   POST   /api/vehicles/:ref/photos            document:write   one image (body) + its metadata (header) → stored once, private store
+//   PUT    /api/vehicles/:ref/photos/:id        document:write   correct the view, the location, the confirmation
+//   DELETE /api/vehicles/:ref/photos/:id        document:delete
+//   GET    /api/vehicles/:ref/photos/:id/image  document:read    the bytes, to a signed-in account of the owning workshop
+//   GET    /api/workspace/geo/tn                vehicle:read     governorates and delegations (manual location)
+//   GET    /api/workspace/geo/resolve?lat&lon   vehicle:read     offline: nearest known place and governorate (approximate)
 //   GET    /api/workspace/vehicle-recognition   vehicle:write    is the vehicle analysis configured? (Update 2)
 //   POST   /api/workspace/vehicle-recognition   vehicle:write    one JPEG → make, model, colour, body type seen by the vision model (12/min per account; not stored)
 //   GET    /api/admin/roles                     admin            the role → scope matrix the server applies
@@ -42,10 +49,13 @@ var owners = require('./workspace/owner-contacts.js');
 var details = require('./workspace/vehicle-details.js');
 var interventions = require('./workspace/intervention-service.js');
 var vision = require('./recognition/vehicle-vision.js');
+var photos = require('./photos/photo-service.js');
+var geo = require('./photos/tn-geo.js');
 var writes = require('./writes.js');
 
 var SEARCH_LIMIT = { limit: 30, window_seconds: 60 };
-var VISION_LIMIT = { limit: 12, window_seconds: 60 };     // each analysis is a paid call to the provider
+var VISION_LIMIT = { limit: 12, window_seconds: 60 };
+var PHOTO_LIMIT = { limit: 60, window_seconds: 600 };      // photographs stored per account per 10 minutes     // each analysis is a paid call to the provider
 
 function createWorkspace(ctx) {
   var sendJson = ctx.sendJson, readJsonBody = ctx.readJsonBody, decode = ctx.decodePathSegment, readBinaryBody = ctx.readBinaryBody;
@@ -98,6 +108,35 @@ function createWorkspace(ctx) {
       change_summary: 'Vehicle photo analysed by ' + out.provider + (out.error ? ' — ' + out.error : '') + ' (' + bytes.length + ' bytes, not stored)' }, actor.identity, async function () { return { record: { bytes: bytes.length, stored: false, provider: out.provider, model: out.model || null, error: out.error || null }, auditTargetRef: 'vehicle-photo' }; });
     sendJson(res, 200, { vehicle_analysis: out });
   }
+  // Update 3 — vehicle photographs (reference/photos/photo-service.js). The image is the request body; what the
+  // page knows about it (view, capture date, location and its source, what was recognised) travels in one header,
+  // base64url JSON, and is rebuilt field by field by the service. Images are served to signed-in accounts only.
+  function photoMeta(req) {
+    var h = req.headers['x-idauto-photo-meta'];
+    if (typeof h !== 'string' || !h || h.length > 12000) return {};
+    try { return JSON.parse(Buffer.from(h, 'base64url').toString('utf8')); } catch (e) { return {}; }
+  }
+  async function getPhotos(req, res, m) { sendJson(res, 200, await photos.list(decode(m[1]), actorOf(req))); }
+  async function postPhoto(req, res, m) {
+    var rl = await rateLimit.enforcePublicResolution(db, 'photo:' + (req.mythosIdentity || 'anonymous'), PHOTO_LIMIT);
+    if (!rl.allowed) return sendJson(res, 429, { error: 'RATE_LIMITED', message_fr: 'Trop d\'envois en peu de temps. Patientez quelques minutes.', retry_at: rl.retry_at });
+    var out = await photos.add(decode(m[1]), await readBinaryBody(req), photoMeta(req), actorOf(req));
+    sendJson(res, out.duplicate ? 200 : 201, out);
+  }
+  async function putPhoto(req, res, m) { sendJson(res, 200, await photos.update(decode(m[1]), m[2], await readJsonBody(req), actorOf(req))); }
+  async function deletePhoto(req, res, m) { sendJson(res, 200, await photos.remove(decode(m[1]), m[2], actorOf(req))); }
+  async function getPhotoImage(req, res, m) {
+    var out = await photos.image(decode(m[1]), m[2], actorOf(req));
+    res.writeHead(200, { 'Content-Type': out.mime, 'Content-Length': out.bytes.length, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline', 'ETag': '"' + out.sha256.slice(0, 32) + '"' });
+    res.end(out.bytes);
+  }
+  // Tunisia's governorates and delegations (manual location), and the offline answer for a GPS position.
+  async function getGeo(req, res) { sendJson(res, 200, { country: 'Tunisie', governorates: geo.governorates() }); }
+  async function getGeoResolve(req, res) {
+    var q = query(req), lat = parseFloat(q.get('lat')), lon = parseFloat(q.get('lon'));
+    if (!geo.validCoords(lat, lon)) return sendJson(res, 400, { error: 'VALIDATION', message_fr: 'Coordonnées invalides.' });
+    sendJson(res, 200, { latitude: lat, longitude: lon, resolved: geo.resolve(lat, lon) });
+  }
   async function getDossier(req, res, m) { sendJson(res, 200, await repo.dossier(decode(m[1]), actorOf(req))); }
   async function getOwner(req, res, m) { var v = await repo.vehicleOr404(decode(m[1])); sendJson(res, 200, { vehicle: v.ivid, contacts: await owners.current(v, actorOf(req), 'dossier') }); }
   async function putOwner(req, res, m) { var v = await repo.vehicleOr404(decode(m[1])); sendJson(res, 200, await owners.put(v, await readJsonBody(req), actorOf(req))); }
@@ -129,6 +168,13 @@ function createWorkspace(ctx) {
     { method: 'GET', pattern: /^\/api\/workspace\/vehicle-recognition$/, handler: guard(getRecognitionStatus) },
     { method: 'POST', pattern: /^\/api\/workspace\/vehicle-recognition$/, handler: guard(postRecognition) },
     { method: 'GET', pattern: new RegExp('^' + VEH + '\\/dossier$'), handler: guard(getDossier) },
+    { method: 'GET', pattern: new RegExp('^' + VEH + '\\/photos$'), handler: guard(getPhotos) },
+    { method: 'POST', pattern: new RegExp('^' + VEH + '\\/photos$'), handler: guard(postPhoto) },
+    { method: 'PUT', pattern: new RegExp('^' + VEH + '\\/photos\\/(\\d{1,18})$'), handler: guard(putPhoto) },
+    { method: 'DELETE', pattern: new RegExp('^' + VEH + '\\/photos\\/(\\d{1,18})$'), handler: guard(deletePhoto) },
+    { method: 'GET', pattern: new RegExp('^' + VEH + '\\/photos\\/(\\d{1,18})\\/image$'), handler: guard(getPhotoImage) },
+    { method: 'GET', pattern: /^\/api\/workspace\/geo\/tn$/, handler: guard(getGeo) },
+    { method: 'GET', pattern: /^\/api\/workspace\/geo\/resolve$/, handler: guard(getGeoResolve) },
     { method: 'GET', pattern: new RegExp('^' + VEH + '\\/owner$'), handler: guard(getOwner) },
     { method: 'PUT', pattern: new RegExp('^' + VEH + '\\/owner$'), handler: guard(putOwner) },
     { method: 'DELETE', pattern: new RegExp('^' + VEH + '\\/owner$'), handler: guard(deleteOwner) },
@@ -152,6 +198,13 @@ function createWorkspace(ctx) {
     { method: 'GET', pattern: /^\/api\/workspace\/vehicle-recognition$/, scope: 'vehicle:write' },
     { method: 'POST', pattern: /^\/api\/workspace\/vehicle-recognition$/, scope: 'vehicle:write' },
     { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/dossier$/, scope: 'vehicle:read' },
+    { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/photos$/, scope: 'document:read' },
+    { method: 'POST', pattern: /^\/api\/vehicles\/[^/]+\/photos$/, scope: 'document:write' },
+    { method: 'PUT', pattern: /^\/api\/vehicles\/[^/]+\/photos\/\d{1,18}$/, scope: 'document:write' },
+    { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+\/photos\/\d{1,18}$/, scope: 'document:delete' },
+    { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/photos\/\d{1,18}\/image$/, scope: 'document:read' },
+    { method: 'GET', pattern: /^\/api\/workspace\/geo\/tn$/, scope: 'vehicle:read' },
+    { method: 'GET', pattern: /^\/api\/workspace\/geo\/resolve$/, scope: 'vehicle:read' },
     { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/owner$/, scope: 'owner:read' },
     { method: 'PUT', pattern: /^\/api\/vehicles\/[^/]+\/owner$/, scope: 'owner:write' },
     { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+\/owner$/, scope: 'owner:write' },

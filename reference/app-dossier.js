@@ -83,6 +83,8 @@
       if (meta) loadImage(f, box);
     });
     root.appendChild(section('sec-docs', t('Carte grise'), null, el('div', { class: 'ida-stack' }, [faces, el('p', { class: 'ida-small ida-muted' }, t('Pièces justificatives : les photos ne sont pas lues automatiquement. Remplacement et suppression sont enregistrés au journal.'))])));
+    // Update 3 — the vehicle's photographs: front, rear, where and when each was taken
+    if (window.IdAutoDossierPhotos) root.appendChild(window.IdAutoDossierPhotos.section(data, section, say));
     // Maintenance history
     root.appendChild(section('sec-history', t('Historique d\'entretien'), [el('a', { class: 'ida-btn ida-btn--secondary ida-btn--sm', href: '/atelier/interventions?new=1&vehicle=' + enc(v.ivid) }, t('Nouvelle intervention'))], history()));
   }

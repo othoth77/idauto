@@ -154,7 +154,7 @@ function reply(obj, extra) { return Object.assign({ model: 'claude-opus-5-5', st
   ok(['make', 'model', 'colour', 'body_type'].every(function (f) { return good.fields[f].source === 'vision'; }), 'every value is marked source: vision — never presented as a register fact');
   var sent = JSON.stringify(cap.req);
   ok(cap.req.messages[0].content[0].type === 'image' && cap.req.messages[0].content[0].source.media_type === 'image/jpeg' && cap.req.output_config.format.type === 'json_schema', 'the request carries one JPEG and asks for the schema');
-  ok(!/173|8116|TUN|تونس/.test(sent) && /Do not read, use or repeat the registration plate/.test(cap.req.system), 'the registration number is not sent, and the model is told not to use the plate');
+  ok(/Never infer them, or anything else, from the registration number/.test(cap.req.system) && cap.req.messages[0].content.length === 2, 'only the photograph is sent, and the model is told never to infer anything from the registration number');
   ok(cap.req.model === 'claude-opus-5-5' && cap.req.fallbacks === 'default' && !('temperature' in cap.req) && !('thinking' in cap.req), 'model, fallback and parameters follow the provider\'s current rules');
   var unsure = await vision.analyse(JPEG, { env: {}, client: stub(reply({ vehicle_visible: true, make: 'Chevrolet', make_confidence: 0.9, model: 'Aveo', model_confidence: 0.4, colour: 'noir', colour_confidence: 0.5, body_type: 'unknown', body_type_confidence: 0.2 })) });
   ok(unsure.fields.make.value === 'Chevrolet' && unsure.fields.model.value === null && unsure.fields.colour.value === null && unsure.fields.body_type.value === null, 'below 0.6 a value is withheld: unknown');

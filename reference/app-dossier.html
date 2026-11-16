@@ -66,6 +66,14 @@
       </form>
     </dialog>
 
+    <!-- Update 3 — one photograph: the image, where and when it was taken, what was recognised on it. -->
+    <dialog class="ida-dialog ida-dialog--wide" id="photo-dialog" aria-labelledby="photo-dialog-title">
+      <div class="ida-dialog-body">
+        <h2 id="photo-dialog-title" class="ida-h3">Photo du véhicule</h2>
+        <div id="photo-dialog-body"></div>
+        <div class="ida-form-actions"><button type="button" class="ida-btn ida-btn--ghost" data-close>Fermer</button></div>
+      </div>
+    </dialog>
     <dialog class="ida-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
       <form method="dialog" class="ida-dialog-body">
         <h2 id="confirm-title" class="ida-h3">Confirmer</h2>
@@ -85,6 +93,8 @@
 <script src="/atelier/assets/ui.js"></script>
 <script src="/atelier/shell.js"></script>
 <script src="/atelier/console.js"></script>
+<script src="/atelier/assets/photo-meta.js"></script>
+<script src="/atelier/app-dossier-photos.js"></script>
 <script src="/atelier/app-dossier.js"></script>
 </body>
 </html>
