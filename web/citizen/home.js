@@ -234,8 +234,13 @@
      * all (or a page not in a secure context) would fail on the first tap, so
      * the button stays hidden and the typed field remains the whole surface —
      * which is exactly what the page was before this feature. */
-    if (!IdaPlateScanner.cameraSupported()) return;
+    /* Update 3.1 — the photograph analysis needs no camera API (an image file can be chosen), so the button is
+     * offered whenever that module is present; only the video alternative still depends on the camera API. */
+    var photoFlow = typeof IdaPhotoAnalysis !== "undefined";
+    if (!IdaPlateScanner.cameraSupported() && !photoFlow) return;
     openBtn.hidden = false;
+    var videoBtn = root.querySelector("[data-scan-start]");
+    if (videoBtn && !IdaPlateScanner.cameraSupported()) videoBtn.hidden = true;
 
     var els = {
       root: root,
@@ -248,6 +253,9 @@
       IdaPlateScanner.open({ els: els, onPlate: applyScannedPlate });
     });
   }());
+
+  // Update 3.1 — the homepage photograph analysis (home-photo.js) hands a CONFIRMED plate to the same search.
+  window.IdaHome = { applyScannedPlate: applyScannedPlate };
 
   var ividForm = document.querySelector("[data-ivid-form]");
   var ividErr = ividForm.querySelector("[data-ivid-error]");

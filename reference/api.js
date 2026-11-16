@@ -534,6 +534,9 @@ var CITIZEN_ASSETS = {
    * plaque" — the homepage's first paint is unchanged. */
   '/assets/plate-scanner.js': { file: 'citizen/plate-scanner.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/plate-detector.js': { file: 'citizen/plate-detector.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/photo-meta.js': { file: 'citizen/photo-meta.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/photo-analysis.js': { file: 'citizen/photo-analysis.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/home-photo.js': { file: 'citizen/home-photo.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/tesseract/tesseract.min.js': { file: 'vendor/tesseract/tesseract.min.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/tesseract/worker.min.js': { file: 'vendor/tesseract/worker.min.js', contentType: 'application/javascript; charset=utf-8' },
   /* THE THREE CORES. The engine feature-detects and asks for ONE of these:
@@ -1067,6 +1070,8 @@ async function recordPlateLookupMiss(req, plateNumber) {
 }
 
 async function handlePublicPassportRoute(req, res, pathname) {
+  // Update 3.1 — the public photo analysis and location helpers (reference/public/photo-analysis-routes.js).
+  if (await publicPhotoAnalysis().handle(req, res, pathname)) return;
   // IDA-V2: /public/plates/:plate is the second shape under /public/.
   var plateMatch = /^\/public\/plates\/([^/]+)$/.exec(pathname);
   if (plateMatch) return handlePublicPlateRoute(req, res, plateMatch);
@@ -1954,6 +1959,12 @@ function ingestHttpStatus(result) {
   if (code === 'RATE_LIMITED') return 429;
   if (['CAPTURE_SOURCE_UNAVAILABLE', 'INGESTION_FAILED', 'IDA_FACT_LINK', 'RATE_LIMIT_STORAGE_ERROR'].indexOf(code) !== -1) return 500;
   return 400;
+}
+
+var _publicPhotoAnalysis = null;
+function publicPhotoAnalysis() {
+  if (!_publicPhotoAnalysis) _publicPhotoAnalysis = require('./public/photo-analysis-routes.js').createPublicPhotoAnalysis({ db: db, rateLimit: rateLimit, clientIpHash: clientIpHash, retryAfterSeconds: retryAfterSeconds, observability: observability });
+  return _publicPhotoAnalysis;
 }
 
 function retryAfterSeconds(retryAt, now) {

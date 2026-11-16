@@ -62,6 +62,8 @@
                  Hidden when the browser exposes no camera at all, so it is
                  never offered where it cannot work. -->
             <button type="button" class="ida-btn ida-btn--secondary" data-scan-open hidden>Scanner la plaque</button>
+            <!-- Update 3.1: the button now opens the PHOTOGRAPH analysis first (works without a camera API too: an image
+                 file can be chosen); the video scanner is the alternative inside the dialog. -->
           </div>
         </form>
 
@@ -141,12 +143,50 @@
       <button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-scan-action="close" aria-label="Fermer le scanner">✕</button>
     </div>
 
-    <!-- 1. before the camera is touched -->
+    <!-- 1. Update 3.1 — first: a photograph of the whole vehicle, analysed at once. The video scanner below stays as an alternative. -->
     <div data-scan-intro>
-      <p class="ida-small ida-muted">La caméra ne s'ouvre qu'après votre accord. L'image reste sur votre
-      téléphone&nbsp;: elle n'est ni envoyée ni enregistrée. Seul le numéro lu sert à la recherche.</p>
+      <div class="ida-stack" data-hp-pick>
+        <p class="ida-small">Photographiez l'avant ou l'arrière du véhicule en entier&nbsp;: la plaque est cherchée sur la photo, rien à cadrer.</p>
+        <fieldset class="ida-radio-group ida-radio-inline">
+          <legend class="ida-small">Vue</legend>
+          <label class="ida-radio"><input type="radio" name="hp-view" value="rear" checked> Arrière</label>
+          <label class="ida-radio"><input type="radio" name="hp-view" value="front"> Avant</label>
+        </fieldset>
+        <div class="ida-search-actions">
+          <label class="ida-btn ida-btn--primary ida-file-btn" data-hp-take-label>Prendre une photo du véhicule<input type="file" accept="image/*" capture="environment" data-hp-take hidden></label>
+          <label class="ida-btn ida-btn--secondary ida-file-btn">Choisir une image<input type="file" accept="image/jpeg,image/png,image/webp" data-hp-pick-file hidden></label>
+        </div>
+        <p class="ida-caption" data-hp-privacy>La photo est analysée sur votre appareil&nbsp;; elle n'est pas enregistrée. Pour une photo prise ici, la position de l'appareil vous est demandée afin de situer la photo&nbsp;: vous pouvez refuser.</p>
+      </div>
       <div class="ida-search-actions ida-u-mbs-3">
-        <button type="button" class="ida-btn ida-btn--primary" data-scan-action="start" data-scan-start>Autoriser et ouvrir la caméra</button>
+        <button type="button" class="ida-btn ida-btn--ghost" data-scan-action="start" data-scan-start>Scanner la plaque en vidéo</button>
+      </div>
+    </div>
+
+    <!-- 1b. Update 3.1 — the analysed photograph: nothing here is saved; « Rechercher » runs the same public plate search as the field. -->
+    <div data-hp-result hidden>
+      <div class="ida-recog-body">
+        <div class="ida-recog-photo" data-hp-photo></div>
+        <div class="ida-stack">
+          <p class="ida-small ida-muted" data-hp-busy role="status" aria-live="polite"></p>
+          <div class="ida-scan-fields">
+            <div class="ida-field"><label for="hp-serie">Série</label><input class="ida-input ida-id" id="hp-serie" data-hp-serie inputmode="numeric" maxlength="3" autocomplete="off"></div>
+            <div class="ida-field"><label for="hp-numero">Numéro</label><input class="ida-input ida-id" id="hp-numero" data-hp-numero inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          </div>
+          <p class="ida-caption" data-hp-plate-note></p>
+          <dl class="ida-recog-list" data-hp-fields></dl>
+          <p class="ida-small" data-hp-place-line></p>
+          <div class="ida-photo-loc-edit" data-hp-loc-edit hidden>
+            <select class="ida-input" data-hp-gov aria-label="Gouvernorat"><option value="">—</option></select>
+            <input class="ida-input" data-hp-place maxlength="120" dir="auto" list="hp-places" placeholder="Délégation ou localité" aria-label="Délégation ou localité"><datalist id="hp-places"></datalist>
+            <button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-hp-loc-ok>Valider le lieu</button>
+          </div>
+          <p class="ida-caption" data-hp-note></p>
+        </div>
+      </div>
+      <div class="ida-search-actions ida-u-mbs-3">
+        <button type="button" class="ida-btn ida-btn--primary" data-hp-search>Rechercher cette plaque</button>
+        <button type="button" class="ida-btn ida-btn--secondary" data-hp-again>Prendre une autre photo</button>
       </div>
     </div>
 
@@ -215,6 +255,9 @@
 <script src="/assets/ui.js"></script>
 <script src="/assets/plate-detector.js"></script>
 <script src="/assets/plate-scanner.js"></script>
+<script src="/assets/photo-meta.js"></script>
+<script src="/assets/photo-analysis.js"></script>
 <script src="/assets/home.js"></script>
+<script src="/assets/home-photo.js"></script>
 </body>
 </html>
