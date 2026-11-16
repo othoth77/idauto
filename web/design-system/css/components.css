@@ -748,3 +748,37 @@
 .ida-lang-flag:hover { border-color: var(--ida-border-strong); }
 .ida-lang-flag:focus-visible { outline: 2px solid var(--ida-focus); outline-offset: 1px; }
 .ida-lang-row { display: flex; justify-content: flex-end; }
+
+/* ============ Automatic plate detection (Update 2) ============
+ * In automatic mode the plate is found by itself: the rectangle follows it and
+ * turns green when it is steady. The adjustable frame, its sliders and the
+ * "read" button belong to manual mode only. */
+.ida-scan-detect {
+  position: absolute;
+  box-sizing: border-box;
+  border: 3px solid var(--ida-pending);
+  border-radius: var(--ida-radius-control);
+  pointer-events: none;
+  transition: left 120ms linear, top 120ms linear, width 120ms linear, height 120ms linear;
+}
+.ida-scan-detect.is-stable { border-color: var(--ida-verify); }
+[data-scan-mode="auto"] .ida-scan-guide,
+[data-scan-mode="auto"] .ida-scan-frame,
+[data-scan-mode="auto"] [data-scan-action="capture"] { display: none; }
+@media (prefers-reduced-motion: reduce) { .ida-scan-detect { transition: none; } }
+
+/* ============ Recognition result card (Update 2) ============ */
+.ida-recog-body { display: grid; grid-template-columns: minmax(0, 16rem) minmax(0, 1fr); gap: var(--ida-space-5); align-items: start; margin-block: var(--ida-space-4); }
+.ida-recog-photo { background: var(--ida-surface-sunken); border-radius: var(--ida-radius-card); overflow: hidden; min-height: 6rem; }
+.ida-recog-img { display: block; width: 100%; height: auto; }
+.ida-recog-list { display: grid; gap: var(--ida-space-2); margin: 0; }
+.ida-recog-list > div { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: var(--ida-space-3); align-items: baseline; }
+.ida-recog-list dt { color: var(--ida-text-muted); font-size: var(--ida-size-14); }
+.ida-recog-list dd { margin: 0; font-weight: var(--ida-weight-semibold); }
+.ida-recog-plate { font-size: var(--ida-size-18); display: inline-flex; gap: 0.5em; align-items: baseline; direction: ltr; }
+.ida-recog-word { letter-spacing: 0; }   /* the word keeps the page's own typeface: Arabic letters must stay joined */
+.ida-recog-conf { font-weight: var(--ida-weight-regular); font-size: var(--ida-size-12); color: var(--ida-text-muted); }
+@media (max-width: 640px) {
+  .ida-recog-body { grid-template-columns: 1fr; }
+  .ida-recog-list > div { grid-template-columns: 7rem minmax(0, 1fr); }
+}

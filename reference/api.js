@@ -533,6 +533,7 @@ var CITIZEN_ASSETS = {
    * Nothing here is fetched until the visitor actually taps "Scanner la
    * plaque" — the homepage's first paint is unchanged. */
   '/assets/plate-scanner.js': { file: 'citizen/plate-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/plate-detector.js': { file: 'citizen/plate-detector.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/tesseract/tesseract.min.js': { file: 'vendor/tesseract/tesseract.min.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/tesseract/worker.min.js': { file: 'vendor/tesseract/worker.min.js', contentType: 'application/javascript; charset=utf-8' },
   /* THE THREE CORES. The engine feature-detects and asks for ONE of these:
@@ -2123,7 +2124,7 @@ var v14 = v14Routes.createV14({ sendJson: sendJson, readJsonBody: readJsonBody, 
 // ALL_ROUTE_SCOPES: absent from the table means admin-only (see the gate in
 // createServer()), and admin-routes.js checks the admin scope again.
 var adminConsole = adminRoutes.createAdminRoutes({ sendJson: sendJson, decodePathSegment: decodePathSegment, resolver: v12.resolver, catalog: v12.catalog });
-var workspace = workspaceRoutes.createWorkspace({ sendJson: sendJson, readJsonBody: readJsonBody, decodePathSegment: decodePathSegment });
+var workspace = workspaceRoutes.createWorkspace({ sendJson: sendJson, readJsonBody: readJsonBody, readBinaryBody: readBinaryBody, decodePathSegment: decodePathSegment });
 var ALL_ROUTE_SCOPES = workspace.scopes.concat(ROUTE_SCOPES, v12.scopes, v14.scopes);
 
 function scopeForRoute(method, pathname) {

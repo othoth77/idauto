@@ -49,6 +49,109 @@
     });
   });
 
+  // ---- Update 2 — scan the vehicle: plate found and read on the device, vehicle seen by the server's vision ----
+  // Nothing recognised is saved by itself: it is shown on a card, the person confirms or corrects, and only the
+  // form's own fields are sent. `recognition` records what was proposed and by which engine (provenance).
+  var recognition = null, lastScan = null;
+  var S = window.IdaPlateScanner, scanRoot = document.querySelector('[data-scan-root]'), scanOpen = document.getElementById('scan-open');
+  var card = document.getElementById('recog-card');
+  var COLOUR_LABEL = { noir: 'Noir', blanc: 'Blanc', gris: 'Gris', argent: 'Argent', rouge: 'Rouge', bleu: 'Bleu', vert: 'Vert', jaune: 'Jaune', orange: 'Orange', marron: 'Marron', beige: 'Beige' };
+  var BODY_LABEL = { berline: 'Berline', citadine: 'Citadine', 'break': 'Break', suv: 'SUV', monospace: 'Monospace', coupe: 'Coupé', cabriolet: 'Cabriolet', 'pick-up': 'Pick-up', utilitaire: 'Utilitaire' };
+  function setText(id, text) { var n = document.getElementById(id); if (n) n.textContent = text; }
+  function show(field, label, confText) { setText('recog-' + field, label || t('Non reconnu')); setText('recog-' + field + '-conf', confText || ''); }
+  function pct(c) { return Math.round(c * 100) + ' %'; }
+  function sourceText(f) { return f.source === 'vision' ? t('analyse d\'image') + ' · ' + pct(f.confidence) : t('estimation de la caméra') + ' · ' + pct(f.confidence); }
+  function frameBlob(canvas) { return new Promise(function (res) { if (!canvas || !canvas.toBlob) return res(null); canvas.toBlob(res, 'image/jpeg', 0.85); }); }
+
+  async function onScan(r) {
+    lastScan = r; recognition = null;
+    var canonical = r.serie + ' TUN ' + r.numero, fields = { make: null, model: null, colour: null, body_type: null }, analysis = null;
+    card.hidden = false;
+    var photo = document.getElementById('recog-photo'); clear(photo);
+    if (r.frame) { r.frame.className = 'ida-recog-img'; r.frame.setAttribute('role', 'img'); r.frame.setAttribute('aria-label', t('Image capturée du véhicule')); photo.appendChild(r.frame); }
+    // three parts kept in reading order (digits · word · digits): left as one string, the Arabic word would reorder the digits
+    var plateBox = document.getElementById('recog-plate'); clear(plateBox);
+    plateBox.appendChild(el('bdi', { dir: 'ltr', class: 'ida-id' }, r.plate.first)); plateBox.appendChild(document.createTextNode(' '));
+    plateBox.appendChild(el('bdi', { dir: 'rtl', lang: 'ar', class: 'ida-recog-word' }, r.plate.text)); plateBox.appendChild(document.createTextNode(' '));
+    plateBox.appendChild(el('bdi', { dir: 'ltr', class: 'ida-id' }, r.plate.last));
+    setText('recog-plate-conf', r.auto ? t('lecture automatique') + ' · ' + Math.round(r.confidence) + ' %' : t('chiffres validés à la main'));
+    ['make', 'model', 'colour', 'body'].forEach(function (f) { show(f, '…', ''); });
+    setText('recog-note', t('Analyse du véhicule…'));
+    document.getElementById('recog-existing').hidden = true;
+    document.getElementById('recog-confirm').disabled = true;
+    card.scrollIntoView({ block: 'start' });
+    // colour seen by the camera, on the device (a hint; the vision answer replaces it when there is one)
+    if (r.colour && r.colour.value && r.colour.value !== 'unknown') fields.colour = { value: r.colour.value, confidence: r.colour.confidence, source: 'camera' };
+    // 1. does this registration already exist? (never a second vehicle for one plate)
+    var existing = null;
+    try {
+      var found = await C.api('/api/search?q=' + encodeURIComponent(canonical));
+      (found.groups || []).forEach(function (g) { if (g.key === 'vehicles') g.items.forEach(function (i) { if (i.plate === canonical) existing = i; }); });
+    } catch (e) { /* the save itself refuses a duplicate: this check is a courtesy */ }
+    // 2. what the vehicle looks like — only if the operator configured the analysis
+    var blob = existing ? null : await frameBlob(r.frame);
+    if (blob) {
+      try {
+        analysis = (await C.send('POST', '/api/workspace/vehicle-recognition', blob, { raw: true, headers: { 'Content-Type': 'image/jpeg' } })).vehicle_analysis;
+        ['make', 'model', 'colour', 'body_type'].forEach(function (f) { var v = analysis.fields && analysis.fields[f]; if (v && v.value) fields[f] = v; });
+      } catch (e) { analysis = null; }
+    }
+    if (lastScan !== r) return;                    // another scan started meanwhile
+    show('make', fields.make && fields.make.value, fields.make ? sourceText(fields.make) : '');
+    show('model', fields.model && fields.model.value, fields.model ? sourceText(fields.model) : '');
+    show('colour', fields.colour ? t(COLOUR_LABEL[fields.colour.value] || fields.colour.value) : '', fields.colour ? sourceText(fields.colour) : '');
+    show('body', fields.body_type ? t(BODY_LABEL[fields.body_type.value] || fields.body_type.value) : '', fields.body_type ? sourceText(fields.body_type) : '');
+    setText('recog-note', existing ? '' : (analysis && analysis.enabled && !analysis.error
+      ? t('Marque, modèle et carrosserie sont lus sur l\'image, pas dans un registre : vérifiez-les.')
+      : analysis && analysis.error ? t('L\'analyse du véhicule n\'a pas abouti : complétez la marque et le modèle à la main.')
+      : t('L\'analyse de la marque et du modèle n\'est pas activée sur ce serveur : complétez-les à la main.')));
+    r.fields = fields; r.analysis = analysis; r.existing = existing;
+    var ex = document.getElementById('recog-existing'); clear(ex);
+    if (existing) {
+      ex.hidden = false;
+      ex.appendChild(el('div', { class: 'ida-alert ida-alert--warning', role: 'alert' }, el('div', null, [el('p', { class: 'ida-alert-title' }, t('Ce véhicule existe déjà dans IDauto')),
+        el('p', null, existing.title || ''), el('p', null, el('a', { class: 'ida-btn ida-btn--primary ida-btn--sm', id: 'recog-open-existing', href: existing.href }, t('Ouvrir sa fiche')))])));
+    }
+    document.getElementById('recog-confirm').disabled = !!existing;
+    document.getElementById('recog-correct').disabled = !!existing;
+  }
+
+  function applyScan(focusFirst) {
+    var r = lastScan; if (!r || r.existing) return;
+    form.querySelector('input[name=plate_type][value=TU]').checked = true; form.querySelector('[data-plate-word]').textContent = 'TU';
+    form.plate_series.value = r.serie; form.plate_number.value = r.numero;
+    var f = r.fields || {};
+    // a value typed by hand before the scan is never overwritten
+    if (f.make && !val('make')) form.make.value = f.make.value;
+    if (f.model && !val('model')) form.model.value = f.model.value;
+    if (f.colour && !val('colour')) form.colour.value = f.colour.value;
+    if (f.body_type && !val('body_type')) form.body_type.value = f.body_type.value;
+    recognition = { provider: r.analysis && r.analysis.enabled ? r.analysis.provider : null, model: r.analysis && r.analysis.enabled ? r.analysis.model : null,
+      plate: { confidence: r.confidence, auto: !!r.auto }, fields: {} };
+    ['make', 'model', 'colour', 'body_type'].forEach(function (k) { if (f[k]) recognition.fields[k] = { proposed: f[k].value, confidence: f[k].confidence, source: f[k].source }; });
+    card.hidden = true;
+    var status = document.getElementById('page-status'); clear(status);
+    status.appendChild(el('p', { class: 'ida-alert ida-alert--info', id: 'recog-applied' }, focusFirst ? t('Valeurs reportées dans le formulaire : corrigez-les, puis enregistrez.') : t('Valeurs reportées dans le formulaire : vérifiez-les, puis enregistrez.')));
+    (focusFirst ? document.getElementById('f-plate-series') : submit).focus();
+    (focusFirst ? document.getElementById('sec-ident') : submit).scrollIntoView({ block: 'center' });
+  }
+
+  function openScanner() { S.open({ els: { root: scanRoot, video: scanRoot.querySelector('[data-scan-video]'), opener: scanOpen }, onPlate: function () {}, onResult: onScan }); }
+  if (S && scanRoot && scanOpen && S.cameraSupported()) {
+    S.configure({ engineBase: '/atelier/assets/tesseract/' });
+    S.bind({ root: scanRoot, video: scanRoot.querySelector('[data-scan-video]'), opener: scanOpen });
+    scanOpen.hidden = false;
+    scanOpen.addEventListener('click', openScanner);
+    document.getElementById('recog-confirm').addEventListener('click', function () { applyScan(false); });
+    document.getElementById('recog-correct').addEventListener('click', function () { applyScan(true); });
+    document.getElementById('recog-retry').addEventListener('click', function () { card.hidden = true; lastScan = null; openScanner(); });
+    C.api('/api/workspace/vehicle-recognition').then(function (o) {
+      setText('scan-privacy', o.vehicle_analysis && o.vehicle_analysis.enabled
+        ? t('Une image du véhicule est ensuite envoyée au service d\'analyse configuré par l\'atelier, pour proposer la marque et le modèle.')
+        : t('Aucune image ne quitte l\'appareil.'));
+    }).catch(function () {});
+  }
+
   // ---- submit ----------------------------------------------------------------------
   function val(n) { var x = form.elements[n]; return x ? x.value.trim() : ''; }
   function showErrors(list) {
@@ -74,7 +177,8 @@
     if (files[2] && !files[1]) problems.push(t('Ajoutez la face 1 avant la face 2.'));
     if (problems.length) { showErrors(problems); return; }
     showErrors([]);
-    var body = { plate: plate, vin: val('vin') || null, make: val('make'), model: val('model'), year: val('year'), odometer_km: km, notes: form.notes.value };
+    var body = { plate: plate, vin: val('vin') || null, make: val('make'), model: val('model'), year: val('year'), colour: val('colour'), body_type: val('body_type'), odometer_km: km, notes: form.notes.value };
+    if (recognition) body.recognition = recognition;
     if (val('owner_full_name') || val('owner_phone')) body.owner = { full_name: val('owner_full_name'), phone: val('owner_phone'), email: val('owner_email'), address: val('owner_address') };
     submit.disabled = true; submit.textContent = t('Enregistrement…');
     var status = document.getElementById('page-status');

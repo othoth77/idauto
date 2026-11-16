@@ -49,8 +49,22 @@
     workerLoading: null,
     els: null,
     onPlate: null,
-    lastRead: null
+    onResult: null,   // Update 2 — when set, a reading is handed over with the captured frame (result card)
+    lastRead: null,
+    lastCapture: null, // { frame: canvas, box: plate rectangle in video fractions, colour }
+    mode: "manual",   // "auto" (the plate is found and read by itself) or "manual" (the adjustable frame)
+    auto: null
   };
+
+  /* Update 2 — automatic detection. The plate is looked for on a small copy of
+   * the frame five times a second; ONE frame is read, and only once the plate
+   * has stopped moving. After three uncertain readings the person takes over. */
+  var AUTO = { interval: 200, maxAttempts: 3, cooldown: 1200 };
+  var LOW_CONTRAST = 80;            // grey levels between the digits and the plate ground
+  function detectorModule() {
+    var g = (typeof self !== "undefined" ? self : globalThis);
+    return g.IdaPlateDetector || null;
+  }
 
   /* ---------------- camera lifecycle ---------------- */
 
@@ -59,6 +73,7 @@
   }
 
   function stopCamera() {
+    stopAuto();
     if (!state.stream) return;
     state.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
     state.stream = null;
@@ -155,9 +170,14 @@
   function prepare(video, stage) {
     var vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return null;
+    return prepareRect(video, cropRect(frame, stage ? stage.clientWidth : 0, stage ? stage.clientHeight : 0, vw, vh));
+  }
 
-    var r = cropRect(frame, stage ? stage.clientWidth : 0, stage ? stage.clientHeight : 0, vw, vh);
-    var bandW = r.sw, bandH = r.sh, sx = r.sx, sy = r.sy;
+  /* The same preparation for any source rectangle: the manual frame above, or
+   * the rectangle the detector found (Update 2). `source` is a video, an image
+   * or a canvas. */
+  function prepareRect(source, r) {
+    var bandW = r.sw, bandH = r.sh, sx = r.sx, sy = r.sy, video = source;
     state.lastCrop = r;
 
     var scale = Math.min(3, Math.max(1, 900 / bandW));
@@ -187,8 +207,96 @@
         d[i] = d[i + 1] = d[i + 2] = lum < 0 ? 0 : lum > 255 ? 255 : lum;
       }
     }
+    // Update 2 — a Tunisian plate is white on black, and the reader was trained on
+    // dark text on a light page: a dark crop is inverted before it is read.
+    // The ground is the commonest tone (digits cover less than half of a plate): its median decides.
+    var hist = new Uint32Array(256), seen = 0, half = d.length / 8, median = 0;
+    for (i = 0; i < d.length; i += 4) hist[d[i]]++;
+    for (median = 0; median < 256; median++) { seen += hist[median]; if (seen >= half) break; }
+    if (median < 128) {
+      for (i = 0; i < d.length; i += 4) { d[i] = d[i + 1] = d[i + 2] = 255 - d[i]; }
+    }
     ctx.putImageData(img, 0, 0);
-    return c;
+    // A light margin all round: a digit touching the edge of the image is the one the reader drops.
+    var pad = Math.round(c.height * 0.18), out = document.createElement("canvas");
+    out.width = c.width + 2 * pad; out.height = c.height + 2 * pad;
+    var octx = out.getContext("2d");
+    octx.fillStyle = "#fff";                 // the ground is light by now (a dark one was inverted above)
+    octx.fillRect(0, 0, out.width, out.height);
+    octx.drawImage(c, pad, pad);
+    return out;
+  }
+
+  /* One look at a frame: the plate at the normal working width and, when
+   * nothing is found, once more on a larger copy (a plate held far away). */
+  function counted(box) { return !!(box && box.groups && box.groups[0].counted && box.groups[1].counted); }
+  function rank(box) { return box.score + (counted(box) ? 0.1 : 0) + (box.chars || 0) * 0.05; }
+  function locate(source, sw, sh, scratch, fine) {
+    var D = detectorModule(), widths = fine && sw > D.WORK_W * 1.3 ? [D.WORK_W, Math.min(D.WORK_W_FINE, sw)] : [D.WORK_W];
+    var res = { box: null, data: null, w: 0, h: 0 };
+    for (var i = 0; i < widths.length; i++) {
+      var w = Math.min(widths[i], sw), h = Math.max(1, Math.round(sh * w / sw));
+      if (scratch.canvas.width !== w || scratch.canvas.height !== h) { scratch.canvas.width = w; scratch.canvas.height = h; }
+      scratch.ctx.drawImage(source, 0, 0, w, h);
+      var data = scratch.ctx.getImageData(0, 0, w, h).data, box = D.detect(D.toGray(data, w, h), w, h);
+      if (box && (!res.box || rank(box) > rank(res.box))) res = { box: box, data: data, w: w, h: h };
+      else if (!res.data) res = { box: null, data: data, w: w, h: h };
+      // a clear plate, every digit counted: no need for the second look — except at capture time (`fine === "both"`),
+      // when both looks are always taken and the one that counts more digits wins
+      if (fine !== "both" && res.box && res.box.score >= 0.97 && counted(res.box)) break;
+    }
+    return res;
+  }
+
+  function fracRect(b, vw, vh) {
+    var x0 = Math.max(0, b.x * vw), y0 = Math.max(0, b.y * vh), x1 = Math.min(vw, (b.x + b.w) * vw), y1 = Math.min(vh, (b.y + b.h) * vh);
+    return { sx: Math.round(x0), sy: Math.round(y0), sw: Math.max(1, Math.round(x1 - x0)), sh: Math.max(1, Math.round(y1 - y0)) };
+  }
+
+  /* Update 2 — reads a detected plate. When the detector separated the two
+   * groups of digits, each group is read on its own: the série and the numéro
+   * are then known by POSITION, and the word between them is never shown to the
+   * reader. Otherwise the whole plate is read as before. */
+  async function readDetected(source, vw, vh, box) {
+    if (box.groups && box.groups.length === 2) {
+      var worker;
+      try { worker = await loadEngine(function () {}); } catch (e) { var e1 = new Error("engine"); e1.stage = "engine"; throw e1; }
+      var parts = [];
+      for (var k = 0; k < 2; k++) {
+        var out = await worker.recognize(prepareRect(source, fracRect(box.groups[k], vw, vh)), {}, { text: true, blocks: true });
+        var data = out && out.data ? out.data : {}, digits = (data.text || "").replace(/\D/g, ""), sc = readConfidence(data);
+        var part = { digits: digits, confidence: sc === null ? (typeof data.confidence === "number" ? data.confidence : 0) : sc };
+        // The group reading miscounts (two thin 1s side by side are easily read as one): each digit is then read on its own.
+        var cells = box.groups[k].cells;
+        if (cells && cells.length === box.groups[k].digits && digits.length !== cells.length) {
+          await worker.setParameters({ tessedit_pageseg_mode: "10" });        // 10 = one character
+          var one = "", worst = 100;
+          try {
+            for (var q = 0; q < cells.length; q++) {
+              var o = await worker.recognize(prepareRect(source, fracRect(cells[q], vw, vh)), {}, { text: true, blocks: true });
+              var od = o && o.data ? o.data : {}, ch = (od.text || "").replace(/\D/g, ""), oc = readConfidence(od);
+              if (ch.length !== 1) { one = ""; break; }
+              one += ch; worst = Math.min(worst, oc === null ? (typeof od.confidence === "number" ? od.confidence : 0) : oc);
+            }
+          } finally { await worker.setParameters({ tessedit_pageseg_mode: "7" }); }
+          if (one.length === cells.length) part = { digits: one, confidence: worst, byCell: true };
+        }
+        parts.push(part);
+      }
+      var okShape = /^\d{1,3}$/.test(parts[0].digits) && /^\d{1,4}$/.test(parts[1].digits);
+      // The detector counted the digits of each group one by one: a reading with another number of digits is not a reading.
+      var okCount = [0, 1].every(function (q) { return parts[q].digits.length === box.groups[q].digits; });
+      if (okShape && !okCount) okShape = false;
+      // Digits that touched each other were not counted one by one: such a reading is shown, never accepted by itself.
+      // …and so is a plate seen in poor light: with little contrast the reader confuses digits (a 5 for a 9) while
+      // still reporting a high confidence. Measured on 2026-11-16; LOW_CONTRAST is the floor below which the person checks.
+      var sure = counted(box) && (box.contrast || 0) >= LOW_CONTRAST;
+      state.lastCrop = fracRect(box, vw, vh);
+      return { text: parts[0].digits + " " + parts[1].digits, confidence: sure ? Math.min(parts[0].confidence, parts[1].confidence) : Math.min(CONFIDENT - 1, parts[0].confidence, parts[1].confidence), groups: true,
+        parsed: okShape ? { serie: parts[0].digits, numero: parts[1].digits, exact: true } : (parts[0].digits + parts[1].digits ? { raw: parts[0].digits + parts[1].digits, serie: "", numero: "", exact: false } : null) };
+    }
+    var mx = box.w * 0.02, my = box.h * 0.04;
+    return recognize(prepareRect(source, fracRect({ x: box.x - mx, y: box.y - my, w: box.w + 2 * mx, h: box.h + 2 * my }, vw, vh)));
   }
 
   /* ---------------- reading a TUN_STD plate ----------------
@@ -388,6 +496,28 @@
     renderFrame();
   }
 
+  /* Update 2 — the detection rectangle and the auto / manual switch, built once. */
+  function buildAutoControls(root) {
+    var stage = root.querySelector(".ida-scan-stage");
+    if (!stage || root.querySelector("[data-scan-detect]")) return;
+    var d = document.createElement("div");
+    d.className = "ida-scan-detect";
+    d.setAttribute("data-scan-detect", "");
+    d.setAttribute("aria-hidden", "true");
+    d.hidden = true;
+    stage.appendChild(d);
+    var captureBtn = root.querySelector('[data-scan-action="capture"]');
+    if (captureBtn && detectorModule()) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ida-btn ida-btn--secondary";
+      b.setAttribute("data-scan-action", "mode");
+      b.textContent = "Cadrage manuel";
+      captureBtn.parentNode.insertBefore(b, captureBtn.nextSibling);
+    }
+    root.setAttribute("data-scan-mode", detectorModule() ? "auto" : "manual");
+  }
+
   /* ---------------- UI ---------------- */
 
   function el(id) { return state.els.root.querySelector("[data-scan-" + id + "]"); }
@@ -457,47 +587,21 @@
     video.srcObject = state.stream;
     video.setAttribute("playsinline", "");
     try { await video.play(); } catch (e) { /* autoplay policies — the frame still arrives */ }
-    setStatus("Cadrez la plaque dans le rectangle, puis appuyez sur Lire la plaque.");
+    if (!startAuto()) setStatus("Cadrez la plaque dans le rectangle, puis appuyez sur Lire la plaque.");
   }
 
-  async function capture() {
-    var video = state.els.video;
-    var canvas = prepare(video, video.parentNode);
-    if (!canvas) {
-      setStatus("L'image n'est pas encore prête — réessayez dans un instant.");
-      return;
-    }
-    // The camera is released as soon as the frame is taken: OCR does not need
-    // it, and holding it open during a slow recognition is what makes a
-    // scanner feel like it is spying.
-    stopCamera();
-    show("busy");
-    setStatus("Chargement du lecteur…");
-
+  /* Reads one prepared canvas. Resolves { text, confidence, parsed }; rejects
+   * with .stage = "engine" | "read" so the caller can say what failed. */
+  async function recognize(canvas, onProgress) {
     var worker;
-    try {
-      worker = await loadEngine(function (m) {
-        if (m.status === "recognizing text") setStatus("Lecture de la plaque…");
-        else setStatus("Chargement du lecteur… " + Math.round((m.progress || 0) * 100) + "%");
-      });
-    } catch (e) {
-      fail("Lecteur indisponible",
-        "Le lecteur de plaque n'a pas pu être chargé. Saisissez la plaque à la main ci-dessous.");
-      return;
-    }
-
-    setStatus("Lecture de la plaque…");
+    try { worker = await loadEngine(onProgress || function () {}); }
+    catch (e) { var e1 = new Error("engine"); e1.stage = "engine"; throw e1; }
     var out;
     try {
       // blocks:true asks the engine for per-symbol geometry as well as text —
       // splitByGeometry() needs the digit bounding boxes.
       out = await worker.recognize(canvas, {}, { text: true, blocks: true });
-    } catch (e) {
-      fail("Lecture impossible",
-        "La plaque n'a pas pu être lue. Réessayez avec plus de lumière, ou saisissez-la à la main.");
-      return;
-    }
-
+    } catch (e) { var e2 = new Error("read"); e2.stage = "read"; throw e2; }
     var data = out && out.data ? out.data : {};
     var text = (data.text || "").trim();
     var symbolConfidence = readConfidence(data);
@@ -511,29 +615,57 @@
       var geo = splitByGeometry(data);
       if (geo) parsed = geo;
     }
+    return { text: text, confidence: confidence, parsed: parsed };
+  }
 
-    state.lastRead = { text: text, confidence: confidence, parsed: parsed };
+  /* The structured registration number: first group, the word, last group. */
+  function structure(serie, numero) {
+    return { first: serie, text: "تونس", last: numero, normalized: serie + " تونس " + numero, canonical: serie + " TUN " + numero };
+  }
 
+  /* A copy of the whole frame (1280 px at most) — shown on the result card and,
+   * only where the page asks for it, sent to the vehicle analysis. */
+  function snapshot(video) {
+    var vw = video.videoWidth || video.width, vh = video.videoHeight || video.height;
+    if (!vw || !vh) return null;
+    var s = Math.min(1, 1280 / Math.max(vw, vh)), c = document.createElement("canvas");
+    c.width = Math.round(vw * s); c.height = Math.round(vh * s);
+    c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+    return c;
+  }
+  function colourFrom(canvas, box) {
+    var D = detectorModule();
+    if (!D || !canvas || !box) return { value: "unknown", confidence: 0 };
+    var w = Math.min(320, canvas.width), h = Math.round(canvas.height * w / canvas.width), c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    var ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(canvas, 0, 0, w, h);
+    return D.colourOf(ctx.getImageData(0, 0, w, h).data, w, h, box);
+  }
+
+  /* Hands a reading to the page. With onResult the page shows the result card
+   * (image, number, confidence); otherwise the plate goes to the search as before. */
+  function deliver(serie, numero, confidence, auto) {
+    var cap = state.lastCapture || {};
+    var payload = { serie: serie, numero: numero, confidence: confidence, auto: auto, plate: structure(serie, numero),
+      frame: cap.frame || null, plateBox: cap.box || null, colour: cap.colour || { value: "unknown", confidence: 0 } };
+    close();
+    if (typeof state.onResult === "function") state.onResult(payload);
+    else state.onPlate({ serie: serie, numero: numero, confidence: confidence, auto: auto });
+  }
+
+  function showUncertain(read) {
+    var parsed = read ? read.parsed : null, confidence = read ? read.confidence : 0;
+    show("confirm");
     if (!parsed) {
       // Not read. Not a failure of the visitor, and not something to guess at.
-      show("confirm");
       el("confirm-serie").value = "";
       el("confirm-numero").value = "";
       setConfirmNote("La plaque n'a pas pu être lue automatiquement. Saisissez-la, ou reprenez une photo.");
       el("confirm-serie").focus();
       return;
     }
-
-    if (parsed.exact && confidence >= CONFIDENT) {
-      // Read cleanly and with confidence: run the same search the typed plate
-      // runs. The visitor still sees the plate in the field afterwards.
-      close();
-      state.onPlate({ serie: parsed.serie, numero: parsed.numero, confidence: confidence, auto: true });
-      return;
-    }
-
     // Read, but not confidently enough to act on unaided.
-    show("confirm");
     el("confirm-serie").value = parsed.serie || (parsed.raw ? parsed.raw.slice(0, 3) : "");
     el("confirm-numero").value = parsed.numero || (parsed.raw ? parsed.raw.slice(3) : "");
     setConfirmNote(parsed.exact
@@ -541,6 +673,168 @@
       : "Lecture ambiguë — les deux groupes de chiffres n'ont pas pu être séparés avec certitude. Corrigez si besoin.");
     el("confirm-serie").focus();
     el("confirm-serie").select();
+  }
+
+  async function capture() {
+    var video = state.els.video;
+    var canvas = prepare(video, video.parentNode);
+    if (!canvas) {
+      setStatus("L'image n'est pas encore prête — réessayez dans un instant.");
+      return;
+    }
+    var vw = video.videoWidth, vh = video.videoHeight, r = state.lastCrop;
+    var box = { x: r.sx / vw, y: r.sy / vh, w: r.sw / vw, h: r.sh / vh }, shot = snapshot(video);
+    state.lastCapture = { frame: shot, box: box, colour: colourFrom(shot, box) };
+    // The camera is released as soon as the frame is taken: OCR does not need
+    // it, and holding it open during a slow recognition is what makes a
+    // scanner feel like it is spying.
+    stopCamera();
+    show("busy");
+    setStatus("Chargement du lecteur…");
+
+    var read;
+    try {
+      read = await recognize(canvas, function (m) {
+        if (m.status === "recognizing text") setStatus("Lecture de la plaque…");
+        else setStatus("Chargement du lecteur… " + Math.round((m.progress || 0) * 100) + "%");
+      });
+    } catch (e) {
+      if (e.stage === "engine") fail("Lecteur indisponible", "Le lecteur de plaque n'a pas pu être chargé. Saisissez la plaque à la main ci-dessous.");
+      else fail("Lecture impossible", "La plaque n'a pas pu être lue. Réessayez avec plus de lumière, ou saisissez-la à la main.");
+      return;
+    }
+    state.lastRead = read;
+    if (read.parsed && read.parsed.exact && read.confidence >= CONFIDENT) {
+      // Read cleanly and with confidence: run the same search the typed plate
+      // runs. The visitor still sees the plate in the field afterwards.
+      deliver(read.parsed.serie, read.parsed.numero, read.confidence, true);
+      return;
+    }
+    showUncertain(read);
+  }
+
+  /* ---------------- Update 2 — automatic detection loop ---------------- */
+
+  function setMode(mode) {
+    state.mode = mode;
+    var root = state.els && state.els.root;
+    if (!root) return;
+    root.setAttribute("data-scan-mode", mode);
+    var b = root.querySelector('[data-scan-action="mode"]');
+    if (b) b.textContent = mode === "auto" ? "Cadrage manuel" : "Détection automatique";
+    if (mode === "manual") { renderDetect(null); setStatus("Cadrez la plaque dans le rectangle, puis appuyez sur Lire la plaque."); }
+  }
+
+  /* A rectangle in video fractions → stage fractions (object-fit: cover). */
+  function videoToStage(b, stageW, stageH, vw, vh) {
+    var scale = Math.max(stageW / vw, stageH / vh), ox = (stageW - vw * scale) / 2, oy = (stageH - vh * scale) / 2;
+    return { x: (b.x * vw * scale + ox) / stageW, y: (b.y * vh * scale + oy) / stageH, w: b.w * vw * scale / stageW, h: b.h * vh * scale / stageH };
+  }
+
+  function renderDetect(box, stable) {
+    var n = state.els && state.els.root ? state.els.root.querySelector("[data-scan-detect]") : null;
+    if (!n) return;
+    var video = state.els.video, stage = video ? video.parentNode : null;
+    if (!box || !stage || !video.videoWidth) { n.hidden = true; return; }
+    var s = videoToStage(box, stage.clientWidth || 1, stage.clientHeight || 1, video.videoWidth, video.videoHeight);
+    n.hidden = false;
+    n.style.left = pct(s.x); n.style.top = pct(s.y); n.style.width = pct(s.w); n.style.height = pct(s.h);
+    n.classList.toggle("is-stable", !!stable);
+  }
+
+  function stopAuto() {
+    if (state.auto && state.auto.timer) clearInterval(state.auto.timer);
+    state.auto = null;
+  }
+
+  function startAuto() {
+    var D = detectorModule();
+    stopAuto();
+    if (!D) { setMode("manual"); return false; }
+    var c = document.createElement("canvas");
+    state.auto = { tracker: D.createTracker(), attempts: 0, busy: false, canvas: c, ctx: c.getContext("2d", { willReadFrequently: true }), timer: null, ticks: 0, reads: 0, every: AUTO.interval, cost: 0, following: false, counted: false, candidate: null };
+    setMode("auto");
+    setStatus("Recherche de la plaque… Visez l'avant ou l'arrière du véhicule.");
+    state.auto.timer = setInterval(autoTick, AUTO.interval);
+    // The reader is loaded while the plate is being looked for, so the first reading does not wait for it.
+    loadEngine(function () {}).catch(function () {});
+    return true;
+  }
+
+  function autoTick() {
+    var a = state.auto, D = detectorModule();
+    if (!a || a.busy || !D || !state.stream || state.mode !== "auto" || document.visibilityState === "hidden") return;
+    var video = state.els.video, vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+    var t0 = Date.now();
+    // the larger second look is taken every other tick only, and never while a plate is being followed
+    var found = locate(video, vw, vh, a, a.ticks % 2 === 1 && (!a.following || !a.counted));
+    var tr = a.tracker.update(found.box);
+    a.following = !!tr.box;
+    a.counted = counted(found.box);
+    a.ticks++;
+    a.cost = Date.now() - t0;
+    // a slow device is given more time between looks: the analysis never takes more than about a third of the time
+    var want = Math.max(AUTO.interval, Math.min(1000, a.cost * 3));
+    if (Math.abs(want - a.every) > 60) { a.every = want; clearInterval(a.timer); a.timer = setInterval(autoTick, want); }
+    renderDetect(tr.box, tr.stable);
+    if (tr.stable) { a.busy = true; autoRead(tr.box); }
+    else setStatus(tr.box ? "Plaque repérée — ne bougez plus…" : "Recherche de la plaque… Visez l'avant ou l'arrière du véhicule.");
+  }
+
+  async function autoRead(box) {
+    var a = state.auto, video = state.els.video, vw = video.videoWidth, vh = video.videoHeight;
+    // at capture time the frame is looked at once more, at both sizes: the finer look separates digits the first one merged or dropped
+    var again = locate(video, vw, vh, a, "both").box, D = detectorModule();
+    if (again && D && D.iou(again, box) > 0.3) box = again;
+    var shot = snapshot(video);
+    state.lastCapture = { frame: shot, box: { x: box.x, y: box.y, w: box.w, h: box.h }, colour: colourFrom(shot, box) };
+    setStatus("Plaque stable — lecture…");
+    var read = null;
+    try { read = await readDetected(video, vw, vh, box); }
+    catch (e) {
+      if (e.stage === "engine") { fail("Lecteur indisponible", "Le lecteur de plaque n'a pas pu être chargé. Saisissez la plaque à la main ci-dessous."); return; }
+    }
+    if (state.auto !== a) return;            // closed or switched to manual meanwhile
+    a.attempts++; a.reads++;
+    state.lastRead = read;
+    if (read && read.parsed && read.parsed.exact && read.confidence >= CONFIDENT) {
+      // A confident reading is accepted only when a SECOND frame gives the same digits: one frame can
+      // turn a 7 into a 4 with full confidence, two different frames rarely agree on the same mistake.
+      var key = read.parsed.serie + "/" + read.parsed.numero;
+      if (a.candidate === key) { deliver(read.parsed.serie, read.parsed.numero, read.confidence, true); return; }
+      a.candidate = key; a.attempts--;                       // not a failed attempt: a first reading awaiting its confirmation
+      a.tracker.reset();
+      setStatus("Plaque lue — vérification sur une deuxième image…");
+      setTimeout(function () { if (state.auto === a) a.busy = false; }, 350);
+      return;
+    }
+    a.candidate = null;
+    if (a.attempts >= AUTO.maxAttempts) {
+      // Three uncertain readings: nothing is accepted by itself. The person checks the digits,
+      // or goes back and frames the plate by hand.
+      stopCamera();
+      showUncertain(read);
+      return;
+    }
+    a.tracker.reset();
+    renderDetect(null);
+    setStatus("Lecture incertaine — rapprochez-vous ou améliorez l'éclairage.");
+    setTimeout(function () { if (state.auto === a) a.busy = false; }, AUTO.cooldown);
+  }
+
+  /* Update 2 — the same pipeline on a still image (a canvas): find the plate,
+   * read it, name the colour. Used by the tests and the accuracy measurements;
+   * the camera path above runs exactly these steps. */
+  async function analyzeStill(source) {
+    var D = detectorModule(), w0 = source.width, h0 = source.height;
+    if (!D || !w0 || !h0) return { box: null, read: null, colour: { value: "unknown", confidence: 0 } };
+    var c = document.createElement("canvas"), found = locate(source, w0, h0, { canvas: c, ctx: c.getContext("2d", { willReadFrequently: true }) }, "both");
+    var box = found.box, data = found.data, w = found.w, h = found.h;
+    if (!box) return { box: null, read: null, colour: { value: "unknown", confidence: 0 } };
+    var read = null;
+    try { read = await readDetected(source, w0, h0, box); } catch (e) { read = null; }
+    return { box: box, read: read, colour: D.colourOf(data, w, h, box), accepted: !!(read && read.parsed && read.parsed.exact && read.confidence >= CONFIDENT) };
   }
 
   function setConfirmNote(msg) {
@@ -555,8 +849,7 @@
       setConfirmNote("Série : 1 à 3 chiffres. Numéro : 1 à 4 chiffres.");
       return;
     }
-    close();
-    state.onPlate({ serie: serie, numero: numero, confidence: state.lastRead ? state.lastRead.confidence : 0, auto: false });
+    deliver(serie, numero, state.lastRead ? state.lastRead.confidence : 0, false);
   }
 
   /* ---------------- public API ---------------- */
@@ -564,6 +857,8 @@
   function open(opts) {
     state.els = opts.els;
     state.onPlate = opts.onPlate;
+    state.onResult = opts.onResult || null;
+    state.lastCapture = null;
     state.els.root.hidden = false;
     state.els.root.setAttribute("aria-hidden", "false");
     show("intro");
@@ -575,6 +870,7 @@
   function bind(els) {
     state.els = els;
     buildFrameControls(els.root);
+    buildAutoControls(els.root);
     els.root.addEventListener("click", function (e) {
       var t = e.target.closest("[data-scan-action]");
       if (t) {
@@ -585,6 +881,11 @@
         if (a === "confirm") return confirmSubmit();
         if (a === "close") return close();
         if (a === "frame-reset") { setFrame(FRAME_DEFAULT); return; }
+        if (a === "mode") {
+          if (state.mode === "auto") { stopAuto(); setMode("manual"); }
+          else if (state.stream) startAuto();
+          return;
+        }
       }
       if (e.target === els.root) close();   // backdrop
     });
@@ -609,6 +910,16 @@
     splitByGeometry: splitByGeometry,
     readConfidence: readConfidence,
     cropRect: cropRect,
+    analyzeStill: analyzeStill,
+    _prepareRect: prepareRect,
+    _fracRect: fracRect,
+    structure: structure,
+    videoToStage: videoToStage,
+    getMode: function () { return state.mode; },
+    autoStats: function () { return state.auto ? { ticks: state.auto.ticks, reads: state.auto.reads, attempts: state.auto.attempts, busy: state.auto.busy, every: state.auto.every, cost: state.auto.cost } : null; },
+    lastCapture: function () { return state.lastCapture; },
+    AUTO: AUTO,
+    LOW_CONTRAST: LOW_CONTRAST,
     clampFrame: clampFrame,
     getFrame: getFrame,
     setFrame: setFrame,

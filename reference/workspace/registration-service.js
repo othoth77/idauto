@@ -14,6 +14,7 @@
 // checked again with the lock held.
 // =====================================================
 
+var provenance = require('../recognition/provenance.js');
 var writes = require('../writes.js');
 var errors = require('../vehicle/errors.js');
 var identity = require('../identity.js');
@@ -76,6 +77,7 @@ function validate(body) {
   };
   if (out.category_code && !/^[A-Z][0-9A-Z]{0,3}$/i.test(out.category_code)) throw fail('category_code', 'invalid_category');
   out.odometer_km = int(body, 'odometer_km', 0, 3000000);
+  out.recognition = provenance.cleanRecognition(body.recognition, out);
   out.notes = details.cleanNotes(body.notes);
   if (out.model) out.model = out.model.toUpperCase();
   var owner = body.owner && (body.owner.full_name || body.owner.phone) ? owners.validate(body.owner) : null;
@@ -107,9 +109,10 @@ async function register(body, actor) {
         var holders = await repository.vehiclesWithVin(client, v.vehicle.vin);
         if (holders.length) { var kv = canSeeVin ? await repository.canonicalById(holders[0], client) : null; vinProbe = { vin: v.vehicle.vin, ivid: kv ? kv.ivid : null }; throw errors.IdautoError('CONFLICT', { reason: 'vehicle_already_registered', identifier: 'vin', ivid: kv ? kv.ivid : null }); }
       }
-      var input = Object.assign({}, v.vehicle); delete input.colour; delete input.odometer_km; delete input.notes;
+      var input = Object.assign({}, v.vehicle); delete input.colour; delete input.odometer_km; delete input.notes; delete input.recognition;
       var row = await repository.insertIdentifiedVehicle(client, input, actor, { method: 'manual_registration', source: 'manual_registration', confidence: 1 }, true);
       if (v.vehicle.colour) await client.query('UPDATE idauto_vehicles SET colour = $1 WHERE id = $2', [v.vehicle.colour, row.id]);
+      if (v.vehicle.recognition) await client.query('UPDATE idauto_vehicles SET visual_recognition = $1::jsonb WHERE id = $2', [JSON.stringify(v.vehicle.recognition), row.id]);
       if (v.vehicle.odometer_km !== null && v.vehicle.odometer_km !== undefined) await client.query('UPDATE idauto_vehicles SET odometer_km = $1, odometer_at = CURRENT_DATE WHERE id = $2', [v.vehicle.odometer_km, row.id]);
       if (v.vehicle.notes) await details.upsertNotesWith(client, row.id, v.vehicle.notes, actor);
       var ownerFields = v.owner ? await owners.upsertWith(client, row.id, v.ownerInput, actor) : [];

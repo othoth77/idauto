@@ -27,6 +27,8 @@
 //   POST   /api/workspace/interventions         workshop:write   record an intervention with its parts, one transaction (IDA-UI-4)
 //   PUT    /api/workspace/interventions/:id     workshop:write   edit it (parts: update / cancel / add)
 //   DELETE /api/workspace/interventions/:id     workshop:write   cancel it (the record is kept)
+//   GET    /api/workspace/vehicle-recognition   vehicle:write    is the vehicle analysis configured? (Update 2)
+//   POST   /api/workspace/vehicle-recognition   vehicle:write    one JPEG → make, model, colour, body type seen by the vision model (12/min per account; not stored)
 //   GET    /api/admin/roles                     admin            the role → scope matrix the server applies
 // =====================================================
 
@@ -39,11 +41,14 @@ var registration = require('./workspace/registration-service.js');
 var owners = require('./workspace/owner-contacts.js');
 var details = require('./workspace/vehicle-details.js');
 var interventions = require('./workspace/intervention-service.js');
+var vision = require('./recognition/vehicle-vision.js');
+var writes = require('./writes.js');
 
 var SEARCH_LIMIT = { limit: 30, window_seconds: 60 };
+var VISION_LIMIT = { limit: 12, window_seconds: 60 };     // each analysis is a paid call to the provider
 
 function createWorkspace(ctx) {
-  var sendJson = ctx.sendJson, readJsonBody = ctx.readJsonBody, decode = ctx.decodePathSegment;
+  var sendJson = ctx.sendJson, readJsonBody = ctx.readJsonBody, decode = ctx.decodePathSegment, readBinaryBody = ctx.readBinaryBody;
   function actorOf(req) { return { identity: req.mythosIdentity, principal: req.principal }; }
   function query(req) { return new URL(req.url, 'http://x').searchParams; }
   function guard(fn) {
@@ -73,6 +78,26 @@ function createWorkspace(ctx) {
     if (!isAdmin(req) && !(req.principal && req.principal.org_id)) throw errors.IdautoError('FORBIDDEN');
     sendJson(res, 201, await registration.register(await readJsonBody(req), actor));
   }
+  // Update 2 — vehicle visual recognition. The page sends ONE JPEG of the frame it captured; the answer is
+  // what a vision model sees (make, model, colour, body type), each value marked `source: 'vision'`.
+  // Off unless the operator configured a provider (recognition/vehicle-vision.js): then every field is
+  // unknown and nothing leaves this server. The photo is never stored; the audit row carries no image.
+  async function getRecognitionStatus(req, res) { var c = vision.config(); sendJson(res, 200, { vehicle_analysis: { enabled: c.enabled, provider: c.enabled ? c.provider : null } }); }
+  async function postRecognition(req, res) {
+    var actor = actorOf(req);
+    if (!isAdmin(req) && !(req.principal && req.principal.org_id)) throw errors.IdautoError('FORBIDDEN');
+    var rl = await rateLimit.enforcePublicResolution(db, 'vision:' + (req.mythosIdentity || 'anonymous'), VISION_LIMIT);
+    if (!rl.allowed) return sendJson(res, 429, { error: 'RATE_LIMITED', message_fr: 'Trop d\'analyses : patientez un instant.', retry_at: rl.retry_at });
+    if (!/^image\/jpeg\b/i.test(String(req.headers['content-type'] || ''))) return sendJson(res, 415, { error: 'UNSUPPORTED_MEDIA_TYPE', message_fr: 'Une image JPEG est attendue.' });
+    var declared = Number(req.headers['content-length'] || 0);
+    if (declared > vision.MAX_IMAGE_BYTES) return sendJson(res, 413, { error: 'PAYLOAD_TOO_LARGE', message_fr: 'Image trop volumineuse.' });
+    var bytes = await readBinaryBody(req);
+    if (bytes.length > vision.MAX_IMAGE_BYTES || !vision.isJpeg(bytes)) return sendJson(res, 400, { error: 'INVALID_IMAGE', message_fr: 'L\'image n\'a pas pu être lue.' });
+    var out = await vision.analyse(bytes);
+    if (out.enabled) await writes.withAudit({ principal: actor.principal, event_type: 'vehicle.recognition.vision', target_type: 'idauto_vehicles',
+      change_summary: 'Vehicle photo analysed by ' + out.provider + (out.error ? ' — ' + out.error : '') + ' (' + bytes.length + ' bytes, not stored)' }, actor.identity, async function () { return { record: { bytes: bytes.length, stored: false, provider: out.provider, model: out.model || null, error: out.error || null }, auditTargetRef: 'vehicle-photo' }; });
+    sendJson(res, 200, { vehicle_analysis: out });
+  }
   async function getDossier(req, res, m) { sendJson(res, 200, await repo.dossier(decode(m[1]), actorOf(req))); }
   async function getOwner(req, res, m) { var v = await repo.vehicleOr404(decode(m[1])); sendJson(res, 200, { vehicle: v.ivid, contacts: await owners.current(v, actorOf(req), 'dossier') }); }
   async function putOwner(req, res, m) { var v = await repo.vehicleOr404(decode(m[1])); sendJson(res, 200, await owners.put(v, await readJsonBody(req), actorOf(req))); }
@@ -101,6 +126,8 @@ function createWorkspace(ctx) {
     { method: 'GET', pattern: /^\/api\/workspace\/overview$/, handler: guard(getOverview) },
     { method: 'GET', pattern: /^\/api\/workspace\/vehicles$/, handler: guard(getVehicles) },
     { method: 'POST', pattern: /^\/api\/vehicles\/register$/, handler: guard(postRegister) },
+    { method: 'GET', pattern: /^\/api\/workspace\/vehicle-recognition$/, handler: guard(getRecognitionStatus) },
+    { method: 'POST', pattern: /^\/api\/workspace\/vehicle-recognition$/, handler: guard(postRecognition) },
     { method: 'GET', pattern: new RegExp('^' + VEH + '\\/dossier$'), handler: guard(getDossier) },
     { method: 'GET', pattern: new RegExp('^' + VEH + '\\/owner$'), handler: guard(getOwner) },
     { method: 'PUT', pattern: new RegExp('^' + VEH + '\\/owner$'), handler: guard(putOwner) },
@@ -122,6 +149,8 @@ function createWorkspace(ctx) {
     { method: 'GET', pattern: /^\/api\/workspace\/overview$/, scope: 'vehicle:read' },
     { method: 'GET', pattern: /^\/api\/workspace\/vehicles$/, scope: 'vehicle:read' },
     { method: 'POST', pattern: /^\/api\/vehicles\/register$/, scope: 'vehicle:write' },
+    { method: 'GET', pattern: /^\/api\/workspace\/vehicle-recognition$/, scope: 'vehicle:write' },
+    { method: 'POST', pattern: /^\/api\/workspace\/vehicle-recognition$/, scope: 'vehicle:write' },
     { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/dossier$/, scope: 'vehicle:read' },
     { method: 'GET', pattern: /^\/api\/vehicles\/[^/]+\/owner$/, scope: 'owner:read' },
     { method: 'PUT', pattern: /^\/api\/vehicles\/[^/]+\/owner$/, scope: 'owner:write' },
