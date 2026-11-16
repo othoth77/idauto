@@ -2165,6 +2165,11 @@ var ALL_ROUTES = workspace.routes.concat(ROUTES, v14.routes, v12.routes, adminCo
 
 function createServer() {
   return http.createServer(function (req, res) {
+    // Every response is streamed straight through the reverse proxy, never parked in its temporary files.
+    // On 2026-11-16 the proxy's temp directory was unwritable for its workers: every response larger than its
+    // memory buffers (the Arabic catalogue, the scanner script) reached the browser cut short, with a 200.
+    // Our pages are small and local; they do not need the proxy's buffering, and must not depend on its disk.
+    res.setHeader('X-Accel-Buffering', 'no');
     var parsed = url.parse(req.url);
     var pathname = parsed.pathname;
 

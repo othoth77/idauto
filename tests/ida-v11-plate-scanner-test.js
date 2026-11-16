@@ -317,6 +317,13 @@ async function main() {
   ok(!/#[0-9a-fA-F]{3,6}/.test(block.replace(/\/\*[\s\S]*?\*\//g, '')),
     'the scanner CSS introduces no literal colour — tokens only');
 
+  say('\n9. RESPONSES ARE NOT BUFFERED BY THE REVERSE PROXY (2026-11-16)');
+  var unbuffered = await Promise.all(['/', '/assets/plate-scanner.js', '/assets/i18n-catalog-ar.js', '/login', '/api/workspace/vehicles', '/atelier/assets/plate-detector.js'].map(function (u) {
+    return new Promise(function (resolve) { http.get({ hostname: '127.0.0.1', port: port, path: u }, function (r) { var n = 0; r.on('data', function (c) { n += c.length; }); r.on('end', function () { resolve({ u: u, h: r.headers['x-accel-buffering'], status: r.statusCode, bytes: n }); }); }); });
+  }));
+  ok(unbuffered.every(function (r) { return r.h === 'no'; }), 'pages, scripts, the catalogue and API answers (even a 401) all carry X-Accel-Buffering: no — ' + unbuffered.map(function (r) { return r.status; }).join(','));
+  ok(unbuffered[2].bytes > 100000 && unbuffered[1].bytes > 30000, 'the two large files (catalogue ' + unbuffered[2].bytes + ' B, scanner ' + unbuffered[1].bytes + ' B) are the ones a failing proxy cut short');
+
   server.close();
   console.log('\nIDA-V11 plate scanner + CSP + unregistered handoff: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);
