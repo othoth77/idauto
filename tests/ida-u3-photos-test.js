@@ -151,7 +151,8 @@ ok(/id="photo-take"/.test(regHtml) && /capture="environment"/.test(regHtml) && /
 ok(/id="scan-open"/.test(regHtml) && /Scanner la plaque en vidéo/.test(regHtml), 'the plate-only video scanner stays available as a fallback');
 ok(/Analyser cette photo/.test(photosJs) && /p\.status === 'ready' \? t\('Reprendre'\)/.test(photosJs), 'each photograph is previewed first: analyse it, or retake it');
 ok(/getElementById\('photo-take-label'\)\.addEventListener\('click', function \(\) \{ livePosition = askPosition\(\); \}\)/.test(photosJs) && !/askPosition\(\)/.test(photosJs.replace(/photo-take-label[^\n]*\n/, '').replace(/function askPosition[\s\S]*?\n  \}\n/, '')), 'the device position is asked only when the person presses « Prendre une photo »');
-ok(/M\.chooseLocation\(exif, live, taken\)/.test(photosJs) && /var live = taken && livePosition \? await livePosition : null;/.test(photosJs), 'a chosen file is never given the device position');
+var sharedJs = read('web/citizen/photo-analysis.js');
+ok(/M\.chooseLocation\(exif, live, !!taken\)/.test(sharedJs) && /var live = taken && livePosition \? await livePosition : null;/.test(sharedJs) && /A\.prepare\(file, taken, livePosition\)/.test(photosJs), 'a chosen file is never given the device position (shared photo-analysis.js, used by this page)');
 ok(!/C\.send\('POST', '\/api\/vehicles\/register'/.test(photosJs) && /uploadAll/.test(reg) && /if \(P && P\.count\(\)\)/.test(reg), 'analysing saves nothing; the photographs are stored only after the form is saved');
 ok(/recog-add-photos/.test(reg) && /Ajouter ces photos à ce véhicule/.test(reg), 'an existing registration offers to add the photographs to that vehicle');
 ['GET', 'POST'].forEach(function (mth) { ok(new RegExp("method: '" + mth + "', pattern: /\\^\\\\/api\\\\/vehicles\\\\/\\[\\^/\\]\\+\\\\/photos\\$/, scope: 'document:" + (mth === 'GET' ? 'read' : 'write') + "'").test(routes), mth + ' /photos needs the document scope'); });

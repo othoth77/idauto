@@ -55,6 +55,7 @@ var ATELIER_ASSETS = {
   '/atelier/assets/plate-scanner.js': { root: WEB_ROOT, file: 'citizen/plate-scanner.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/plate-detector.js': { root: WEB_ROOT, file: 'citizen/plate-detector.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/photo-meta.js': { root: WEB_ROOT, file: 'citizen/photo-meta.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/assets/photo-analysis.js': { root: WEB_ROOT, file: 'citizen/photo-analysis.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/app-photos.js': { file: 'app-photos.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/app-dossier-photos.js': { file: 'app-dossier-photos.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/favicon.svg': { root: WEB_ROOT, file: 'citizen/favicon.svg', contentType: 'image/svg+xml' },

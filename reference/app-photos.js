@@ -7,35 +7,25 @@
  *   · its location follows one order only: EXIF position → the device's position if the photograph was TAKEN
  *     here and the person allowed it → the place the person types → unknown. A chosen file never receives the
  *     device's current position;
- *   · the plate is looked for and read on the device (plate-scanner.js, analyzeStill); when the workshop has
+ *   · the plate is looked for and read on the device (the shared photo-analysis.js); when the workshop has
  *     configured the vehicle analysis, the photograph is also sent to this server's own route for make,
  *     model, colour, body type. Nothing is invented: what is not recognised stays empty.
  * The photographs are held in the page until the vehicle form is saved; then each is stored with its own
  * view, date, location and analysis. */
 (function () {
   var C = window.IdAutoConsole, el = C.el, clear = C.clear, t = (window.IdAutoI18n || { t: function (s) { return s; } }).t;
-  var M = window.IdaPhotoMeta, S = window.IdaPlateScanner;
+  var M = window.IdaPhotoMeta, A = window.IdaPhotoAnalysis;   // the shared analysis (web/citizen/photo-analysis.js)
   var list = document.getElementById('photo-list'), take = document.getElementById('photo-take'), pick = document.getElementById('photo-pick');
-  if (!list || !take || !pick || !M) return;
+  if (!list || !take || !pick || !M || !A) return;
 
   var photos = [], seq = 0, geoData = null, vision = null, livePosition = null;
-  var MAX_EDGE = 1600, MAX_PHOTOS = 6;
+  var MAX_PHOTOS = 6;
   var VIEW_LABEL = { front: 'Avant', rear: 'Arrière', unknown: 'Vue non précisée' };
   var SOURCE_LABEL = { exif: 'position enregistrée dans la photo', browser: 'position de l\'appareil à la prise de vue', manual: 'lieu saisi à la main' };
 
   // ---- location ------------------------------------------------------------------------------------------------
-  /* Asked once, explicitly, when the person presses « Prendre une photo ». A refusal is remembered as null and
-   * never blocks the photograph. */
-  function askPosition() {
-    if (!navigator.geolocation) return Promise.resolve(null);
-    return new Promise(function (resolve) {
-      var done = false, timer = setTimeout(function () { if (!done) { done = true; resolve(null); } }, 12000);
-      navigator.geolocation.getCurrentPosition(function (pos) {
-        if (done) return; done = true; clearTimeout(timer);
-        resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy });
-      }, function () { if (done) return; done = true; clearTimeout(timer); resolve(null); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-    });
-  }
+  /* Asked once, explicitly, when the person presses « Prendre une photo ». A refusal is null and never blocks. */
+  var askPosition = A.askPosition;
   async function resolvePlace(p) {
     if (!p.location || p.location.source === 'manual' || p.location.place_name || p.location.governorate) return;
     try {
@@ -59,17 +49,8 @@
     var p = { id: ++seq, taken: !!taken, view: 'unknown', status: 'reading', analysis: null, location: null, capturedAt: null, name: file.name || '' };
     photos.push(p); render();
     try {
-      var exif = /jpe?g/i.test(file.type) ? M.readExif(await file.arrayBuffer()) : { latitude: null, longitude: null, capturedAt: null };
-      var bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
-      var s = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
-      c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
-      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-      p.canvas = c;
-      p.blob = await new Promise(function (res) { c.toBlob(res, 'image/jpeg', 0.85); });
-      p.url = URL.createObjectURL(p.blob);
-      var live = taken && livePosition ? await livePosition : null;
-      p.location = M.chooseLocation(exif, live, taken);
-      p.capturedAt = exif.capturedAt || (taken ? new Date().toISOString() : null);
+      var prep = await A.prepare(file, taken, livePosition);
+      p.canvas = prep.canvas; p.blob = prep.blob; p.url = prep.url; p.location = prep.location; p.capturedAt = prep.capturedAt;
       p.status = 'ready';
       await resolvePlace(p);
     } catch (e) { p.status = 'error'; p.error = t('Cette image ne peut pas être lue : choisissez une autre photo.'); }
@@ -79,30 +60,11 @@
   // ---- analysing one photograph --------------------------------------------------------------------------------
   async function analyse(p) {
     p.status = 'analysing'; render();
-    var a = { plate: null, fields: {}, provider: null, model: null, vehicle_visible: null }, ocr = null;
-    try { ocr = S && S.analyzeStill ? await S.analyzeStill(p.canvas) : null; } catch (e) { ocr = null; }
-    if (ocr && ocr.read && ocr.read.parsed && ocr.read.parsed.exact) {
-      a.plate = { serie: ocr.read.parsed.serie, numero: ocr.read.parsed.numero, confidence: Math.round(ocr.read.confidence), source: 'ocr', accepted: !!ocr.accepted };
-    }
-    p.plateSeen = !!(ocr && ocr.box);
-    if (ocr && ocr.colour && ocr.colour.value && ocr.colour.value !== 'unknown') a.fields.colour = { value: ocr.colour.value, confidence: ocr.colour.confidence, source: 'camera' };
-    if (vision && vision.enabled) {
-      try {
-        var v = (await C.send('POST', '/api/workspace/vehicle-recognition', p.blob, { raw: true, headers: { 'Content-Type': 'image/jpeg' } })).vehicle_analysis;
-        p.visionError = v && v.error ? v.error : null;
-        if (v && v.enabled && !v.error) {
-          a.provider = v.provider; a.model = v.model; a.vehicle_visible = v.vehicle_visible;
-          Object.keys(v.fields || {}).forEach(function (f) { if (v.fields[f] && v.fields[f].value) a.fields[f] = v.fields[f]; });
-          if (p.view === 'unknown' && (v.view === 'front' || v.view === 'rear')) { p.view = v.view; p.viewBy = 'vision'; }
-          // The two readings of the plate: the device's and the model's. Agreement confirms; disagreement is
-          // shown, never settled silently; the model's reading alone is offered, to be checked like any other.
-          if (v.plate) {
-            if (!a.plate) a.plate = { serie: v.plate.serie, numero: v.plate.numero, confidence: v.plate.confidence, source: 'vision', accepted: false };
-            else if (a.plate.serie !== v.plate.serie || a.plate.numero !== v.plate.numero) { a.plate.accepted = false; p.plateDisagree = v.plate.serie + ' ' + v.plate.numero; }
-          }
-        }
-      } catch (e) { p.visionError = 'unreachable'; }
-    }
+    var r = await A.analyse(p, { visionEnabled: !!(vision && vision.enabled), visionUrl: '/api/workspace/vehicle-recognition',
+      post: function (url, blob) { return C.send('POST', url, blob, { raw: true, headers: { 'Content-Type': 'image/jpeg' } }); } });
+    var a = r.analysis;
+    p.plateSeen = r.plateSeen; p.visionError = r.visionError; p.plateDisagree = r.plateDisagree;
+    if (p.view === 'unknown' && r.view) { p.view = r.view; p.viewBy = 'vision'; }
     p.analysis = a; p.status = 'done';
     render(); publish();
   }

@@ -1,0 +1,22 @@
+{
+ "$comment": "Update 3.1 (2026-11-16) — public homepage photo scanner. Tunisian Arabic (derja).",
+ "Photographiez l'avant ou l'arrière du véhicule en entier : la plaque est cherchée sur la photo, rien à cadrer.": "صوّر قدّام الكرهبة ولّا تاليها بالكامل: البلاكة نلوّجو عليها في التصويرة، ما ثمّاش ما تكادري.",
+ "Prendre une photo du véhicule": "خوذ تصويرة للكرهبة",
+ "La photo est analysée sur votre appareil ; elle n'est pas enregistrée. Pour une photo prise ici, la position de l'appareil vous est demandée afin de situer la photo : vous pouvez refuser.": "التصويرة تتحلّل في الجهاز متاعك وما تتسجّلش. كي تاخو تصويرة من هنا، نطلبو موقع الجهاز باش نعرفو وين تصوّرت: تنجّم ترفض.",
+ "La photo est envoyée au service d'analyse d'IDauto pour proposer la marque et le modèle ; elle n'est pas enregistrée. Pour une photo prise ici, la position de l'appareil vous est demandée afin de situer la photo : vous pouvez refuser.": "التصويرة تتبعث لخدمة التحليل متاع IDauto باش تقترح الماركة والموديل، وما تتسجّلش. كي تاخو تصويرة من هنا، نطلبو موقع الجهاز: تنجّم ترفض.",
+ "Rechercher cette plaque": "لوّج على البلاكة هاذي",
+ "Prendre une autre photo": "خوذ تصويرة أخرى",
+ "Plaque lue sur la photo": "البلاكة مقريّة من التصويرة",
+ "Lecture à vérifier": "القراية لازمها تثبيت",
+ "l'analyse d'image lit : ": "تحليل التصويرة يقرا: ",
+ "Plaque repérée mais non lue : saisissez-la.": "لقينا البلاكة أما ما قريناهاش: اكتبها.",
+ "Aucune plaque lisible sur cette vue avant : saisissez-la si vous la connaissez.": "ما ثمّاش بلاكة تتقرا في القدّام: اكتبها كان تعرفها.",
+ "Aucune plaque lisible sur cette photo : saisissez-la, ou reprenez une photo plus proche.": "ما ثمّاش بلاكة تتقرا في التصويرة هاذي: اكتبها، ولّا عاود صوّر من قريب.",
+ "Non disponible": "موش متوفّر",
+ "hors de Tunisie": "برّا تونس",
+ "La reconnaissance de la marque et du modèle n'est pas disponible sur ce service : seuls la plaque et une estimation de la couleur sont proposés.": "التعرّف على الماركة والموديل موش متوفّر في الخدمة هاذي: البلاكة وتقدير اللون برك هوما المقترحين.",
+ "L'analyse d'image n'a pas abouti : seuls la plaque et une estimation de la couleur sont proposés.": "تحليل التصويرة ما نجحش: البلاكة وتقدير اللون برك هوما المقترحين.",
+ "Marque, modèle et carrosserie sont proposés à partir de l'image, pas d'un registre : ce sont des indications.": "الماركة والموديل والكاروسري مقترحين من التصويرة، موش من سجلّ: هاذي إشارات برك.",
+ "lu sur la photo": "مقري من التصويرة",
+ "Série : 1 à 3 chiffres. Numéro : 1 à 4 chiffres.": "السيري: من 1 لـ 3 أرقام. النومرو: من 1 لـ 4 أرقام."
+}
