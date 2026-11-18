@@ -1184,6 +1184,7 @@
   "Rechercher par VIN": "لوّج بالـ VIN",
   "Rechercher une pièce": "لوّج على بياسة",
   "Rechercher une référence, une marque, une pièce": "لوّج على مرجع، ماركة، بياسة",
+  "Recherchez d'abord un véhicule (plaque ou numéro de châssis) pour ajouter sa carte grise.": "لوّج على الكرهبة الأوّل (البلاكة ولّا رقم الشاسي) باش تزيد الكرت قريز متاعها.",
   "Recommencer": "عاود من الأوّل",
   "Reconnaître ce navigateur": "اعرف المتصفّح هذا",
   "Recto": "الوجه",

@@ -277,6 +277,7 @@
     vinInput.value = v;
     if (problem) { vinErr.textContent = problem; vinErr.hidden = false; vinInput.setAttribute("aria-invalid", "true"); return; }
     vinErr.hidden = true; vinInput.removeAttribute("aria-invalid"); vinBtn.disabled = true;
+    clearOutcome();   // a new search: the previous vehicle is no longer the one found (as the plate search does)
     try {
       var r = await fetch("/public/vin", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ vin: v }) });
       if (r.status === 404) { showMessage("Aucun véhicule pour ce numéro de châssis", "Ce numéro de châssis n'est relié à aucun véhicule identifié dans IDauto."); return; }
