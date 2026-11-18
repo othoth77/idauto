@@ -2283,18 +2283,6 @@ function createServer() {
           var cgPub = /^\/public\/vehicles\/([^/]+)\/carte-grise$/.exec(pathname);
           if (pathname === '/public/vin') await handlePublicVinRoute(req, res);      // Update 4 — VIN lookup, kept apart from the passport handler
           else if (cgPub) await handlePublicCarteGriseRoute(req, res, decodeURIComponent(cgPub[1]));   // Update 5 — public deposit (off by default)
-          else if (/^\/public\/vehicles\/[^/]+\/carte-grise-status$/.test(pathname)) {
-            // Update 5.1 — « is there a carte grise for this vehicle? » from the database: yes / no and the latest date only
-            if (!loadPublicResolutionConfig().enabled || req.method !== 'GET') notFound(res);
-            else {
-              var lim = await rateLimit.enforcePublicResolution(db, clientIpHash(req), loadPublicResolutionConfig());
-              if (!lim.allowed) { res.writeHead(429, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'rate limit exceeded' })); }
-              else {
-                try { var cgs = await require('./documents/carte-grise-service.js').status(decodeURIComponent(pathname.split('/')[3])); sendJson(res, 200, { exists: cgs.exists, latest_date: cgs.latest_at ? new Date(cgs.latest_at).toISOString().slice(0, 10) : null }); }
-                catch (e) { notFound(res); }
-              }
-            }
-          }
           else if (pathname === '/public/carte-grise-config') sendJson(res, 200, { public_deposit: process.env.IDAUTO_PUBLIC_CARTE_GRISE === '1' });
           else await handlePublicPassportRoute(req, res, pathname);
         } catch (err) {

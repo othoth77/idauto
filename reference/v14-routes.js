@@ -59,7 +59,7 @@ function createV14(ctx) {
   async function postCarteGrise(req, res, m) {
     if (!(await throttle(req, res, 'upload'))) return;
     var bytes = await readBinaryBody(req);
-    var out = await cg.store(decode(m[1]), { bytes: bytes, content_type: header(req, 'content-type'), face: header(req, 'x-idauto-face'), method: header(req, 'x-idauto-input'), filename: fname(req), new_version: header(req, 'x-idauto-new-version') === '1' }, actorOf(req));
+    var out = await cg.store(decode(m[1]), { bytes: bytes, content_type: header(req, 'content-type'), face: header(req, 'x-idauto-face'), method: header(req, 'x-idauto-input'), filename: fname(req) }, actorOf(req));
     sendJson(res, out.duplicate_of ? 200 : 201, out);
   }
   async function putCarteGrisePreview(req, res, m) {
