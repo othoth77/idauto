@@ -27,7 +27,7 @@ function freeVin() { var A = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789', s = 'VF7'; for
   var PW = 'U5b-' + crypto.randomBytes(6).toString('hex') + '-1', EMAIL = 'u5b-adm-' + run + '@idauto.test';
   var u = await auth.api.signUpEmail({ body: { email: EMAIL, password: PW, name: 'U5b admin' } }); await db.query('UPDATE idauto_auth_user SET "role" = \'admin\' WHERE "id" = $1', [u.user.id]);
   var port = 9500 + Math.floor(Math.random() * 90);
-  var chrome = cp.spawn(CHROME, ['--headless=new', '--no-sandbox', '--disable-gpu', '--remote-debugging-port=' + port, '--user-data-dir=' + path.join(MEDIA, 'chrome'), 'about:blank'], { stdio: 'ignore' });
+  var chrome = cp.spawn(CHROME, ['--headless=new', '--no-sandbox', '--disable-gpu', '--remote-debugging-port=' + port, '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--user-data-dir=' + path.join(MEDIA, 'chrome'), 'about:blank'], { stdio: 'ignore' });
   process.on('exit', function () { try { chrome.kill('SIGKILL'); } catch (e) {} try { fs.rmSync(MEDIA, { recursive: true, force: true }); } catch (e) {} });
   var targets = null; for (var a = 0; a < 40 && !targets; a++) { await sleep(750); try { targets = await get('http://127.0.0.1:' + port + '/json'); } catch (e) {} }
   var ws = new WebSocket(targets.filter(function (t) { return t.type === 'page'; })[0].webSocketDebuggerUrl), id = 0, pending = {};
@@ -67,6 +67,67 @@ function freeVin() { var A = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789', s = 'VF7'; for
       ok(row && row.vehicle_id === null && row.intake_status === 'pending_extraction' && row.source_format === 'CARTE_GRISE_TEXT', 'desktop: the database holds it with no vehicle, pending_extraction, as text');
     }
     await ev('document.querySelector("[data-cgc-close]").click(); true');
+    // Update 6.1 — « Scanner » opens the camera itself, inside this dialog (Chrome's fake camera)
+    var CAM = 'window.IdaCarteGrise._cam', LIVE = '(' + CAM + '.stream && ' + CAM + '.stream.getVideoTracks()[0].readyState === "live")';
+    await ev(BTN + '.click(); true');
+    await waitFor('!document.querySelector("[data-cgc-root]").hidden');
+    ok(await ev('!Array.from(document.querySelectorAll("[data-cgc-root] button")).some(b => /Ouvrir le scanner/.test(b.textContent)) && !document.querySelector("[data-cgc-scan]")'), form + ': no second « Ouvrir le scanner » button');
+    ok(await ev('!' + LIVE), form + ': opening the dialog does not start the camera by itself');
+    await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true');
+    ok(await waitFor(LIVE + ' && document.querySelector("[data-cgc-video]").videoWidth > 0 && !document.querySelector("[data-cgc-video]").hidden && !document.querySelector("[data-cgc-cam-live]").hidden'), form + ': ONE click on « Scanner » → live camera preview in the dialog, with « Prendre la photo »');
+    ok(await ev('!!document.querySelector("[data-cgc-cam-cancel]") && document.querySelector("[data-cgc-cam-live]").contains(document.querySelector("[data-cgc-switch]"))'), form + ': Annuler present; Changer de caméra shown only with several cameras');
+    var since = (await db.query('SELECT NOW() t')).rows[0].t;
+    await ev('window.ImageCapture = undefined; true');   // Chrome's fake camera returns the SAME still on every takePhoto(): use the video-frame path so recto and verso differ
+    var stale = await ev('(window.__t1 = ' + CAM + '.stream.getVideoTracks()[0], true)');
+    await ev('document.querySelector("[data-cgc-capture]").click(); true');
+    ok(await waitFor('!document.querySelector("[data-cgc-shot]").hidden && window.__t1.readyState === "ended" && !' + CAM + '.stream && ' + CAM + '.blob && ' + CAM + '.blob.size > 1000'), form + ': capture → photo preview, camera stream STOPPED');
+    ok(await ev('!document.querySelector("[data-cgc-cam-review]").hidden && !!document.querySelector("[data-cgc-retake]") && !!document.querySelector("[data-cgc-confirm]")'), form + ': « Reprendre » and « Confirmer » offered');
+    await ev('document.querySelector("[data-cgc-retake]").click(); true');
+    ok(await waitFor(LIVE + ' && document.querySelector("[data-cgc-shot]").hidden'), form + ': « Reprendre » → camera live again');
+    var dims = JSON.parse(await ev('JSON.stringify({ w: document.querySelector("[data-cgc-video]").videoWidth, h: document.querySelector("[data-cgc-video]").videoHeight })'));
+    await sleep(400 + crypto.randomInt(0, 2500));   // the fake camera restarts its frame counter on every start: a random moment = a different frame
+    await ev('document.querySelector("[data-cgc-capture]").click(); true'); await waitFor('!document.querySelector("[data-cgc-cam-review]").hidden && !!' + CAM + '.blob');
+    await ev('document.querySelector("[data-cgc-confirm]").click(); true');
+    ok(await waitFor('/Recto — Reçu/.test(document.querySelector("[data-cgc-done]").textContent) && document.querySelector("[data-cgc-face]").value === "2"'), form + ': « Confirmer » saves the recto directly (no import step); Face moves to Verso');
+    await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true'); await waitFor(LIVE); await sleep(3000);   // a different frame of the fake camera
+    await sleep(400 + crypto.randomInt(0, 2500));   // the fake camera restarts its frame counter on every start: a random moment = a different frame
+    await ev('document.querySelector("[data-cgc-capture]").click(); true'); await waitFor('!document.querySelector("[data-cgc-cam-review]").hidden && !!' + CAM + '.blob');
+    await ev('document.querySelector("[data-cgc-confirm]").click(); true');
+    ok(await waitFor('/Verso — Reçu/.test(document.querySelector("[data-cgc-done]").textContent)'), form + ': verso captured and saved separately (« Verso — Reçu… »)');
+    var rows = (await db.query("SELECT face, width, height, mime_type, input_method FROM idauto_vehicle_documents WHERE input_method = 'camera' AND vehicle_id IS NULL AND created_at >= $1 ORDER BY id DESC LIMIT 2", [since])).rows;
+    ok(rows.length === 2 && rows.some(r => r.face === 1) && rows.some(r => r.face === 2) && rows.every(r => r.mime_type === 'image/jpeg' && r.width === dims.w && r.height === dims.h), form + ': stored recto + verso, JPEG at the camera\'s full frame size (' + dims.w + '×' + dims.h + '; ' + rows.map(r => r.width + '×' + r.height + ' ' + r.mime_type).join(', ') + ')');
+    await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true'); await waitFor(LIVE);
+    await ev('(window.__t2 = ' + CAM + '.stream.getVideoTracks()[0], true)');
+    await ev('document.querySelector("[data-cgc-tab=\'file\']").click(); true');
+    ok(await waitFor('window.__t2.readyState === "ended" && !document.querySelector("[data-cgc-pane=\'file\']").hidden && !!document.querySelector("[data-cgc-file]")'), form + ': « Fichier » stops the camera and shows the file picker pane');
+    await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true'); await waitFor(LIVE);
+    await ev('(window.__t3 = ' + CAM + '.stream.getVideoTracks()[0], true)');
+    await ev('document.querySelector("[data-cgc-cam-cancel]").click(); true');
+    ok(await waitFor('window.__t3.readyState === "ended" && document.querySelector("[data-cgc-video]").hidden'), form + ': « Annuler » stops the camera');
+    await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true'); await waitFor(LIVE);
+    await ev('(window.__t4 = ' + CAM + '.stream.getVideoTracks()[0], true)');
+    await ev('document.querySelector("[data-cgc-close]").click(); true');
+    ok(await waitFor('window.__t4.readyState === "ended"'), form + ': closing the dialog stops the camera');
+    if (form === 'desktop') {
+      var cases = [['NotAllowedError', /refusé/], ['NotFoundError', /Aucune caméra/], ['NotReadableError', /déjà utilisée/]];
+      for (var cz of cases) {
+        await ev('(() => { window.__gum = window.__gum || navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices); navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException("x", ' + JSON.stringify(cz[0]) + ')); return true; })()');
+        await ev(BTN + '.click(); true'); await waitFor('!document.querySelector("[data-cgc-root]").hidden');
+        await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true');
+        ok(await waitFor(cz[1].toString() + '.test(document.querySelector("[data-cgc-cam-msg]").textContent) && /Fichier/.test(document.querySelector("[data-cgc-cam-msg]").textContent)'), 'desktop: ' + cz[0] + ' → clear message, « Fichier » offered');
+        await ev('document.querySelector("[data-cgc-close]").click(); true');
+      }
+      await ev('(() => { window.__md = navigator.mediaDevices; Object.defineProperty(navigator, "mediaDevices", { value: undefined, configurable: true }); return true; })()');
+      await ev(BTN + '.click(); true'); await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true');
+      ok(await waitFor('/ne permet pas/.test(document.querySelector("[data-cgc-cam-msg]").textContent)'), 'desktop: unsupported browser → clear message');
+      await ev('document.querySelector("[data-cgc-close]").click(); Object.defineProperty(window, "isSecureContext", { value: false, configurable: true }); true');
+      await ev(BTN + '.click(); true'); await ev('document.querySelector("[data-cgc-tab=\'scan\']").click(); true');
+      ok(await waitFor('/HTTPS/.test(document.querySelector("[data-cgc-cam-msg]").textContent)'), 'desktop: insecure context → « La caméra exige une connexion sécurisée (HTTPS) »');
+      await ev('document.querySelector("[data-cgc-tab=\'file\']").click(); true');
+      ok(await ev('!document.querySelector("[data-cgc-pane=\'file\']").hidden'), 'desktop: file import stays available after a camera error');
+      await ev('document.querySelector("[data-cgc-close]").click(); true');
+      await go('/', '!!document.querySelector("[data-vin-form]")');   // a fresh page: real camera API back
+    }
     await vinSearch(VIN);
     ok(await waitFor('!document.querySelector("[data-plate-result]").hidden && document.querySelector("[data-result-ivid]").textContent === ' + JSON.stringify(reg.ivid)), form + ': VIN search finds the vehicle (unchanged behaviour)');
     ok(await ev('!' + BTN + '.disabled'), form + ': after a successful search: enabled');
