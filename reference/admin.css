@@ -547,3 +547,7 @@
 @media (max-width: 47.99rem) { .ida-part-row { grid-template-columns: 1fr 1fr; } .ida-part-row > .ida-field:first-child, .ida-part-row fieldset, .ida-part-row .ida-part-remove { grid-column: 1 / -1; } }
 .ida-field--grow { flex: 1 1 16rem; }
 #vehicle-field .ida-filter-bar .ida-input { flex: 1 1 16rem; }
+
+/* Update 6 — the carte grise review screen: the original fits the column; pasted text keeps its line breaks */
+.ida-intake-preview { max-width: 100%; height: auto; }
+pre.ida-intake-preview { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }

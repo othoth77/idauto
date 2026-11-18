@@ -139,6 +139,8 @@ async function pass() {
   for (var i = 0; i < rows.length; i++) { try { if (await sendOne(cfg, rows[i])) n++; } catch (e) { await db.query("UPDATE idauto_media_archive SET archive_status = 'failed', archive_error = $2, updated_at = NOW() WHERE id = $1", [rows[i].id, String(e.message || e).slice(0, 200)]); } }
   var lens = (await db.query("SELECT id, object_key FROM idauto_media_archive WHERE category = 'carte-grise' AND archive_status = 'stored' AND (lens_status IS NULL OR NOT (lens_status = ANY($1::text[]))) ORDER BY updated_at LIMIT 10", [FINAL_LENS])).rows;
   for (var j = 0; j < lens.length; j++) { try { await lensOne(cfg, lens[j]); } catch (e) { /* the next pass asks again */ } }
+  // Update 6 — a carte grise received without a vehicle: its LENS result goes to the document (review screen)
+  try { await require('../documents/carte-grise-intake.js').syncFromArchive(); } catch (e) { /* the next pass tries again */ }
   return n;
 }
 
