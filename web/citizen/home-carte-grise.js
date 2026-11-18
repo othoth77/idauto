@@ -8,7 +8,8 @@
   "use strict";
   var btn = document.querySelector("[data-cgc-home-open]"), note = document.querySelector("[data-cgc-home-note]");
   var ividOut = document.querySelector("[data-result-ivid]"), S = window.IdaRegistrationScanner, C = window.IdaCarteGrise;
-  if (!btn || !ividOut || !C) return;
+  var result = document.querySelector("[data-plate-result]"), hint = document.querySelector("[data-cgc-home-hint]");
+  if (!btn || !ividOut || !C || !result) return;
   function t(s) { var T = window.IdaI18n; return T && T.t ? T.t(s) : s; }
   if (S) { S.configure({ scanicUrl: "/assets/scanic.umd.js" }); var host = document.querySelector("[data-cg-root]"); if (host) S.mount(host); }
   var mode = null;
@@ -18,9 +19,21 @@
       .then(function (r) { if (r.ok) return "session"; return fetch("/public/carte-grise-config", { credentials: "omit" }).then(function (x) { return x.json(); }).then(function (c) { return c && c.public_deposit ? "public" : "signin"; }); })
       .catch(function () { return "signin"; }).then(function (m) { mode = m; return m; });
   }
+  // the button sits next to « Rechercher le véhicule »; it acts on the vehicle of the CURRENT successful search
+  // (plate or VIN) and is disabled — with the reason shown — while no vehicle is found
+  function found() { var ivid = (ividOut.textContent || "").trim(); return !result.hidden && /^ivid:/.test(ivid) ? ivid : null; }
+  function sync() {
+    var ivid = found();
+    if (btn.disabled !== !ivid) btn.disabled = !ivid;
+    if (hint && hint.hidden !== !!ivid) hint.hidden = !!ivid;
+    if (!ivid && !note.hidden) note.hidden = true;
+  }
+  new MutationObserver(sync).observe(result, { attributes: true, attributeFilter: ["hidden"] });
+  new MutationObserver(sync).observe(ividOut, { childList: true, characterData: true, subtree: true });
+  sync();
   btn.addEventListener("click", function () {
-    var ivid = (ividOut.textContent || "").trim();
-    if (!/^ivid:/.test(ivid)) return;
+    var ivid = found();
+    if (!ivid) return;
     detect().then(function (m) {
       if (m === "signin") { note.hidden = false; note.querySelector("[data-cgc-home-note-text]").textContent = t("Connectez-vous pour ajouter une carte grise au dossier de ce véhicule."); return; }
       note.hidden = true; C.open({ ivid: ivid, mode: m });
