@@ -29,7 +29,7 @@ function createLocalAdapter() {
   return {
     name: 'local',
     // → { key, byte_size } ; content-addressed, so the same bytes stored twice share one file.
-    put: async function (buffer, mime) { var s = storage.store(buffer, mime); return { key: s.object_key, byte_size: s.file_size_bytes }; },
+    put: async function (buffer, mime, opts) { var s = storage.store(buffer, mime, opts); return { key: s.object_key, byte_size: s.file_size_bytes }; },
     get: async function (key) { var p = keyPath(key); return fs.existsSync(p) ? fs.readFileSync(p) : null; },
     // Removes the bytes; the caller decides whether another row still references the key.
     remove: async function (key) { keyPath(key); storage.removeUnconditionally(key); },

@@ -69,11 +69,6 @@
       var meta = data.documents.faces.filter(function (x) { return x.face === f; })[0];
       var box = el('div', { class: 'ida-face-preview', 'data-face': String(f) }, el('span', { class: 'ida-muted' }, meta ? t('Chargement…') : t('Aucune photo')));
       var actions = el('div', { class: 'ida-page-actions' });
-      if (data.documents.can_upload) {
-        var input = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', capture: 'environment', 'data-upload': String(f) });
-        actions.appendChild(el('label', { class: 'ida-btn ida-btn--secondary ida-btn--sm ida-file-btn' }, [meta ? t('Remplacer') : t('Ajouter'), input]));
-        input.addEventListener('change', function () { upload(f, input); });
-      }
       if (meta && data.documents.can_delete) {
         var del = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm' }, t('Supprimer'));
         del.addEventListener('click', function () { removeFace(f); }); actions.appendChild(del);
@@ -82,7 +77,15 @@
         meta ? el('p', { class: 'ida-field-hint' }, meta.width + '×' + meta.height + ' px · ' + Math.round(meta.byte_size / 1024) + ' Ko · ' + C.date(meta.at, true)) : null, actions]));
       if (meta) loadImage(f, box);
     });
-    root.appendChild(section('sec-docs', t('Carte grise'), null, el('div', { class: 'ida-stack' }, [faces, el('p', { class: 'ida-small ida-muted' }, t('Pièces justificatives : les photos ne sont pas lues automatiquement. Remplacement et suppression sont enregistrés au journal.'))])));
+    // Update 5 — one entry point for every input method (scanner, file image / PDF, paste image / text) and the history
+    var cgAdd = data.documents.can_upload ? el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', 'data-cg-add': '' }, t('Ajouter une carte grise')) : null;
+    if (cgAdd) cgAdd.addEventListener('click', function () {
+      var S = window.IdaRegistrationScanner, hostEl = document.querySelector('[data-cg-root]');
+      if (S && hostEl && !hostEl.firstChild) { S.configure({ scanicUrl: '/atelier/assets/scanic.umd.js' }); S.mount(hostEl); }
+      window.IdaCarteGrise.open({ ivid: data.vehicle.ivid, mode: 'session', onDone: function () { load(); } });
+    });
+    var cgHist = el('div', { 'data-cg-history': '' }); loadCgHistory(cgHist);
+    root.appendChild(section('sec-docs', t('Carte grise'), null, el('div', { class: 'ida-stack' }, [faces, cgAdd, cgHist, el('p', { class: 'ida-small ida-muted' }, t('Pièces justificatives : les photos ne sont pas lues automatiquement. Remplacement et suppression sont enregistrés au journal.'))])));
     // Update 3 — the vehicle's photographs: front, rear, where and when each was taken
     if (window.IdAutoDossierPhotos) root.appendChild(window.IdAutoDossierPhotos.section(data, section, say));
     // Maintenance history
@@ -118,6 +121,25 @@
       var url = URL.createObjectURL(await r.blob());
       clear(box); box.appendChild(el('a', { href: url, target: '_blank', rel: 'noopener', title: t('Ouvrir en grand') }, el('img', { src: url, alt: t(f === 1 ? 'Carte grise — face 1' : 'Carte grise — face 2') })));
     } catch (e) { clear(box); box.appendChild(el('span', { class: 'ida-muted' }, t('Image indisponible.'))); }
+  }
+  // Update 5 — every carte grise version of this vehicle, newest first (image, PDF or pasted text), with its status
+  var CG_FORMAT = { CARTE_GRISE_IMAGE: 'Image', CARTE_GRISE_PDF: 'PDF', CARTE_GRISE_TEXT: 'Texte collé' };
+  var CG_METHOD = { camera: 'caméra', upload: 'fichier', paste_image: 'image collée', paste_text: 'texte collé', legacy: 'dépôt' };
+  async function loadCgHistory(box) {
+    var h;
+    try { h = await C.api('/api/vehicles/' + enc(data.vehicle.ivid) + '/carte-grise'); } catch (e) { return; }
+    if (!h.documents.length) return;
+    box.appendChild(el('ul', { class: 'ida-stack', 'data-cg-list': '' }, h.documents.map(function (d) {
+      var open = el('button', { type: 'button', class: 'ida-link ida-small', 'data-cg-open': d.id }, d.source_format === 'CARTE_GRISE_TEXT' ? t('Ouvrir le texte') : t("Ouvrir l'original"));
+      open.addEventListener('click', async function () {
+        var w = window.open('', '_blank');
+        try { var r = await fetch('/api/vehicles/' + enc(data.vehicle.ivid) + '/carte-grise/' + enc(d.id) + '/original', { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } }); if (!r.ok) throw new Error(String(r.status)); var u = URL.createObjectURL(await r.blob()); if (w) w.location.href = u; }
+        catch (e) { if (w) w.close(); say('danger', t('Document indisponible.')); }
+      });
+      return el('li', { class: 'ida-small', 'data-cg-item': d.id }, [t(CG_FORMAT[d.source_format] || d.source_format) + ' · ' + t(d.face === 2 ? 'verso' : 'recto') + ' · v' + d.version + ' · ' + t(CG_METHOD[d.input_method] || d.input_method) + ' · ' + C.date(d.uploaded_at, true) + ' · ',
+        el('span', { class: 'ida-status ida-status--' + (d.current ? 'verified' : 'neutral') }, d.current ? t('actuelle') : d.review.status === 'pending_review' ? t('à vérifier') : t('remplacée')), ' ',
+        el('span', { class: 'ida-muted' }, d.processing_status === 'PENDING_LENS' ? t('en attente d\'analyse (LENS)') : d.processing_status), ' ', open]);
+    })));
   }
   async function upload(f, input) {
     var file = input.files && input.files[0]; if (!file) return;

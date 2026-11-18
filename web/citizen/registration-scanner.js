@@ -31,7 +31,7 @@
   var root = typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : this);
 
   var cfg = { engineBase: "/atelier/assets/tesseract/", scanicUrl: "/atelier/assets/scanic.umd.js", maxEdge: 1600, quality: 0.85, thumbEdge: 480, thumbQuality: 0.7, processEdge: 1400, minDetectionConfidence: 0.55, languages: "fra+ara" };
-  var state = { els: null, ivid: null, onDone: null, onIdentify: null, mode: "store", pasteTarget: null, faces: { 1: null, 2: null }, worker: null, workerLoading: null, scanicLoading: null, editor: null, ocrResult: null, urls: [] };
+  var state = { methods: { 1: null, 2: null }, onCaptured: null, els: null, ivid: null, onDone: null, onIdentify: null, mode: "store", pasteTarget: null, faces: { 1: null, 2: null }, worker: null, workerLoading: null, scanicLoading: null, editor: null, ocrResult: null, urls: [] };
   var STEPS = ["capture", "detect", "correct", "ocr", "analyse", "save"];
   var STEP_FR = { capture: "Capture", detect: "Détection", correct: "Correction", ocr: "OCR", analyse: "Analyse", save: "Enregistrement" };
 
@@ -100,7 +100,7 @@
     setStep("correct"); status("Correction et optimisation…");
     var archive = await optimise(det.canvas, cfg.maxEdge, cfg.quality);
     var thumb = await optimise(det.canvas, cfg.thumbEdge, cfg.thumbQuality);
-    return { face: faceNo, file: file, archive: archive, thumb: thumb, detection: det.detection, originalBytes: file.size, done: true };
+    return { face: faceNo, file: file, archive: archive, thumb: thumb, detection: det.detection, originalBytes: file.size, done: true, source: src, corners: det.corners || forcedCorners || null };
   }
 
   /* ---------------- manual corners (fallback) ---------------- */
@@ -143,7 +143,11 @@
       else fail("Traitement impossible", "La photo n'a pas pu être traitée (" + reason.slice(0, 80) + "). Réessayez ou choisissez un autre fichier.");
     }
   }
-  function onPick(faceNo, input) { var f = input.files && input.files[0]; input.value = ""; if (!f) return; if (!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|heic)$/i.test(f.name)) return fail("Fichier refusé", "Choisissez une image (JPEG, PNG, WebP)."); if (faceNo === 2 && !state.faces[1]) return fail("Face 1 d'abord", "Scannez le recto avant le verso."); runFace(f, faceNo, null); }
+  // Update 5 — how each face was obtained: the camera, a file, or the clipboard (recorded with the stored document)
+  // a real <input> is the camera (capture attribute) or a file; a pasted image arrives as a plain { files } object
+  function methodOf(input) { if (!input || typeof input.hasAttribute !== "function") return "paste_image"; return input.hasAttribute("capture") ? "camera" : "upload"; }
+  function onPick(faceNo, input) { state.methods[faceNo] = methodOf(input); return onPickInner(faceNo, input); }
+  function onPickInner(faceNo, input) { var f = input.files && input.files[0]; input.value = ""; if (!f) return; if (!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|heic)$/i.test(f.name)) return fail("Fichier refusé", "Choisissez une image (JPEG, PNG, WebP)."); if (faceNo === 2 && !state.faces[1]) return fail("Face 1 d'abord", "Scannez le recto avant le verso."); runFace(f, faceNo, null); }
 
   /* ---------------- clipboard (IDA-V14) ----------------
    * A pasted image follows EXACTLY the camera / gallery path: the File goes
@@ -222,6 +226,7 @@
   }
   async function validate() {
     if (state.mode === "identify") return identify();
+    if (state.mode === "capture") return captured();
     var base = "/api/vehicles/" + encodeURIComponent(state.ivid) + "/registration-document";
     show("progress"); resetSteps();
     try {
@@ -247,6 +252,30 @@
       el("error-close").textContent = "Fermer";
     }
   }
+  // Update 5 — capture mode: the faces go to the host page exactly as captured — the ORIGINAL file and its corrected
+  // crop — and are stored by the one carte grise pipeline. No OCR, no extraction: that is LENS's job, later.
+  function captured() {
+    var faces = [1, 2].filter(function (n) { return state.faces[n]; }).map(function (n) {
+      var f = state.faces[n];
+      return { face: n, original: f.file, crop: f.archive.blob, width: f.archive.width, height: f.archive.height, detection: f.detection, method: state.methods[n] || "upload" };
+    });
+    var cb = state.onCaptured;
+    close();
+    if (cb) cb(faces);
+  }
+  // rotate the corrected crop a quarter turn (the original is never touched)
+  function rotateFace(n) {
+    var f = state.faces[n]; if (!f || !f.archive || !f.archive.canvas) return;
+    var src = f.archive.canvas, c = document.createElement("canvas"); c.width = src.height; c.height = src.width;
+    var ctx = c.getContext("2d"); ctx.translate(c.width / 2, c.height / 2); ctx.rotate(Math.PI / 2); ctx.drawImage(src, -src.width / 2, -src.height / 2);
+    optimise(c, cfg.maxEdge, cfg.quality).then(function (a) { f.archive = a; return optimise(c, cfg.thumbEdge, cfg.thumbQuality); }).then(function (t) { f.thumb = t; renderFaces(); status("Face " + n + " pivotée."); });
+  }
+  // re-open the corner editor on an already detected face (crop adjustment)
+  function adjustFace(n) {
+    var f = state.faces[n]; if (!f || !f.source) return;
+    openEditor({ source: f.source, corners: f.corners, file: f.file }, n);
+  }
+
   // identify mode: OCR the in-memory faces, hand the reads to the host, close. No upload.
   async function identify() {
     show("progress"); resetSteps();
@@ -300,10 +329,11 @@
   /* ---------------- lifecycle ---------------- */
   function open(opts) {
     state.els = { root: opts.root }; state.ivid = opts.ivid || null; state.onDone = opts.onDone || null; state.onIdentify = opts.onIdentify || null;
-    state.mode = opts.mode === "identify" ? "identify" : "store"; state.faces = { 1: null, 2: null }; state.ocrResult = null;
+    state.mode = opts.mode === "identify" ? "identify" : opts.mode === "capture" ? "capture" : "store"; state.faces = { 1: null, 2: null }; state.ocrResult = null;
+    state.methods = { 1: null, 2: null }; state.onCaptured = opts.onCaptured || null;
     state.els.root.hidden = false; state.els.root.setAttribute("aria-hidden", "false");
     var v = el("validate"), f1 = el("finish-1");
-    if (v) v.textContent = state.mode === "identify" ? "Rechercher le véhicule" : "Valider la carte grise";
+    if (v) v.textContent = state.mode === "identify" ? "Rechercher le véhicule" : state.mode === "capture" ? "Utiliser ces images" : "Valider la carte grise";
     if (f1) f1.textContent = state.mode === "identify" ? "Rechercher avec la face 1" : "Terminer avec la face 1";
     renderFaces(); show("faces"); status(state.mode === "identify" ? "Photographiez le recto (face 1) de la carte grise. Le verso est optionnel. Rien n'est enregistré : la carte sert seulement à retrouver le véhicule." : "Photographiez le recto (face 1). Le verso est optionnel."); el("detect-flag").textContent = "";
     var first = el("pick-1"); if (first) first.focus();
@@ -318,6 +348,10 @@
       if (a === "close" || a === "cancel") return close();
       if (a === "paste-1") return pasteButton(1);
       if (a === "paste-2") return pasteButton(2);
+      if (a === "rotate-1") return rotateFace(1);
+      if (a === "rotate-2") return rotateFace(2);
+      if (a === "adjust-1") return adjustFace(1);
+      if (a === "adjust-2") return adjustFace(2);
       if (a === "redo-1") { state.faces[1] = null; renderFaces(); return; }
       if (a === "redo-2") { state.faces[2] = null; renderFaces(); return; }
       if (a === "validate" || a === "finish-1") return validate();
@@ -343,12 +377,12 @@
       '<div class="ida-search-actions" data-cg-pick-1><label class="ida-btn ida-btn--primary ida-btn--sm">Scanner la face 1<input type="file" accept="image/*" capture="environment" data-cg-file="1" hidden></label>' +
       '<label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="1" hidden></label>' +
       '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="paste-1" title="Coller une image du presse-papiers (Ctrl+V)">Coller (Ctrl+V)</button></div>' +
-      '<div class="ida-search-actions" data-cg-redo-1 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-1">Refaire la face 1</button></div></div>' +
+      '<div class="ida-search-actions" data-cg-redo-1 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="rotate-1">Pivoter</button><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="adjust-1">Ajuster le cadrage</button><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-1">Refaire la face 1</button></div></div>' +
       '<div class="ida-cg-face"><p class="ida-label">Face 2 — Verso <span class="ida-muted">(optionnel)</span></p><img data-cg-preview-2 alt="Aperçu de la face 2" hidden><p class="ida-caption" data-cg-meta-2>Optionnel</p>' +
       '<div class="ida-search-actions" data-cg-pick-2><label class="ida-btn ida-btn--secondary ida-btn--sm">Scanner la face 2 — optionnel<input type="file" accept="image/*" capture="environment" data-cg-file="2" hidden></label>' +
       '<label class="ida-btn ida-btn--ghost ida-btn--sm">Galerie / fichier<input type="file" accept="image/*" data-cg-file="2" hidden></label>' +
       '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="paste-2" title="Coller une image du presse-papiers (Ctrl+V)">Coller (Ctrl+V)</button></div>' +
-      '<div class="ida-search-actions" data-cg-redo-2 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-2">Refaire la face 2</button></div></div></div>' +
+      '<div class="ida-search-actions" data-cg-redo-2 hidden><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="rotate-2">Pivoter</button><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="adjust-2">Ajuster le cadrage</button><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cg-action="redo-2">Refaire la face 2</button></div></div></div>' +
       '<div class="ida-search-actions"><button type="button" class="ida-btn ida-btn--ghost" data-cg-action="cancel">Annuler</button>' +
       '<button type="button" class="ida-btn ida-btn--secondary" data-cg-action="finish-1" data-cg-finish-1 hidden>Terminer avec la face 1</button>' +
       '<button type="button" class="ida-btn ida-btn--primary" data-cg-action="validate" data-cg-validate disabled>Valider la carte grise</button></div></div>' +

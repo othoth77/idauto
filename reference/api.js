@@ -521,6 +521,8 @@ var CITIZEN_ASSETS = {
   // IDA-V14 (home search) — the shared carte grise scanner on the homepage: Scanic (MIT, vendored), the scanner module, the page script, the fra/ara OCR models (below, beside eng).
   '/assets/scanic.umd.js': { file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/registration-scanner.js': { file: 'citizen/registration-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/carte-grise-capture.js': { file: 'citizen/carte-grise-capture.js', contentType: 'application/javascript; charset=utf-8' },
+  '/assets/home-carte-grise.js': { file: 'citizen/home-carte-grise.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/home-registration.js': { file: 'citizen/home-registration.js', contentType: 'application/javascript; charset=utf-8' },
   '/assets/tesseract/fra.traineddata.gz': { file: 'vendor/tesseract/fra.traineddata.gz', contentType: 'application/octet-stream' },
   '/assets/tesseract/ara.traineddata.gz': { file: 'vendor/tesseract/ara.traineddata.gz', contentType: 'application/octet-stream' },
@@ -1109,6 +1111,30 @@ async function handlePublicVinRoute(req, res) {
   // two identities share this VIN: a merge must resolve it — answer "not found" rather than pick one
   if (!hit) return notFound(res);
   sendJson(res, 200, { ivid: hit });
+}
+
+// Update 5 — POST /public/vehicles/:ivid/carte-grise — a visitor deposits a carte grise (photo, image file, PDF, pasted
+// image or text) for the vehicle found by plate or VIN. OFF unless IDAUTO_PUBLIC_CARTE_GRISE=1 (owner gate: personal data,
+// legal gates L01/L02); when off, the route does not exist (404). A deposit is NEVER the vehicle's current carte grise:
+// it waits for an administrator (review_status pending_review). Stored as given; no OCR, no extraction (PENDING_LENS).
+async function handlePublicCarteGriseRoute(req, res, ivid) {
+  if (process.env.IDAUTO_PUBLIC_CARTE_GRISE !== '1') return notFound(res);
+  if (req.method !== 'POST') { res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'POST' }); return res.end(JSON.stringify({ error: 'method not allowed' })); }
+  var h = clientIpHash(req);
+  var limitResult = await rateLimit.enforcePublicResolution(db, 'cg:' + h, { limit: parseInt(process.env.IDAUTO_PUBLIC_CG_PER_HOUR || '6', 10), window_seconds: 3600 });
+  if (!limitResult.allowed) { req.resume(); res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSeconds(limitResult.retry_at)) }); return res.end(JSON.stringify({ error: 'rate limit exceeded', message_fr: 'Trop d\'envois : réessayez plus tard.' })); }
+  var bytes;
+  try { bytes = await readBinaryBody(req); } catch (e) { return sendJson(res, e.httpStatus || 400, { error: 'invalid body' }); }
+  var fn = null; try { fn = decodeURIComponent(String(req.headers['x-idauto-filename'] || '')).slice(0, 255) || null; } catch (e) { fn = null; }
+  try {
+    var out = await require('./documents/carte-grise-service.js').store(ivid, { bytes: bytes, content_type: req.headers['content-type'], face: req.headers['x-idauto-face'], method: req.headers['x-idauto-input'], filename: fn },
+      { identity: 'public:' + String(h || 'unknown').slice(0, 16), principal: { kind: 'public', scopes: [] } }, { public: true });
+    // the visitor learns that it was received — not the document's id, versions or anything else about the vehicle's file
+    sendJson(res, out.duplicate_of ? 200 : 202, { received: true, duplicate: !!out.duplicate_of, review: 'pending' });
+  } catch (err) {
+    var st = err.httpStatus || (err.code === 'VEHICLE_NOT_FOUND' ? 404 : 400);
+    sendJson(res, st, { error: err.code || 'REFUSED', reason: err.details && err.details.reason || null });
+  }
 }
 
 async function handlePublicPassportRoute(req, res, pathname) {
@@ -2254,7 +2280,10 @@ function createServer() {
       // table below.
       if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
         try {
+          var cgPub = /^\/public\/vehicles\/([^/]+)\/carte-grise$/.exec(pathname);
           if (pathname === '/public/vin') await handlePublicVinRoute(req, res);      // Update 4 — VIN lookup, kept apart from the passport handler
+          else if (cgPub) await handlePublicCarteGriseRoute(req, res, decodeURIComponent(cgPub[1]));   // Update 5 — public deposit (off by default)
+          else if (pathname === '/public/carte-grise-config') sendJson(res, 200, { public_deposit: process.env.IDAUTO_PUBLIC_CARTE_GRISE === '1' });
           else await handlePublicPassportRoute(req, res, pathname);
         } catch (err) {
           // F7 (Opus review, 2026-08-19): a response may already be
