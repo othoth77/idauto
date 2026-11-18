@@ -25,7 +25,7 @@
   var SECTIONS = [
     { label: '', items: [
       { label: 'Tableau de bord', icon: 'dashboard', roles: ALL, href: '/atelier/tableau-de-bord', match: ['/atelier/tableau-de-bord'] },
-      { label: 'Véhicules', icon: 'car', roles: ALL, href: '/atelier/vehicules', match: ['/atelier/vehicules', '/atelier/vehicule', '/atelier/vehicules/nouveau'] },
+      { label: 'Véhicules', icon: 'car', roles: ALL, href: '/atelier/vehicules', match: ['/atelier/vehicules', '/atelier/vehicule', '/atelier/vehicules/nouveau', '/admin/cartes-grises'] },
       { label: 'Interventions', icon: 'wrench', roles: ALL, href: '/atelier/interventions', match: ['/atelier/interventions', '/atelier/intervention'] },
       { label: 'Pièces', icon: 'part', roles: ALL, href: '/atelier/pieces-remplacees', match: ['/atelier/pieces-remplacees'] },
       { label: 'Paramètres', icon: 'user', roles: ALL, href: '/atelier/compte', match: ['/atelier/compte', '/admin/utilisateurs', '/admin/roles'] }] }

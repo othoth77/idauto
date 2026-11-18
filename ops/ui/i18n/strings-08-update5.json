@@ -58,5 +58,7 @@
  "texte collé": "نص ملصّق",
  "verso": "الظهر",
  "recto": "الوجه",
- "Recherchez d'abord un véhicule (plaque ou numéro de châssis) pour ajouter sa carte grise.": "لوّج على الكرهبة الأوّل (البلاكة ولّا رقم الشاسي) باش تزيد الكرت قريز متاعها."
+ "Le véhicule n'a pas besoin d'être déjà enregistré : la carte grise suffit pour le créer après vérification.": "ما يلزمش الكرهبة تكون مسجّلة من قبل: الكرت قريز يكفي باش تتسجّل بعد التثبّت.",
+ "Ce document a déjà été reçu : rien n'a été ajouté.": "الوثيقة هذي وصلت من قبل: ما تزاد شي.",
+ "Reçu — en attente d'extraction (LENS) puis de vérification par un administrateur avant d'être rattaché à un véhicule.": "وصل — يستنّى القراءة (LENS) ومن بعد التثبّت متاع مسؤول قبل ما يتربط بكرهبة."
 }

@@ -9,6 +9,10 @@
 //
 // This file is the single place the future integration will live. Nothing else in IDauto may call LENS.
 //
+// Update 6 (owner, 2026-11-18): a carte grise received WITHOUT a vehicle (documents/carte-grise-intake.js) IS sent to LENS —
+// by the Haddad receiver, never by IDauto: IDauto still makes no call to LENS. The receiver submits the original to the
+// local LENS service and returns technical fields only; archive-service reads them back. See docs/CARTE_GRISE_INTAKE.md.
+//
 // THE CONTRACT (to be honoured by the implementation, once the LENS API and extraction schema are stable):
 //
 //   enabled() → false today.

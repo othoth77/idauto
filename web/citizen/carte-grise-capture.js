@@ -31,7 +31,11 @@
   function say(msg, kind) { var s = q("[data-cgc-status]"); s.textContent = msg || ""; s.className = "ida-small" + (kind === "error" ? " ida-field-error" : kind === "ok" ? " ida-text-success" : ""); }
 
   // ---- the one submission --------------------------------------------------------------------------------------------
-  function endpoint() { return st.mode === "public" ? "/public/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise" : "/api/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise"; }
+  // Update 6 — no vehicle (ivid null): the carte grise is received on its own (intake) and reviewed by an administrator
+  function endpoint() {
+    if (!st.ivid) return st.mode === "public" ? "/public/carte-grise/intake" : "/api/carte-grise/intake";
+    return st.mode === "public" ? "/public/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise" : "/api/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise";
+  }
   async function send(body, type, face, method, filename) {
     var h = { "Content-Type": type, "X-IDauto-Face": String(face || 1), "X-IDauto-Input": method };
     if (filename) h["X-IDauto-Filename"] = encodeURIComponent(filename);
@@ -61,12 +65,14 @@
     var box = clear(q("[data-cgc-done]")); box.hidden = false;
     list.forEach(function (o) {
       var line = o.error ? t("Non enregistré : ") + o.error
+        : o.duplicate && !st.ivid ? t("Ce document a déjà été reçu : rien n'a été ajouté.")
         : o.duplicate ? t("Ce document est déjà dans le dossier du véhicule : rien n'a été ajouté.")
+        : !st.ivid ? t("Reçu — en attente d'extraction (LENS) puis de vérification par un administrateur avant d'être rattaché à un véhicule.")
         : st.mode === "public" ? t("Reçu — un administrateur le vérifiera avant de l'ajouter au dossier.")
         : t("Enregistré dans le dossier — en attente d'analyse (LENS).");
       box.appendChild(el("p", { class: "ida-small" + (o.error ? " ida-field-error" : ""), "data-cgc-result": o.error ? "error" : o.duplicate ? "duplicate" : "stored" }, (o.label ? o.label + " — " : "") + line));
     });
-    if (st.mode !== "public" && list.some(function (o) { return !o.error; })) box.appendChild(el("a", { class: "ida-btn ida-btn--secondary ida-btn--sm", href: dossierHref(), "data-cgc-open-dossier": "" }, t("Ouvrir le dossier du véhicule")));
+    if (st.ivid && st.mode !== "public" && list.some(function (o) { return !o.error; })) box.appendChild(el("a", { class: "ida-btn ida-btn--secondary ida-btn--sm", href: dossierHref(), "data-cgc-open-dossier": "" }, t("Ouvrir le dossier du véhicule")));
     if (st.onDone) st.onDone(list);
   }
   function dossierHref() { return (g().location && /^\/admin/.test(g().location.pathname) ? "/admin/vehicle?ref=" : "/atelier/vehicule?ref=") + encodeURIComponent(st.ivid); }
@@ -90,7 +96,7 @@
         var f = faces[i], label = f.face === 2 ? t("Verso") : t("Recto");
         try {
           var r = await send(f.original, f.original.type || "image/jpeg", f.face, f.method, f.original.name || null);
-          if (r.document && f.crop && st.mode !== "public") await sendPreview(r.document.id, f.crop);
+          if (r.document && f.crop && st.ivid && st.mode !== "public") await sendPreview(r.document.id, f.crop);
           out.push({ label: label, duplicate: !!(r.duplicate_of || r.duplicate) });
         } catch (e) { out.push({ label: label, error: e.message }); }
       }
@@ -205,7 +211,7 @@
   }
   function open(opts) {
     mount();
-    st.ivid = opts.ivid; st.mode = opts.mode === "public" ? "public" : "session"; st.onDone = opts.onDone || null; st.file = null; st.paste = null;
+    st.ivid = opts.ivid || null; st.mode = opts.mode === "public" ? "public" : "session"; st.onDone = opts.onDone || null; st.file = null; st.paste = null;
     clear(q("[data-cgc-file-preview]")); q("[data-cgc-text]").value = ""; setPaste(null); q("[data-cgc-done]").hidden = true; tab("scan");
     st.root.hidden = false; st.root.setAttribute("aria-hidden", "false");
     var first = q("[data-cgc-tab]"); if (first) first.focus();

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 'use strict';
-// IDA-U5b — « Ajouter la carte grise » sits next to « Rechercher le véhicule » (VIN search actions), never in the identity
-// card; disabled until a search succeeds; acts on the vehicle of the CURRENT successful search. Headless Chrome, desktop
-// and mobile. Scratch database; skipped without Chrome.
+// IDA-U5b / Update 6 — « Ajouter la carte grise » sits next to « Rechercher le véhicule » (VIN search actions), never in
+// the identity card; ALWAYS enabled (no search needed: the carte grise is an independent entry point); acts on the vehicle
+// of the current successful search when there is one, otherwise the document is received without a vehicle (intake).
+// Headless Chrome, desktop and mobile. Scratch database; skipped without Chrome.
 var path = require('path'), http = require('http'), crypto = require('crypto'), cp = require('child_process'), fs = require('fs'), os = require('os');
 var BASE = path.join(__dirname, '..');
 var CHROME = process.env.CHROME || ['google-chrome', 'chromium', 'chromium-browser', 'google-chrome-stable'].filter(function (b) { try { cp.execFileSync('which', [b], { stdio: 'ignore' }); return true; } catch (e) { return false; } })[0];
@@ -53,10 +54,22 @@ function freeVin() { var A = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789', s = 'VF7'; for
     await go('/', '!!document.querySelector("[data-vin-form]")');
     ok(await ev('!!' + BTN + ' && ' + BTN + '.closest("[data-vin-form]") && ' + BTN + '.parentElement === document.querySelector("[data-vin-submit]").parentElement'), form + ': « Ajouter la carte grise » is next to « Rechercher le véhicule » (same actions row)');
     ok(await ev('!document.querySelector("[data-plate-result] [data-cgc-home-open]") && document.querySelectorAll("[data-cgc-home-open]").length === 1'), form + ': no carte grise button in the identity card — only one on the page');
-    ok(await ev(BTN + '.disabled && !document.querySelector("[data-cgc-home-hint]").hidden'), form + ': before any search: disabled, with « Recherchez d\'abord un véhicule… »');
+    ok(await waitFor('!' + BTN + '.disabled && !document.querySelector("[data-cgc-home-hint]").hidden'), form + ': before any search: ENABLED, with « Le véhicule n\'a pas besoin d\'être déjà enregistré… »');
+    await ev(BTN + '.click(); true');
+    ok(await waitFor('!document.querySelector("[data-cgc-root]").hidden && window.IdaCarteGrise._state.ivid === null'), form + ': with no search, the click opens the upload dialog directly (no vehicle)');
+    if (form === 'desktop') {
+      var TXT = 'CARTE GRISE U6 ' + run + '\nMarque : PEUGEOT\nالجمهورية التونسية';
+      await ev('(() => { document.querySelector("[data-cgc-tab=\'paste\']") && document.querySelector("[data-cgc-tab=\'paste\']").click(); window.IdaCarteGrise._setText(' + JSON.stringify(TXT) + '); return true; })()');
+      ok(await waitFor('!document.querySelector("[data-cgc-paste-send]").disabled'), 'desktop: pasted text shows a preview and needs the explicit « Enregistrer »');
+      await ev('document.querySelector("[data-cgc-paste-send]").click(); true');
+      ok(await waitFor('/attente d.extraction/.test(document.querySelector("[data-cgc-done]").textContent) && !document.querySelector("[data-cgc-open-dossier]")'), 'desktop: saved without a vehicle — « en attente d\'extraction (LENS) puis de vérification »');
+      var row = (await db.query("SELECT vehicle_id, intake_status, source_format FROM idauto_vehicle_documents WHERE sha256 = $1", [crypto.createHash('sha256').update(TXT).digest('hex')])).rows[0];
+      ok(row && row.vehicle_id === null && row.intake_status === 'pending_extraction' && row.source_format === 'CARTE_GRISE_TEXT', 'desktop: the database holds it with no vehicle, pending_extraction, as text');
+    }
+    await ev('document.querySelector("[data-cgc-close]").click(); true');
     await vinSearch(VIN);
     ok(await waitFor('!document.querySelector("[data-plate-result]").hidden && document.querySelector("[data-result-ivid]").textContent === ' + JSON.stringify(reg.ivid)), form + ': VIN search finds the vehicle (unchanged behaviour)');
-    ok(await waitFor('!' + BTN + '.disabled && document.querySelector("[data-cgc-home-hint]").hidden'), form + ': after a successful search: enabled, hint gone');
+    ok(await ev('!' + BTN + '.disabled'), form + ': after a successful search: enabled');
     var geo = JSON.parse(await ev('JSON.stringify((() => { const a = document.querySelector("[data-vin-submit]").getBoundingClientRect(), b = ' + BTN + '.getBoundingClientRect(); return { sameRow: Math.abs(a.top - b.top) < 2, bRight: b.right, aRight: a.right, width: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth }; })())'));
     if (form === 'desktop') ok(geo.sameRow, 'desktop: both buttons side by side on one row');
     else ok(!geo.overflow && geo.bRight <= geo.width && geo.aRight <= geo.width, 'mobile: both buttons visible, wrapped cleanly, no horizontal overflow');
@@ -64,10 +77,28 @@ function freeVin() { var A = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789', s = 'VF7'; for
     ok(await waitFor('!document.querySelector("[data-cgc-root]").hidden && window.IdaCarteGrise._state.ivid === ' + JSON.stringify(reg.ivid)), form + ': click opens the carte grise upload dialog for THAT vehicle');
     await ev('document.querySelector("[data-cgc-close]").click(); true');
     await vinSearch('WVWZZZ1JZXW000001');
-    ok(await waitFor('document.querySelector("[data-plate-result]").hidden && ' + BTN + '.disabled && !document.querySelector("[data-cgc-home-hint]").hidden'), form + ': after an unsuccessful search: the previous vehicle is cleared, the button disabled again');
+    ok(await waitFor('document.querySelector("[data-plate-result]").hidden && !' + BTN + '.disabled'), form + ': after an unsuccessful search: the previous vehicle is cleared, the button STAYS enabled');
+    await ev(BTN + '.click(); true');
+    ok(await waitFor('!document.querySelector("[data-cgc-root]").hidden && window.IdaCarteGrise._state.ivid === null'), form + ': VIN not found → the click opens the dialog with no vehicle (intake), never the previous one');
+    await ev('document.querySelector("[data-cgc-close]").click(); true');
     await ev('(() => { const s = document.querySelector("#plate-serie"), n = document.querySelector("#plate-numero"); s.value = ' + JSON.stringify(S) + '; s.dispatchEvent(new Event("input", { bubbles: true })); n.value = ' + JSON.stringify(N) + '; n.dispatchEvent(new Event("input", { bubbles: true })); document.querySelector("[data-plate-form]").requestSubmit(); return true; })()');
-    ok(await waitFor('!' + BTN + '.disabled && document.querySelector("[data-result-ivid]").textContent === ' + JSON.stringify(reg.ivid)), form + ': a successful plate search enables it too (current successful search)');
+    ok(await waitFor('!' + BTN + '.disabled && document.querySelector("[data-result-ivid]").textContent === ' + JSON.stringify(reg.ivid)), form + ': a successful plate search: still enabled, acting on that vehicle');
   }
+  // Update 6 — the administrator's review screen for a carte grise received without a vehicle
+  await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
+  await go('/admin/cartes-grises', '!!document.querySelector("#list tbody")');
+  ok(await waitFor('Array.from(document.querySelectorAll("#list tbody tr")).some(r => /Texte collé/.test(r.textContent) && /En attente d.extraction/.test(r.textContent))'), 'admin: /admin/cartes-grises lists the pasted carte grise, pending extraction');
+  await ev('Array.from(document.querySelectorAll("#list tbody tr")).find(r => /Texte collé/.test(r.textContent)).querySelector("[data-open]").click(); true');
+  ok(await waitFor('!document.querySelector("#review").hidden && /CARTE GRISE U6 ' + run + '/.test((document.querySelector("pre[data-intake-preview]") || {}).textContent || "") && document.querySelectorAll("#review-fields input").length === 9'), 'admin: review shows the original text and the nine editable technical fields');
+  ok(await ev('/absent ou illisible/.test(document.querySelector("#review-match").textContent)'), 'admin: no VIN → « aucun véhicule ne sera créé » (case C)');
+  await ev('window.confirm = () => true; document.querySelector("[data-action=create]").click(); true');
+  ok(await waitFor('/Sans numéro de châssis, aucun véhicule/.test(document.querySelector("#review-status").textContent)'), 'admin: « Créer le véhicule » without a VIN is refused, with the reason');
+  await ev('document.querySelector("[data-action=unassigned]").click(); true');
+  ok(await waitFor('/^Document gardé non rattaché/.test(document.querySelector("#review-status").textContent)'), 'admin: « Garder non rattaché » → « Document gardé non rattaché. »');
+  ok((await db.query("SELECT intake_status, vehicle_id, resolved_by FROM idauto_vehicle_documents WHERE sha256 = $1", [crypto.createHash('sha256').update(TXT).digest('hex')])).rows.every(function (r) { return r.intake_status === 'unassigned' && r.vehicle_id === null && !!r.resolved_by; }), 'admin: the database says unassigned, no vehicle, decided by the administrator');
+  ok(await ev('document.documentElement.scrollWidth <= innerWidth'), 'admin: no horizontal overflow');
+  await send('Page.captureScreenshot', { format: 'png' }).then(function (r) { if (process.env.IDAUTO_SHOTS) fs.writeFileSync(path.join(process.env.IDAUTO_SHOTS, 'admin-intake.png'), Buffer.from(r.result.data, 'base64')); });
+
   console.log('\nIDA-U5b carte grise button: ' + pass + ' passed, ' + fail + ' failed');
   server.close(); process.exit(fail ? 1 : 0);
 })().catch(function (e) { console.error('FATAL', e && e.stack || e); process.exit(1); });

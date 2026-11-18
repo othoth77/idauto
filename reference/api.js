@@ -423,6 +423,8 @@ var ADMIN_ASSETS = {
   '/admin/maintenance/': { file: 'admin-maintenance.html', contentType: 'text/html; charset=utf-8' },
   '/admin/maintenance-ui.js': { file: 'admin-maintenance-ui.js', contentType: 'application/javascript; charset=utf-8' },
   // IDA-ADMIN-3 — ateliers and data sources.
+  '/admin/cartes-grises': { file: 'admin-carte-grise.html', contentType: 'text/html; charset=utf-8' },   // Update 6
+  '/admin/carte-grise-ui.js': { file: 'admin-carte-grise-ui.js', contentType: 'application/javascript; charset=utf-8' },
   '/admin/sources': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
   '/admin/sources/': { file: 'admin-sources.html', contentType: 'text/html; charset=utf-8' },
   '/admin/sources-ui.js': { file: 'admin-sources-ui.js', contentType: 'application/javascript; charset=utf-8' },
@@ -1127,10 +1129,14 @@ async function handlePublicCarteGriseRoute(req, res, ivid) {
   try { bytes = await readBinaryBody(req); } catch (e) { return sendJson(res, e.httpStatus || 400, { error: 'invalid body' }); }
   var fn = null; try { fn = decodeURIComponent(String(req.headers['x-idauto-filename'] || '')).slice(0, 255) || null; } catch (e) { fn = null; }
   try {
-    var out = await require('./documents/carte-grise-service.js').store(ivid, { bytes: bytes, content_type: req.headers['content-type'], face: req.headers['x-idauto-face'], method: req.headers['x-idauto-input'], filename: fn },
-      { identity: 'public:' + String(h || 'unknown').slice(0, 16), principal: { kind: 'public', scopes: [] } }, { public: true });
+    var input = { bytes: bytes, content_type: req.headers['content-type'], face: req.headers['x-idauto-face'], method: req.headers['x-idauto-input'], filename: fn };
+    var who = { identity: 'public:' + String(h || 'unknown').slice(0, 16), principal: { kind: 'public', scopes: [] } };
+    // Update 6 — ivid null: a carte grise without a vehicle (intake), reviewed by an administrator like any public deposit
+    var out = ivid === null ? await require('./documents/carte-grise-intake.js').submit(input, who, { public: true })
+      : await require('./documents/carte-grise-service.js').store(ivid, input, who, { public: true });
+    var dup = ivid === null ? !!out.duplicate : !!out.duplicate_of;
     // the visitor learns that it was received — not the document's id, versions or anything else about the vehicle's file
-    sendJson(res, out.duplicate_of ? 200 : 202, { received: true, duplicate: !!out.duplicate_of, review: 'pending' });
+    sendJson(res, dup ? 200 : 202, { received: true, duplicate: dup, review: 'pending' });
   } catch (err) {
     var st = err.httpStatus || (err.code === 'VEHICLE_NOT_FOUND' ? 404 : 400);
     sendJson(res, st, { error: err.code || 'REFUSED', reason: err.details && err.details.reason || null });
@@ -2283,6 +2289,7 @@ function createServer() {
           var cgPub = /^\/public\/vehicles\/([^/]+)\/carte-grise$/.exec(pathname);
           if (pathname === '/public/vin') await handlePublicVinRoute(req, res);      // Update 4 — VIN lookup, kept apart from the passport handler
           else if (cgPub) await handlePublicCarteGriseRoute(req, res, decodeURIComponent(cgPub[1]));   // Update 5 — public deposit (off by default)
+          else if (pathname === '/public/carte-grise/intake') await handlePublicCarteGriseRoute(req, res, null);   // Update 6 — without a vehicle (same switch)
           else if (pathname === '/public/carte-grise-config') sendJson(res, 200, { public_deposit: process.env.IDAUTO_PUBLIC_CARTE_GRISE === '1' });
           else await handlePublicPassportRoute(req, res, pathname);
         } catch (err) {

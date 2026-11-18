@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IDauto — Cartes grises à vérifier</title>
+  <link rel="icon" type="image/svg+xml" href="/admin/assets/favicon.svg">
+  <!-- Update 6 — same Design System files as every console page. -->
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/base.css">
+  <link rel="stylesheet" href="/admin/assets/components.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+<a class="ida-skip-link" href="#main">Aller au contenu</a>
+
+<div class="ida-admin-shell">
+<aside class="ida-admin-sidebar" data-admin-sidebar aria-label="Console d'administration"></aside>
+<div class="ida-admin-main">
+
+<main id="main" class="ida-container ida-u-pad-section">
+  <div class="ida-stack-lg">
+
+    <header class="ida-stack">
+      <p class="ida-label">Mythos OS · IDauto</p>
+      <h1>Cartes grises à vérifier</h1>
+      <p class="ida-muted ida-u-maxch-52">Les cartes grises reçues sans véhicule. LENS lit les informations techniques sur Haddad ;
+      vous les vérifiez et les corrigez, puis vous rattachez le document au véhicule de ce numéro de châssis ou vous créez le
+      véhicule. Rien n'est créé ni modifié sans votre confirmation. Le nom, la CIN et l'adresse du titulaire ne sont jamais enregistrés.</p>
+      <p class="ida-small" id="session-line" aria-live="polite">Vérification de la session…</p>
+    </header>
+
+    <section class="ida-stack" aria-labelledby="sec-list">
+      <h2 id="sec-list" class="ida-h3">Documents reçus</h2>
+      <div class="ida-field ida-u-maxch-52">
+        <label for="f-status">Statut</label>
+        <select class="ida-input" id="f-status">
+          <option value="">À traiter</option>
+          <option value="pending_extraction">En attente d'extraction</option>
+          <option value="extraction_failed">Extraction échouée</option>
+          <option value="pending_review">À vérifier</option>
+          <option value="unassigned">Non rattachés</option>
+          <option value="linked_existing_vehicle">Rattachés à un véhicule existant</option>
+          <option value="vehicle_created">Véhicule créé</option>
+          <option value="all">Tous</option>
+        </select>
+      </div>
+      <p class="ida-small" id="list-summary" aria-live="polite"></p>
+      <div class="ida-table-wrap"><table class="ida-table" id="list"></table></div>
+    </section>
+
+    <section class="ida-card ida-stack" id="review" hidden aria-labelledby="sec-review">
+      <h2 id="sec-review" class="ida-h3">Vérification</h2>
+      <p class="ida-small" id="review-meta"></p>
+      <div id="review-preview" class="ida-stack"></div>
+      <p class="ida-small" id="review-match" aria-live="polite"></p>
+      <form id="review-form" class="ida-stack">
+        <div class="ida-admin-grid" id="review-fields"></div>
+        <div class="ida-field">
+          <label for="f-vehicle-ref">Véhicule à rattacher (sans numéro de châssis lisible : son IVID)</label>
+          <input class="ida-input" id="f-vehicle-ref" name="vehicle_ref" maxlength="80" autocomplete="off" dir="ltr">
+        </div>
+        <div class="ida-search-actions">
+          <button type="button" class="ida-btn ida-btn--primary" data-action="create">Créer le véhicule et rattacher</button>
+          <button type="button" class="ida-btn ida-btn--secondary" data-action="attach">Rattacher au véhicule existant</button>
+          <button type="button" class="ida-btn ida-btn--secondary" data-action="unassigned">Garder non rattaché</button>
+        </div>
+        <p class="ida-small" id="review-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+  </div>
+</main>
+
+<footer class="ida-footer">
+  <div class="ida-container ida-footer-inner">
+    <p>IDauto — console opérateur. Réservée aux administrateurs ; chaque décision est auditée.</p>
+  </div>
+</footer>
+</div>
+</div>
+
+<script src="/admin/i18n-catalog-ar.js"></script>
+<script src="/admin/i18n.js"></script>
+<script src="/admin/assets/ui.js"></script>
+<script src="/admin/shell.js"></script>
+<script src="/admin/console.js"></script>
+<script src="/admin/carte-grise-ui.js"></script>
+</body>
+</html>
