@@ -288,8 +288,11 @@ async function main() {
   say('\n9. NOTHING PRIVATE, NOTHING PUBLIC, NOTHING CHANGED');
   /* Word boundaries, not substrings: "giving up" contains "vin", and matching
    * it failed this assertion against code that has nothing to do with VINs. */
-  ok(!/\bvin\b/i.test(homeHtml) && !/\bvin\b/i.test(scanJs),
-    'neither the homepage nor the scanner mentions a VIN');
+  // Update 4 (owner, 2026-11-18): the homepage searches BY VIN — so the VIN appears in that one form, and nowhere else;
+  // the scanner still never handles one.
+  var outsideVinForm = homeHtml.replace(/<form class="ida-search" data-vin-form[\s\S]*?<\/form>/, '').replace(/<!-- Update 4[^>]*-->/g, '').replace(/<p class="ida-caption ida-u-mbs-3">Le numéro de châssis[^<]*<\/p>/, '');
+  ok(!/\bvin\b/i.test(outsideVinForm) && !/\bvin\b/i.test(scanJs),
+    'outside the VIN search form, neither the homepage nor the scanner mentions a VIN');
   ok(!/\bivid\b/i.test(scanJs),
     'the scanner cannot propose, carry or influence an IVID');
   /* Comments stripped first: admin.html mentions IVID in a comment explaining

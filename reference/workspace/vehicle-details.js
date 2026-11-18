@@ -115,7 +115,7 @@ async function remove(ref, actor) {
       if (!isAdmin(actor)) {
         var org = orgOf(actor);
         var others = (await client.query(
-          'SELECT (SELECT count(*) FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND org_id IS DISTINCT FROM $2) + ' +
+          'SELECT (SELECT count(*) FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND superseded_at IS NULL AND org_id IS DISTINCT FROM $2) + ' +
           '(SELECT count(*) FROM idauto_vehicle_owner_contacts WHERE vehicle_id = $1 AND superseded_at IS NULL AND org_id IS DISTINCT FROM $2) + ' +
           '(SELECT count(*) FROM idauto_vehicle_notes WHERE vehicle_id = $1 AND org_id IS DISTINCT FROM $2) + ' +
           '(SELECT count(*) FROM idauto_vehicle_identification_history WHERE vehicle_id = $1 AND org_id IS NOT NULL AND org_id <> $2) AS n', [v.id, org])).rows[0].n;

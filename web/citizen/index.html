@@ -112,18 +112,19 @@
 
         <div>
           <p class="ida-label ida-u-mbe-3">Autres accès</p>
-          <form class="ida-search" data-ivid-form>
+          <!-- Update 4 — search by VIN (exact). The VIN is sent in the request body, never in the address, and never shown back. -->
+          <form class="ida-search" data-vin-form novalidate>
             <div class="ida-field ida-u-maxch-40 ida-u-mx-auto ida-u-block">
-              <label for="q-ivid">IVID du véhicule</label>
-              <input class="ida-input ida-id" id="q-ivid" name="ivid" autocomplete="off" spellcheck="false" placeholder="ivid:1:…" aria-describedby="ivid-hint">
-              <p id="ivid-hint" class="ida-hint">L'identifiant imprimé sous le QR IDauto du véhicule.</p>
-              <p class="ida-error-msg" data-ivid-error hidden></p>
+              <label for="q-vin">Numéro de châssis (VIN)</label>
+              <input class="ida-input ida-id" id="q-vin" name="vin" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="40" placeholder="KPT60A1YSLP025697" aria-describedby="vin-hint" dir="ltr">
+              <p id="vin-hint" class="ida-hint">17 caractères, inscrits sur la carte grise (champ « numéro de série »).</p>
+              <p class="ida-error-msg" data-vin-error hidden></p>
             </div>
             <div class="ida-search-actions ida-u-mbs-3">
-              <button type="submit" class="ida-btn ida-btn--secondary">Ouvrir le passeport</button>
+              <button type="submit" class="ida-btn ida-btn--secondary" data-vin-submit>Rechercher le véhicule</button>
             </div>
           </form>
-          <p class="ida-caption ida-u-mbs-3">Le QR d'un véhicule encode uniquement son IVID — jamais sa plaque.</p>
+          <p class="ida-caption ida-u-mbs-3">Le numéro de châssis n'est jamais affiché : seule l'identité publique du véhicule l'est.</p>
         </div>
       </div>
     </div>

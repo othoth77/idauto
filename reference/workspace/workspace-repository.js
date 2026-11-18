@@ -93,7 +93,7 @@ async function dossier(ref, actor) {
   var org = orgOf(actor);
   var docParams = [v.id], docWhere = "vehicle_id = $1 AND document_type = 'carte_grise'";
   if (!isAdmin(actor)) { docParams.push(org); docWhere += ' AND org_id = $2'; }
-  var docs = (await db.query('SELECT face, mime_type, byte_size, width, height, created_at, updated_at, created_by FROM idauto_vehicle_documents WHERE ' + docWhere + ' ORDER BY face', docParams)).rows;
+  var docs = (await db.query('SELECT face, mime_type, byte_size, width, height, created_at, updated_at, created_by FROM idauto_vehicle_documents WHERE superseded_at IS NULL AND ' + docWhere + ' ORDER BY face', docParams)).rows;
   var visitWhere = "w.vehicle_id = $1 AND w.status <> 'cancelled'", visitParams = [v.id];
   if (!isAdmin(actor)) { visitParams.push(org); visitWhere += ' AND w.org_id = $2'; }
   var history = await interventionsFor(visitWhere, visitParams, 200);
@@ -138,7 +138,7 @@ async function listVehicles(actor, opts) {
   var hasPhotos = (await db.query("SELECT to_regclass('public.idauto_vehicle_photos') IS NOT NULL AS t")).rows[0].t;
   var sql = 'SELECT v.id, v.ivid, v.make, v.model, v.variant, v.year, v.fuel_type, v.colour, v.body_type, v.created_at, v.odometer_km, ' +
     "(SELECT p.plate_number FROM idauto_plates p WHERE p.vehicle_id = v.id AND p.status = 'active' ORDER BY p.id DESC LIMIT 1) AS plate, " +
-    "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'carte_grise'" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS faces, ' +
+    "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'carte_grise' AND d.superseded_at IS NULL" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS faces, ' +
     // Update 3 — where the LATEST PHOTOGRAPH was taken (the photograph's location, never the vehicle's), and how many there are.
     (hasPhotos ? "(SELECT count(*)::int FROM idauto_vehicle_documents d WHERE d.vehicle_id = v.id AND d.document_type = 'vehicle_photo'" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ') AS photos, ' +
     "(SELECT json_build_object('place_name', p.place_name, 'governorate', p.governorate, 'source', p.location_source, 'captured_at', p.captured_at) FROM idauto_vehicle_photos p JOIN idauto_vehicle_documents d ON d.id = p.document_id WHERE p.vehicle_id = v.id AND p.location_source IS NOT NULL" + (isAdmin(actor) ? '' : ' AND d.org_id = $1') + ' ORDER BY p.captured_at DESC NULLS LAST, d.created_at DESC LIMIT 1) AS last_photo_location, ' : '0 AS photos, NULL AS last_photo_location, ') +

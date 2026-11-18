@@ -26,6 +26,7 @@ var imageMeta = require('./image-meta.js');
 var storageModule = require('./document-storage.js');
 var parser = require('./registration-parser.js');
 var observability = require('../observability.js');
+var archive = require('../archive/archive-service.js');
 
 var LIMITS = {
   max_bytes: parseInt(process.env.IDAUTO_DOCUMENT_MAX_BYTES || String(6 * 1024 * 1024), 10),   // the browser pipeline targets a few hundred KB
@@ -59,7 +60,7 @@ function view(row) {
   return { face: row.face, mime_type: row.mime_type, byte_size: row.byte_size, width: row.width, height: row.height, sha256: row.sha256,
     original_byte_size: row.original_byte_size, capture: row.capture_meta || null, has_thumbnail: !!row.thumb_storage_key,
     ocr: { status: row.ocr_status, confidence: row.ocr_confidence, fields: row.ocr_fields || null, at: row.ocr_at },
-    created_at: row.created_at, updated_at: row.updated_at, org_id: row.org_id };
+    created_at: row.created_at, updated_at: row.updated_at, org_id: row.org_id, version: row.version || 1, original_filename: row.original_filename || null };
 }
 
 // `bytes` = the optimised image; `thumbBytes` optional; `opts` = { original_byte_size, capture }
@@ -83,7 +84,7 @@ async function store(vehicleRef, face, bytes, thumbBytes, opts, actor) {
   try {
     result = await repo.upsertFace(vehicle.id, f, {
       storage_key: stored.key, thumb_storage_key: thumb ? thumb.key : null, mime_type: meta.mime, byte_size: bytes.length, width: meta.width, height: meta.height,
-      sha256: crypto.createHash('sha256').update(bytes).digest('hex'), original_byte_size: opts && opts.original_byte_size > 0 ? opts.original_byte_size : null, capture_meta: capture
+      sha256: crypto.createHash('sha256').update(bytes).digest('hex'), original_filename: opts && opts.original_filename ? String(opts.original_filename).replace(/[\u0000-\u001f\/\\]/g, '_').slice(0, 255) : null, original_byte_size: opts && opts.original_byte_size > 0 ? opts.original_byte_size : null, capture_meta: capture
     }, actor);
   } catch (err) {
     // Nothing references the fresh bytes: remove them so a refused upload leaves no file behind.
@@ -92,11 +93,10 @@ async function store(vehicleRef, face, bytes, thumbBytes, opts, actor) {
     if (err && err.httpStatus === 404) throw errors.IdautoError('NOT_FOUND');
     throw err;
   }
-  // The replaced face's bytes go once no row references them any more.
-  if (result.replaced) {
-    var keys = [result.replaced.storage_key, result.replaced.thumb_storage_key].filter(Boolean);
-    for (var i = 0; i < keys.length; i++) if (await repo.referencesOfKey(keys[i], 0) === 0) await storage.remove(keys[i]);
-  }
+  // Update 4 — the previous version is KEPT (superseded, with its file): nothing is removed here.
+  // The original is archived (monthly archive on Haddad) with its record.
+  await archive.record({ object_key: stored.key, category: 'carte-grise', vehicle_id: vehicle.id, document_id: result.row.id, actor: actor,
+    mime_type: meta.mime, original_filename: opts && opts.original_filename, sha256: stored.key, byte_size: bytes.length }).catch(function (e) { obs.event('archive_record_failed', { reason: String(e && e.message || e).slice(0, 80) }); });
   obs.inc('document_uploads'); obs.observe('document_bytes', bytes.length);
   obs.event('registration_document_stored', { ivid: vehicle.ivid, face: f, bytes: bytes.length, width: meta.width, height: meta.height, replaced: !!result.replaced, detection: capture ? capture.detection : null });
   return { vehicle: vehicle.ivid, face: view(result.row), replaced: !!result.replaced };

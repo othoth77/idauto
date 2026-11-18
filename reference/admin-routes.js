@@ -7,6 +7,8 @@
 //   GET /api/admin/dashboard                 every module's headline counts, for /admin/dashboard
 //   GET /api/admin/vehicles                  the registry: filtered, sorted, paged
 //   GET /api/admin/vehicles/:ref/dossier     one identity and everything recorded against it
+//   GET /api/admin/vehicles/:ref/archive     Update 4 — photographs and cartes grises, every version, newest first
+//   GET /api/admin/archive/:id/file          Update 4 — the ORIGINAL file of one archive record (bytes; never a path)
 //   GET /api/admin/maintenance               workshop visits / service events, every organisation
 //   GET /api/admin/organisations             ateliers: identity, status, accounts, integration, activity
 //   GET /api/admin/sources                   capture sources, identification providers, parts catalogue
@@ -31,6 +33,7 @@ var identity = require('./identity.js');
 var vehicleRepository = require('./vehicle/vehicle-repository.js');
 var adminRepository = require('./admin/admin-repository.js');
 var observability = require('./observability.js');
+var archive = require('./archive/archive-service.js');
 
 function createAdminRoutes(ctx) {
   var sendJson = ctx.sendJson, decode = ctx.decodePathSegment;
@@ -83,6 +86,27 @@ function createAdminRoutes(ctx) {
     var out = await adminRepository.dossier(row, record);
     if (ref !== row.ivid && ref !== row.internal_ref) out.requested_alias = ref;
     sendJson(res, 200, out);
+  }
+
+  // Update 4 — the vehicle's archive: photographs and every carte grise version, with dates, place, source, uploader,
+  // Haddad archive status and LENS status. The VIN is not returned (vin_known only): it is disclosed through the audited fiche.
+  async function getArchive(req, res, m) {
+    var ref = decode(m[1]);
+    if (typeof ref !== 'string' || !ref || ref.length > 64 || ref.indexOf('\u0000') !== -1) return sendJson(res, 404, { error: 'VEHICLE_NOT_FOUND', message_fr: 'Véhicule introuvable.' });
+    var row = await vehicleRepository.findByRef(ref);
+    if (!row) return sendJson(res, 404, { error: 'VEHICLE_NOT_FOUND', message_fr: 'Véhicule introuvable.' });
+    sendJson(res, 200, Object.assign({ vehicle: row.ivid }, await archive.history(row.id)));
+  }
+  // The original bytes of one record, from the private media store. Admin only; the storage key and paths never leave the server.
+  async function getArchiveFile(req, res, m) {
+    var r = (await require('./db.js').query('SELECT object_key, mime_type, original_filename FROM idauto_media_archive WHERE id = $1', [m[1]])).rows[0];
+    if (!r) return sendJson(res, 404, { error: 'NOT_FOUND', message_fr: 'Fichier introuvable.' });
+    var bytes = await require('./documents/document-storage.js').getStorage().get(r.object_key);   // the key is validated there (64 hex): no path from a request
+    if (!bytes) return sendJson(res, 404, { error: 'NOT_FOUND', message_fr: 'Fichier introuvable dans le stockage.' });
+    var safe = String(r.original_filename || 'original').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120);
+    res.writeHead(200, { 'Content-Type': /^(image\/(jpeg|png|webp)|application\/pdf)$/.test(r.mime_type) ? r.mime_type : 'application/octet-stream', 'Content-Length': bytes.length,
+      'Content-Disposition': 'inline; filename="' + safe + '"', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox" });
+    res.end(bytes);
   }
 
   // IDA-ADMIN-2 — maintenance history across every organisation.
@@ -158,6 +182,8 @@ function createAdminRoutes(ctx) {
     { method: 'GET', pattern: /^\/api\/admin\/dashboard$/, handler: adminOnly(getDashboard) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles$/, handler: adminOnly(getVehicles) },
     { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/dossier$/, handler: adminOnly(getDossier) },
+    { method: 'GET', pattern: /^\/api\/admin\/vehicles\/([^/]+)\/archive$/, handler: adminOnly(getArchive) },
+    { method: 'GET', pattern: /^\/api\/admin\/archive\/(\d{1,18})\/file$/, handler: adminOnly(getArchiveFile) },
     { method: 'GET', pattern: /^\/api\/admin\/maintenance$/, handler: adminOnly(getMaintenance) },
     { method: 'GET', pattern: /^\/api\/admin\/organisations$/, handler: adminOnly(getOrganisations) },
     { method: 'GET', pattern: /^\/api\/admin\/sources$/, handler: adminOnly(getSources) },

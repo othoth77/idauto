@@ -71,6 +71,7 @@ Object.defineProperty(El.prototype, 'hidden', {
 });
 
 El.prototype.setAttribute = function (name, value) { this.attributes[name] = String(value); };
+El.prototype.removeAttribute = function (name) { delete this.attributes[name]; };
 El.prototype.getAttribute = function (name) {
   return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
 };
@@ -180,16 +181,18 @@ function buildDom() {
   el('dd', { 'data-result-ivid': '', 'class': 'ida-id' }, result);
   el('a', { 'data-result-passport': '', 'class': 'ida-btn ida-btn--primary', href: '#' }, result);
 
-  var ividForm = el('form', { 'data-ivid-form': '', 'class': 'ida-search' });
-  el('input', { id: 'q-ivid', 'class': 'ida-input ida-id' }, ividForm);
-  el('p', { 'data-ivid-error': '', 'class': 'ida-error-msg' }, ividForm);
+  // Update 4 — the IVID field became the VIN search
+  var vinForm = el('form', { 'data-vin-form': '', 'class': 'ida-search' });
+  el('input', { id: 'q-vin', 'class': 'ida-input ida-id' }, vinForm);
+  el('p', { 'data-vin-error': '', 'class': 'ida-error-msg' }, vinForm);
+  el('button', { 'data-vin-submit': '', type: 'submit' }, vinForm);
 
   el('p', { id: 'ida-live' });
 
   return {
     doc: doc, plateForm: plateForm, submitButton: submitButton, message: message, result: result, unknown: unknown,
     serie: doc.getElementById('plate-serie'), numero: doc.getElementById('plate-numero'),
-    ivid: doc.getElementById('q-ivid')
+    vin: doc.getElementById('q-vin'), vinForm: vinForm
   };
 }
 
@@ -203,7 +206,10 @@ function requireInMarkup(needle, label) {
 function markupCases() {
   say('\nMARKUP — the shim models what really exists');
   requireInMarkup('data-plate-form', 'the plate form hook');
-  requireInMarkup('data-ivid-form', 'the IVID form hook');
+  requireInMarkup('data-vin-form', 'the VIN form hook');
+  requireInMarkup('Numéro de châssis (VIN)', 'the VIN label');
+  requireInMarkup('KPT60A1YSLP025697', 'the VIN example');
+  ok(markup.indexOf('data-ivid-form') === -1 && markup.indexOf('id="q-ivid"') === -1, 'the IVID field is gone from the homepage search');
   requireInMarkup('data-plate-result', 'the result panel hook');
   requireInMarkup('data-plate-message', 'the user-message hook');
   requireInMarkup('data-result-ivid', 'the IVID output');
@@ -211,7 +217,7 @@ function markupCases() {
   requireInMarkup('data-result-passport', 'the passport link');
   requireInMarkup('id="plate-serie"', '#plate-serie');
   requireInMarkup('id="plate-numero"', '#plate-numero');
-  requireInMarkup('id="q-ivid"', '#q-ivid');
+  requireInMarkup('id="q-vin"', '#q-vin');
   requireInMarkup('data-plate-format="TUN_STD"', 'the TUN_STD format binding');
 }
 
@@ -268,6 +274,8 @@ function text(sel, dom) { var e = dom.doc.querySelector(sel); return e ? e.textC
 var SQL = [];
 var RATE_COUNT = 0;
 var PLATES = {};            // normalised plate -> ivid (or null for "no vehicle")
+var VINS = {};              // Update 4 — VIN -> [ivid, …] (two = a VIN shared by two identities)
+var AUDIT = [];
 var dbPath = require.resolve(path.join(BASE, 'reference', 'db.js'));
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
   query: async function (sql, params) {
@@ -281,6 +289,8 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
       return { rows: [{ plate_number: key, ivid: PLATES[key] }] };
     }
     if (/idauto_rate_limit_counters/i.test(sql)) { RATE_COUNT += 1; return { rows: [{ count: RATE_COUNT }] }; }
+    if (/idauto_vehicle_facts f JOIN idauto_vehicles v/.test(sql)) { return { rows: (VINS[String(params[0]).toUpperCase()] || []).map(function (i) { return { ivid: i }; }) }; }
+    if (/INSERT INTO idauto_audit/i.test(sql)) AUDIT.push({ sql: sql, params: params });
     return { rows: [] };
   },
   getClientForTransaction: async function () {
@@ -511,6 +521,64 @@ function sourceCases() {
   ok(markup.indexOf('type="password"') === -1, 'the citizen page has no credential field');
 }
 
+function post(requestPath, body) {
+  return new Promise(function (resolve, reject) {
+    var data = Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+    var req = http.request({ hostname: '127.0.0.1', port: port, path: requestPath, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': data.length } }, function (res) {
+      var chunks = []; res.on('data', function (c) { chunks.push(c); });
+      res.on('end', function () { var raw = Buffer.concat(chunks).toString('utf8'), parsed = null; try { parsed = JSON.parse(raw); } catch (_) {} resolve({ status: res.statusCode, body: parsed, raw: raw }); });
+    });
+    req.on('error', reject); req.write(data); req.end();
+  });
+}
+async function vinServerCases() {
+  say('\nSERVER — POST /public/vin (Update 4)');
+  VINS['KPT60A1YSLP025697'] = ['ivid:1:ABCDEFGHJKMNPQRS:AB'];
+  VINS['VF1RFB00X56789012'] = ['ivid:1:AAAAAAAAAAAAAAAA:AA', 'ivid:1:BBBBBBBBBBBBBBBB:BB'];
+  AUDIT.length = 0;
+  var hit = await post('/public/vin', { vin: 'KPT60A1YSLP025697' });
+  ok(hit.status === 200 && hit.body.ivid === 'ivid:1:ABCDEFGHJKMNPQRS:AB', 'exact VIN → the vehicle IVID');
+  ok(hit.raw.indexOf('KPT60A1YSLP025697') === -1 && Object.keys(hit.body).join() === 'ivid', 'the answer carries the IVID only — the VIN is never echoed');
+  var norm = await post('/public/vin', { vin: ' kpt60a1y slp-025697 ' });
+  ok(norm.status === 200 && norm.body.ivid === hit.body.ivid, 'lower case, spaces and a dash are normalised to the same VIN');
+  var miss = await post('/public/vin', { vin: 'WVWZZZ1JZXW000001' });
+  ok(miss.status === 404, 'a well-formed VIN that is not registered → 404');
+  var near = await post('/public/vin', { vin: 'KPT60A1YSLP025698' });
+  ok(near.status === 404, 'one character different → 404 (exact match only, no fuzzy search)');
+  var shared = await post('/public/vin', { vin: 'VF1RFB00X56789012' });
+  ok(shared.status === 404, 'a VIN shared by two identities → 404 (a merge must resolve it; never pick one)');
+  var bads = [['KPT60A1YSLP02569', 'length'], ['KPT60A1YSLP0256970', 'length'], ['KPT60A1YSLO025697', 'forbidden_letter'], ['KPT60A1YSLP02569!', 'charset'], ['', 'empty']];
+  for (var i = 0; i < bads.length; i++) { var b = await post('/public/vin', { vin: bads[i][0] }); ok(b.status === 400 && b.body.reason === bads[i][1], 'invalid VIN ' + JSON.stringify(bads[i][0]) + ' → 400 ' + bads[i][1]); }
+  ok((await post('/public/vin', '{not json')).status === 400, 'a malformed body → 400');
+  ok((await request('GET', '/public/vin')).status === 405, 'GET is refused: the VIN never travels in an address');
+  ok(AUDIT.length >= 4, 'every well-formed lookup is audited (hit and miss)');
+  ok(AUDIT.every(function (a) { return JSON.stringify(a.params).indexOf('KPT60A1YSLP025697') === -1 && JSON.stringify(a.params).indexOf('WVWZZZ1JZXW000001') === -1; }), 'the audit holds a fingerprint of the VIN, never the VIN');
+  ok(AUDIT.some(function (a) { return /public_vin_lookup_hit/.test(JSON.stringify(a.params)); }) && AUDIT.some(function (a) { return /public_vin_lookup_miss/.test(JSON.stringify(a.params)); }), 'hits and misses are told apart in the audit');
+}
+async function uiVinCases() {
+  say('\nUI — VIN search on the homepage (Update 4)');
+  var dom = buildDom(), r = run(dom, [{ status: 200, body: { ivid: 'ivid:1:ABCDEFGHJKMNPQRS:AB' } }, { status: 200, body: { vehicle: { make: 'Kia', model: 'Picanto' } } }]);
+  dom.vin.value = ' kpt60a1y slp 025697'; dom.vin.dispatchEvent(makeEvent('input'));
+  dom.vinForm.dispatchEvent(makeEvent('submit', { bubbles: true, cancelable: true }));
+  await settle(); await settle();
+  var c = r.calls[0] || { options: {} };
+  ok(c.url === '/public/vin' && c.options.method === 'POST', 'the VIN is POSTed to /public/vin');
+  ok(String(c.url).indexOf('KPT') === -1 && JSON.parse(c.options.body).vin === 'KPT60A1YSLP025697', 'normalised VIN in the body, never in the address');
+  ok(!dom.result.hidden && text('[data-result-ivid]', dom) === 'ivid:1:ABCDEFGHJKMNPQRS:AB', 'the vehicle identity is shown (IVID + passport link)');
+  var dom2 = buildDom(), r2 = run(dom2, []);
+  dom2.vin.value = 'KPT60A1YSLO025697'; dom2.vinForm.dispatchEvent(makeEvent('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  ok(r2.calls.length === 0 && /I, O et Q/.test(text('[data-vin-error]', dom2)), 'an O in the VIN is refused on the page, with the reason, and nothing is sent');
+  var dom3 = buildDom(), r3 = run(dom3, []);
+  dom3.vin.value = 'KPT60A1'; dom3.vinForm.dispatchEvent(makeEvent('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  ok(r3.calls.length === 0 && /17 caractères/.test(text('[data-vin-error]', dom3)), 'a short VIN is refused with its length');
+  var dom4 = buildDom(), r4 = run(dom4, [{ status: 404, body: {} }]);
+  dom4.vin.value = 'WVWZZZ1JZXW000001'; dom4.vinForm.dispatchEvent(makeEvent('submit', { bubbles: true, cancelable: true }));
+  await settle(); await settle();
+  ok(r4.calls.length === 1 && /numéro de châssis/i.test(text('[data-plate-message-title]', dom4)) && !dom4.message.hidden, 'an unknown VIN says so');
+}
+
 async function main() {
   markupCases();
   server = api.createServer();
@@ -518,12 +586,14 @@ async function main() {
   port = server.address().port;
   try {
     await serverCases();
+    await vinServerCases();
     await phaseGateCases();
   } finally { server.close(); }
   await uiFoundCase();
   await uiUnknownCase();
   await uiInvalidCase();
   await uiServerErrorCase();
+  await uiVinCases();
   sourceCases();
   try { fs.unlinkSync(CONFIG_PATH); } catch (_) {}
   console.log('\nIDA-V2 public plate resolution: ' + pass + ' passed, ' + fail + ' failed');

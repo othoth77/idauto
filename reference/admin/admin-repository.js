@@ -291,7 +291,7 @@ async function dossier(canonicalRow, vehicleRecord) {
 
   var documents = (await db.query(
     'SELECT d.id, d.document_type, d.face, d.org_id, org.name AS org_name, d.mime_type, d.byte_size, d.width, d.height, d.ocr_status, d.created_at, d.updated_at ' +
-    'FROM idauto_vehicle_documents d LEFT JOIN idauto_organizations org ON org.id = d.org_id WHERE d.vehicle_id = ANY($1::int[]) ORDER BY d.document_type, d.face',
+    'FROM idauto_vehicle_documents d LEFT JOIN idauto_organizations org ON org.id = d.org_id WHERE d.vehicle_id = ANY($1::int[]) AND d.superseded_at IS NULL ORDER BY d.document_type, d.face',   // current versions; the history is /archive
     [ids])).rows;
 
   var history = (await db.query(
@@ -423,7 +423,7 @@ async function overview() {
   var visitStatus = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_workshop_visits GROUP BY 1');
   var opType = await countBy('SELECT operation_type AS k, count(*)::int AS n FROM idauto_workshop_operations GROUP BY 1');
   var orgStatus = await countBy('SELECT status AS k, count(*)::int AS n FROM idauto_organizations GROUP BY 1');
-  var documents = (await db.query('SELECT count(*)::int AS n FROM idauto_vehicle_documents')).rows[0].n;
+  var documents = (await db.query('SELECT count(*)::int AS n FROM idauto_vehicle_documents WHERE superseded_at IS NULL')).rows[0].n;
   var serviceEvents = (await db.query('SELECT count(*)::int AS n FROM idauto_service_events')).rows[0].n;
   // Same rule as the audit list (IDA-ADMIN-5): a capture row keeps its day only.
   var recent = (await db.query(

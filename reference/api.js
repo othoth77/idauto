@@ -415,6 +415,7 @@ var ADMIN_ASSETS = {
   '/admin/vehicle': { file: 'admin-vehicle.html', contentType: 'text/html; charset=utf-8' },
   '/admin/vehicle/': { file: 'admin-vehicle.html', contentType: 'text/html; charset=utf-8' },
   '/admin/vehicle-ui.js': { file: 'admin-vehicle-ui.js', contentType: 'application/javascript; charset=utf-8' },
+  '/admin/vehicle-archive.js': { file: 'admin-vehicle-archive.js', contentType: 'application/javascript; charset=utf-8' },
   '/admin/shell.js': { file: 'admin-shell.js', contentType: 'application/javascript; charset=utf-8' },
   '/admin/console.js': { file: 'admin-console.js', contentType: 'application/javascript; charset=utf-8' },
   // IDA-ADMIN-2 — maintenance history (static shell; data from /api/admin/maintenance).
@@ -1067,6 +1068,47 @@ async function recordPlateLookupMiss(req, plateNumber) {
       reason: err && err.code ? String(err.code) : 'unknown'
     }));
   }
+}
+
+// Update 4 — POST /public/vin { vin } → { ivid } — the homepage's VIN search, at exactly the plate route's level of
+// disclosure: the vehicle's IVID (and from it the public passport), nothing else. The VIN travels in the BODY, never in a
+// URL (proxy logs keep URLs); it is never echoed back. Exact match on the normalised value (upper case, spaces and dashes
+// removed, ISO 3779 alphabet). Same kill switch and same per-client budget as the plate route. EVERY lookup — hit or
+// miss — is audited (the VIN stays a scoped, always-audited identifier), with a fingerprint of the VIN, never the VIN.
+async function handlePublicVinRoute(req, res) {
+  if (!loadPublicResolutionConfig().enabled) return notFound(res);
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'POST' });
+    return res.end(JSON.stringify({ error: 'method not allowed' }));
+  }
+  var body;
+  try { body = await readJsonBody(req); } catch (e) { return sendJson(res, e.httpStatus === 413 ? 413 : 400, { error: 'invalid body' }); }
+  var check = require('./vehicle/vin.js').validate(body && typeof body.vin === 'string' ? body.vin.slice(0, 64) : '');
+  if (!check.ok) return sendJson(res, 400, { error: 'INVALID_VIN', reason: check.reason, message_fr: 'Numéro de châssis invalide : 17 caractères, lettres et chiffres, sans I, O ni Q.' });
+  var limitResult = await rateLimit.enforcePublicResolution(db, clientIpHash(req), loadPublicResolutionConfig());
+  if (!limitResult.allowed) {
+    res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retryAfterSeconds(limitResult.retry_at)) });
+    return res.end(JSON.stringify({ error: 'rate limit exceeded' }));
+  }
+  // the fact index (IDA-V10) answers "which vehicle has this VIN"; merges are followed to the canonical record
+  var result = await db.query(
+    'WITH RECURSIVE chain(id, ivid, merged_into_id, depth) AS (' +
+    "  SELECT v.id, v.ivid, v.merged_into_id, 0 FROM idauto_vehicle_facts f JOIN idauto_vehicles v ON v.id = f.vehicle_id " +
+    "  WHERE f.fact_key = 'vin' AND f.is_active = TRUE AND f.fact_value_normalized = $1" +   // IDA-V10 partial index: no table scan
+    '  UNION ALL' +
+    '  SELECT v.id, v.ivid, v.merged_into_id, c.depth + 1 FROM chain c JOIN idauto_vehicles v ON v.id = c.merged_into_id WHERE c.depth < 16' +
+    ') SELECT DISTINCT ivid FROM chain WHERE merged_into_id IS NULL LIMIT 2',
+    [check.vin.toLowerCase()]);
+  var fp = 'vin:' + require('crypto').createHash('sha256').update(check.vin).digest('hex').slice(0, 16);
+  var hit = result.rows.length === 1 ? result.rows[0].ivid : null;
+  try {
+    var owner = resolveOwnerSession(req);
+    await writes.recordAnonymousAuditEvent({ event_type: hit ? 'public_vin_lookup_hit' : 'public_vin_lookup_miss', actor_type: owner ? 'admin' : 'anonymous', actor_ref: owner || null,
+      target_type: 'vin_fingerprint', target_ref: fp, change_summary: hit ? 'vehicle found by VIN' : result.rows.length > 1 ? 'VIN shared by several identities (merge needed)' : 'VIN not registered', ip_hash: clientIpHash(req) });
+  } catch (err) { console.log(JSON.stringify({ at: new Date().toISOString(), event: 'audit_write_failed', what: 'public_vin_lookup', reason: err && err.code ? String(err.code) : 'unknown' })); }
+  // two identities share this VIN: a merge must resolve it — answer "not found" rather than pick one
+  if (!hit) return notFound(res);
+  sendJson(res, 200, { ivid: hit });
 }
 
 async function handlePublicPassportRoute(req, res, pathname) {
@@ -2212,7 +2254,8 @@ function createServer() {
       // table below.
       if (pathname === '/public' || pathname.indexOf('/public/') === 0) {
         try {
-          await handlePublicPassportRoute(req, res, pathname);
+          if (pathname === '/public/vin') await handlePublicVinRoute(req, res);      // Update 4 — VIN lookup, kept apart from the passport handler
+          else await handlePublicPassportRoute(req, res, pathname);
         } catch (err) {
           // F7 (Opus review, 2026-08-19): a response may already be
           // underway by the time an error surfaces here — destroy the
