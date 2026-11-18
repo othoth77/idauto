@@ -57,6 +57,24 @@ function call(cfg, method, key, body) {
   });
 }
 
+// Update 4 — a JSON call to the receiver (archive metadata, LENS status): resolves { status, json }
+function request(cfg, method, p, body) {
+  return new Promise(function (resolve, reject) {
+    var u = new URL(cfg.url + p), lib = u.protocol === 'https:' ? https : http, data = body ? Buffer.from(JSON.stringify(body)) : null;
+    var opts = { method: method, hostname: cfg.addr || u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname,
+      headers: { 'Authorization': 'Bearer ' + cfg.token, 'Host': u.host, 'Content-Length': data ? data.length : 0, 'Content-Type': 'application/json' }, timeout: 30000 };
+    if (u.protocol === 'https:') opts.servername = u.hostname;
+    var req = lib.request(opts, function (res) {
+      var c = [], size = 0; res.on('data', function (d) { size += d.length; if (size <= 65536) c.push(d); });
+      res.on('end', function () { var j = null; try { j = JSON.parse(Buffer.concat(c).toString('utf8')); } catch (e) {} resolve({ status: res.statusCode, json: j }); });
+    });
+    req.on('timeout', function () { req.destroy(new Error('timeout')); });
+    req.on('error', reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
 async function attempt(cfg, row) {
   var key = row.object_key, err = null, ok = false;
   try {
@@ -75,6 +93,7 @@ async function attempt(cfg, row) {
     }
   } catch (e) { err = String(e && e.message || e).slice(0, 160); }
   var next = ok ? null : row.status === 'delete_pending' ? 'delete_pending' : 'failed';
+  if (ok && row.status === 'delete_pending') await require('../archive/archive-service.js').removed(key).catch(function () {});
   if (ok) await db.query("UPDATE idauto_media_replicas SET status = $3, attempts = attempts + 1, last_error = NULL, replicated_at = NOW(), updated_at = NOW() WHERE object_key = $1 AND target = $2", [key, TARGET, row.status === 'delete_pending' ? 'deleted' : 'stored']);
   else await db.query("UPDATE idauto_media_replicas SET status = $3, attempts = attempts + 1, last_error = $4, next_try_at = NOW() + make_interval(secs => LEAST(3600, 30 * power(2, LEAST(attempts, 7))::int)), updated_at = NOW() WHERE object_key = $1 AND target = $2", [key, TARGET, next, err]);
   return ok;
@@ -120,10 +139,11 @@ function start() {
     db.query("SELECT to_regclass('public.idauto_media_replicas') IS NOT NULL t").then(function (r) {
       if (!r.rows[0].t) return 0;
       // expired anonymous photographs are removed here too, whether or not public storage is still on
-      return require('../photos/scan-service.js').purgeExpired().catch(function () {}).then(pass);
+      return require('../photos/scan-service.js').purgeExpired().catch(function () {}).then(pass)
+        .then(function () { return require('../archive/archive-service.js').pass().catch(function () {}); });   // Update 4 — the monthly archive
     }).catch(function () {});
   }, 30000);
   if (timer.unref) timer.unref();
 }
 
-module.exports = { enqueue: enqueue, forget: forget, status: status, pass: pass, start: start, config: config, TARGET: TARGET };
+module.exports = { request: request, enqueue: enqueue, forget: forget, status: status, pass: pass, start: start, config: config, TARGET: TARGET };

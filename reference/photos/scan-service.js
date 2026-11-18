@@ -25,6 +25,7 @@ var plateNormalizer = require('../vehicle/plate-normalizer.js');
 var vehicleRepository = require('../vehicle/vehicle-repository.js');
 var clean = require('./photo-clean.js');
 var photos = require('./photo-service.js');
+var archive = require('../archive/archive-service.js');
 var replica = require('../replica/haddad-replica.js');
 var geo = require('./tn-geo.js');
 
@@ -109,6 +110,11 @@ async function create(bytes, rawMeta, actor, ctx) {
     throw err;
   }
   await replica.enqueue(stored.key).catch(function () {});
+  // Update 4 — the monthly archive record of this photograph (vehicle unknown until it is attached)
+  var mediaRow = (await db.query('SELECT media_id FROM idauto_scan_photos WHERE token = $1', [token])).rows[0];
+  if (mediaRow) await archive.record({ object_key: stored.key, category: 'vehicle-photos', scan_media_id: mediaRow.media_id, actor: actor, captured_at: m.captured_at,
+    latitude: loc.latitude, longitude: loc.longitude, location_source: loc.location_source, place_name: loc.place_name || loc.governorate,
+    mime_type: meta.mime, original_filename: ctx && ctx.original_filename, sha256: stored.key, byte_size: bytes.length }).catch(function () {});
   if (anon) purgeExpired().catch(function () {});
   return view(await row(token, actor));
 }
@@ -125,6 +131,7 @@ async function update(token, raw, actor) {
   if ('location' in raw) { var loc = locationColumns(raw.location === null ? null : clean.location(raw.location)); Object.keys(loc).forEach(function (k) { set(k, loc[k]); }); }
   if ('captured_at' in raw && !r.captured_at) set('captured_at', clean.capturedAt(raw.captured_at));
   if (sets.length) await db.query('UPDATE idauto_scan_photos SET ' + sets.join(', ') + ', updated_at = NOW() WHERE media_id = $1', params);
+  if (sets.length) await archive.refreshScan(r.media_id).catch(function () {});
   var after = await row(token, actor);
   if (after.analysis && after.analysis.plate && after.analysis.plate.serie) {
     var parsed = plateNormalizer.parsePlate(after.analysis.plate.serie + ' TUN ' + after.analysis.plate.numero);
@@ -149,6 +156,7 @@ async function attach(token, vehicleRef, actor) {
     await client.query('UPDATE idauto_observations SET vehicle_id = $2 WHERE id = $1', [r.observation_id, vehicle.id]);
   } });
   if (out.duplicate) await db.query('UPDATE idauto_scan_photos SET vehicle_id = $2, attached_document_id = $3, expires_at = NULL, updated_at = NOW() WHERE media_id = $1', [r.media_id, vehicle.id, out.photo.id]);
+  await archive.linkScan(r.media_id, { vehicle_id: vehicle.id, document_id: out.duplicate ? null : out.photo.id }).catch(function () {});
   return { vehicle: vehicle.ivid, attached: true, duplicate: out.duplicate };
 }
 

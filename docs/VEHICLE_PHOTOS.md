@@ -197,3 +197,27 @@ never removes the local file. The Haddad copy is not itself backed up off-site.
 
 **Failures are independent.** Saving fails → « Réessayer l'enregistrement », the photograph is kept in the page.
 Analysis fails → recorded on the saved photograph, « Relancer l'analyse ».
+
+
+## 10. Update 4 — VIN search, monthly archive, carte grise versions
+
+**VIN search (homepage).** The IVID field is replaced by « Numéro de châssis (VIN) ». The page normalises the input
+(upper case; spaces, dashes and dots removed), checks ISO 3779 (17 characters, no I, O, Q) and POSTs it to
+`/public/vin` — never in an address. The server answers like the plate route: the vehicle's IVID only (then its public
+passport), exact match on the VIN fact index, merges followed; a VIN shared by two identities is « not found » (a merge
+resolves it). Same kill switch and per-client budget as the plate route; every lookup is audited with a fingerprint of
+the VIN (`vin:<sha256[0:16]>`), never the VIN. The IVID itself is unchanged everywhere else (QR, passport, API).
+
+**Archive records.** `idauto_media_archive` — one record per photograph or carte grise file: vehicle, document or scan,
+source (public scanner / workshop / admin), uploader, upload and capture dates, GPS and its source, place, MIME type,
+original filename, SHA-256, size, Haddad archive path and status, LENS job and status, technical LENS fields, who
+corrected the metadata and when. A new capture is a new record. The VIN is not copied: it is read through the vehicle.
+
+**Carte grise versions.** A new recto or verso no longer deletes the previous one: the previous row is marked
+`superseded_at / superseded_by` and keeps its file; only the current version is unique per face.
+
+**Administrator dossier** (`/admin/vehicle?ref=…`): « Photos du véhicule » and « Carte grise », each with upload and a
+chronological history (`GET /api/admin/vehicles/:ref/archive`); « Ouvrir l'original » →
+`GET /api/admin/archive/:id/file` (admin only, bytes only, no-store). Uploads and corrections go through the existing
+audited routes (`POST /api/vehicles/:ref/photos`, `PUT /api/vehicles/:ref/registration-document/:face`,
+`PUT /api/vehicles/:ref/photos/:id`). See `ops/haddad/README-idauto-media.md` for the monthly tree on Haddad.

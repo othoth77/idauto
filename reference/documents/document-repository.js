@@ -8,7 +8,7 @@
 var db = require('../db.js');
 var writes = require('../writes.js');
 
-var COLS = 'id, vehicle_id, org_id, document_type, face, storage_key, thumb_storage_key, mime_type, byte_size, width, height, sha256, original_byte_size, capture_meta, ocr_status, ocr_confidence, ocr_fields, ocr_at, created_by, created_at, updated_at';
+var COLS = 'id, vehicle_id, org_id, document_type, face, storage_key, thumb_storage_key, mime_type, byte_size, width, height, sha256, original_byte_size, capture_meta, ocr_status, ocr_confidence, ocr_fields, ocr_at, created_by, created_at, updated_at, version, original_filename';
 
 // Rows an actor may see: admins see all, an organisation sees its own.
 function visibility(principal, params) {
@@ -19,13 +19,13 @@ function visibility(principal, params) {
 
 async function facesOf(vehicleId, principal) {
   var params = [vehicleId];
-  var res = await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND " + visibility(principal, params) + ' ORDER BY face', params);
+  var res = await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND superseded_at IS NULL AND " + visibility(principal, params) + ' ORDER BY face', params);
   return res.rows;
 }
 
 async function face(vehicleId, faceNo, principal) {
   var params = [vehicleId, faceNo];
-  var res = await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 AND " + visibility(principal, params), params);
+  var res = await db.query('SELECT ' + COLS + " FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 AND superseded_at IS NULL AND " + visibility(principal, params), params);
   return res.rows[0] || null;
 }
 
@@ -42,8 +42,9 @@ async function referencesOfKey(key, exceptId, client) {
   return n;
 }
 
-// Insert or replace one face. `meta` was produced by the service from the
-// sniffed bytes (never from the client). Returns { row, replaced: oldRow|null }.
+// Store a NEW VERSION of one face (Update 4). `meta` was produced by the service from the sniffed bytes (never from the
+// client). The previous version is never deleted: it is marked superseded (superseded_at, superseded_by) and keeps its
+// file, so the dossier shows the whole history. Returns { row, replaced: previousRow|null }.
 async function upsertFace(vehicleId, faceNo, meta, actor) {
   var orgId = actor.principal && actor.principal.kind === 'organisation' ? actor.principal.org_id : null;
   // withAudit() returns the audit-safe record only; the row and the replaced
@@ -53,21 +54,23 @@ async function upsertFace(vehicleId, faceNo, meta, actor) {
     { principal: actor.principal, event_type: 'vehicle_document.upsert', target_type: 'idauto_vehicle_documents', change_summary: 'carte grise face ' + faceNo + ' stored' },
     actor.identity,
     async function (client) {
-      var old = await client.query("SELECT " + COLS + " FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 FOR UPDATE", [vehicleId, faceNo]);
+      var old = await client.query("SELECT " + COLS + " FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 AND superseded_at IS NULL FOR UPDATE", [vehicleId, faceNo]);
       var oldRow = old.rows[0] || null;
       if (oldRow) {
         // An organisation may only replace ITS face; an admin may replace any.
         if (orgId && oldRow.org_id && oldRow.org_id !== orgId) throw Object.assign(new Error('not found'), { httpStatus: 404 });
-        await client.query('DELETE FROM idauto_vehicle_documents WHERE id = $1', [oldRow.id]);
+        await client.query('UPDATE idauto_vehicle_documents SET superseded_at = NOW(), updated_at = NOW() WHERE id = $1', [oldRow.id]);
       }
+      var version = ((await client.query("SELECT coalesce(max(version), 0)::int v FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2", [vehicleId, faceNo])).rows[0].v) + 1;
       var res = await client.query(
-        "INSERT INTO idauto_vehicle_documents (vehicle_id, org_id, document_type, face, storage_key, thumb_storage_key, mime_type, byte_size, width, height, sha256, original_byte_size, capture_meta, ocr_status, created_by) " +
-        "VALUES ($1,$2,'carte_grise',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'none',$13) RETURNING " + COLS,
-        [vehicleId, orgId, faceNo, meta.storage_key, meta.thumb_storage_key || null, meta.mime_type, meta.byte_size, meta.width, meta.height, meta.sha256, meta.original_byte_size || null, meta.capture_meta ? JSON.stringify(meta.capture_meta) : null, actor.identity]);
+        "INSERT INTO idauto_vehicle_documents (vehicle_id, org_id, document_type, face, storage_key, thumb_storage_key, mime_type, byte_size, width, height, sha256, original_byte_size, capture_meta, ocr_status, created_by, version, original_filename) " +
+        "VALUES ($1,$2,'carte_grise',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'none',$13,$14,$15) RETURNING " + COLS,
+        [vehicleId, orgId, faceNo, meta.storage_key, meta.thumb_storage_key || null, meta.mime_type, meta.byte_size, meta.width, meta.height, meta.sha256, meta.original_byte_size || null, meta.capture_meta ? JSON.stringify(meta.capture_meta) : null, actor.identity, version, meta.original_filename || null]);
       var row = res.rows[0];
+      if (oldRow) await client.query('UPDATE idauto_vehicle_documents SET superseded_by = $2 WHERE id = $1', [oldRow.id, row.id]);
       // The audit row carries metadata only — never bytes, never a key path.
       rowOut = row; replacedOut = oldRow;
-      return { record: { id: row.id, vehicle_id: row.vehicle_id, face: row.face, mime_type: row.mime_type, byte_size: row.byte_size, width: row.width, height: row.height, sha256: row.sha256, replaced_id: oldRow ? oldRow.id : null }, auditTargetRef: row.id };
+      return { record: { id: row.id, vehicle_id: row.vehicle_id, face: row.face, mime_type: row.mime_type, byte_size: row.byte_size, width: row.width, height: row.height, sha256: row.sha256, replaced_id: oldRow ? oldRow.id : null, version: version }, auditTargetRef: row.id };
     }
   );
   return { row: rowOut, replaced: replacedOut };
@@ -82,7 +85,7 @@ async function deleteFace(vehicleId, faceNo, actor) {
     async function (client) {
       var params = [vehicleId, faceNo];
       var vis = orgId ? (params.push(orgId), 'org_id = $3') : 'TRUE';
-      var res = await client.query("DELETE FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 AND " + vis + ' RETURNING ' + COLS, params);
+      var res = await client.query("DELETE FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 AND superseded_at IS NULL AND " + vis + ' RETURNING ' + COLS, params);
       if (!res.rows.length) throw Object.assign(new Error('not found'), { httpStatus: 404 });
       var row = res.rows[0];
       deletedOut = row;

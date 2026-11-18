@@ -264,8 +264,12 @@ ok(!/\/api\/plates/.test(citizenCode),
   "citizen JS never calls the AUTHENTICATED plate route");
 ok(/\/public\/plates\//.test(homeCode),
   "home.js resolves plates through the public plate route (IDA-V2)");
-ok(!/internal_ref|vehicle_id|\bvin\b/i.test(homeCode),
+// Update 4 (owner, 2026-11-18): home.js SEARCHES by VIN — it may send one, through the public VIN lookup only, and never
+// reads one back; internal identifiers stay out entirely.
+ok(!/internal_ref|vehicle_id/i.test(homeCode),
   "citizen JS never references a private vehicle identifier");
+ok(/fetch\("\/public\/vin"/.test(homeCode) && !/body\.vin|\.vin\b(?!\s*:)/.test(homeCode.replace(/JSON\.stringify\(\{ vin: v \}\)/, '')),
+  "the VIN is only SENT (to /public/vin) — never read from an answer");
 // V1 PERSONAL: no key or token is ever asked of the user — the citizen
 // surface carries no Authorization header, no bearer, no token input.
 ok(!/Authorization|Bearer/i.test(citizenCode),

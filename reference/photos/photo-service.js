@@ -28,6 +28,7 @@ var storageModule = require('../documents/document-storage.js');
 var documentRepository = require('../documents/document-repository.js');
 var geo = require('./tn-geo.js');
 var clean = require('./photo-clean.js');
+var archive = require('../archive/archive-service.js');
 var replica = require('../replica/haddad-replica.js');
 
 var LIMITS = { max_bytes: parseInt(process.env.IDAUTO_DOCUMENT_MAX_BYTES || String(6 * 1024 * 1024), 10), min_edge: 200, max_edge: 5000, max_per_vehicle: 40 };
@@ -85,7 +86,7 @@ async function one(vehicle, id, actor, runner) {
 }
 
 // add(vehicleRef, bytes, rawMeta, actor) → { vehicle, photo, duplicate }
-async function add(vehicleRef, bytes, rawMeta, actor) {
+async function add(vehicleRef, bytes, rawMeta, actor, opts) {
   var vehicle = await vehicleFor(vehicleRef);
   var meta = inspect(bytes);
   var file = { sha256: crypto.createHash('sha256').update(bytes).digest('hex'), mime: meta.mime, byte_size: bytes.length, width: meta.width, height: meta.height };
@@ -93,7 +94,7 @@ async function add(vehicleRef, bytes, rawMeta, actor) {
   if (existing) return { vehicle: vehicle.ivid, photo: view(existing), duplicate: true };
   var storage = storageModule.getStorage(), stored = await storage.put(bytes, meta.mime);
   file.key = stored.key;
-  try { return await addStored(vehicle, file, clean.photoMeta(rawMeta), actor); }
+  try { return await addStored(vehicle, file, clean.photoMeta(rawMeta), actor, { original_filename: opts && opts.original_filename }); }
   catch (err) {
     if (await documentRepository.referencesOfKey(stored.key, 0) === 0) await storage.remove(stored.key);   // a refused upload leaves no file behind
     throw err;
@@ -130,6 +131,10 @@ async function addStored(vehicle, file, m, actor, opts) {
       return { record: { id: String(doc.id), vehicle_id: vehicle.id, number: n.n + 1, view: m.view, sha256: file.sha256, location_source: loc.location_source }, auditTargetRef: doc.id };
     });
   await replica.enqueue(file.key).catch(function () {});        // second copy on Haddad; a failure is recorded, never fatal here
+  // Update 4 — the monthly archive record. A scanner photograph already has one (linked by scan-service.attach).
+  if (opts.from !== 'scan') await archive.record({ object_key: file.key, category: 'vehicle-photos', vehicle_id: vehicle.id, document_id: idOut, actor: actor,
+    captured_at: m.captured_at, latitude: loc.latitude, longitude: loc.longitude, location_source: loc.location_source, place_name: loc.place_name || loc.governorate,
+    mime_type: file.mime, original_filename: opts.original_filename, sha256: file.sha256, byte_size: file.byte_size }).catch(function () {});
   return { vehicle: vehicle.ivid, photo: view(await one(vehicle, idOut, actor)), duplicate: false };
 }
 
@@ -149,6 +154,8 @@ async function update(vehicleRef, id, rawPatch, actor) {
       await client.query('UPDATE idauto_vehicle_photos SET ' + sets.join(', ') + ', updated_at = NOW() WHERE document_id = $1', params);
       return { record: { id: String(row.id), fields: sets.length }, auditTargetRef: row.id };
     });
+  // Update 4 — a corrected date or place is carried to the archive record (and to Haddad's .json); the file never changes
+  if (p.captured_at !== undefined || p.location !== undefined) await archive.corrected(row.id, actor).catch(function () {});
   return { vehicle: vehicle.ivid, photo: view(await one(vehicle, row.id, actor)) };
 }
 

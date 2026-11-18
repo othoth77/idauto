@@ -91,6 +91,7 @@ Object.defineProperty(El.prototype, 'hidden', {
 });
 
 El.prototype.setAttribute = function (name, value) { this.attributes[name] = String(value); };
+El.prototype.removeAttribute = function (name) { delete this.attributes[name]; };
 El.prototype.getAttribute = function (name) {
   return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
 };
@@ -198,16 +199,18 @@ function buildDom() {
   el('dd', { 'data-result-ivid': '', 'class': 'ida-id' }, result);
   el('a', { 'data-result-passport': '', 'class': 'ida-btn ida-btn--primary', href: '#' }, result);
 
-  var ividForm = el('form', { 'data-ivid-form': '', 'class': 'ida-search' });
-  el('input', { id: 'q-ivid', 'class': 'ida-input ida-id' }, ividForm);
-  el('p', { 'data-ivid-error': '', 'class': 'ida-error-msg' }, ividForm);
+  // Update 4 — the IVID field became the VIN search
+  var vinForm = el('form', { 'data-vin-form': '', 'class': 'ida-search' });
+  el('input', { id: 'q-vin', 'class': 'ida-input ida-id' }, vinForm);
+  el('p', { 'data-vin-error': '', 'class': 'ida-error-msg' }, vinForm);
+  el('button', { 'data-vin-submit': '', type: 'submit' }, vinForm);
 
   el('p', { id: 'ida-live' });
 
   return {
     doc: doc, plateForm: plateForm, submitButton: submitButton, message: message, result: result, unknown: unknown,
     serie: doc.getElementById('plate-serie'), numero: doc.getElementById('plate-numero'),
-    ivid: doc.getElementById('q-ivid')
+    vin: doc.getElementById('q-vin')
   };
 }
 
@@ -221,7 +224,7 @@ function requireInMarkup(needle, label) {
 function markupCases() {
   say('\nMARKUP — the shim models what really exists');
   requireInMarkup('data-plate-form', 'the plate form hook');
-  requireInMarkup('data-ivid-form', 'the IVID form hook');
+  requireInMarkup('data-vin-form', 'the VIN form hook');
   requireInMarkup('data-plate-result', 'the result panel hook');
   requireInMarkup('data-plate-unknown', 'the unregistered-vehicle surface hook');
   requireInMarkup('data-unknown-plate', 'the carried-over plate output');
@@ -232,7 +235,7 @@ function markupCases() {
   requireInMarkup('data-result-passport', 'the passport link');
   requireInMarkup('id="plate-serie"', '#plate-serie');
   requireInMarkup('id="plate-numero"', '#plate-numero');
-  requireInMarkup('id="q-ivid"', '#q-ivid');
+  requireInMarkup('id="q-vin"', '#q-vin');
   requireInMarkup('data-plate-format="TUN_STD"', 'the TUN_STD format binding');
 }
 
@@ -492,7 +495,10 @@ function noSecondStoreCases() {
   ok(/writes\.recordAnonymousAuditEvent/.test(apiJs), 'api.js calls it rather than issuing SQL itself');
   var homeCode = fs.readFileSync(path.join(WEB, 'citizen', 'home.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  ok(!/POST|method:\s*['"]POST/.test(homeCode), 'the public page never writes — it only reads and hands off');
+  // Update 4 — the one POST is the VIN LOOKUP (/public/vin): a read sent in the body so the VIN never appears in an address.
+  var posts = homeCode.match(/fetch\([^)]*\{[^}]*method:\s*['"]POST['"][^}]*\}/g) || [];
+  ok(posts.length === 1 && /fetch\("\/public\/vin"/.test(posts[0]), 'the only POST of the public page is the VIN lookup (a read, VIN kept out of the URL)');
+  ok(!/POST/.test(homeCode.replace(posts[0] || '', '')), 'apart from it the public page never writes — it only reads and hands off');
   // The page DISPLAYS make/model/year — read from the server's response, which
   // is exactly its job. What it must never do is AUTHOR one: no vehicle
   // attribute may be assigned a literal anywhere in this file.

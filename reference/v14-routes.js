@@ -60,6 +60,7 @@ function createV14(ctx) {
     var originalBytes = parseInt(header(req, 'x-idauto-original-bytes') || '', 10);
     var out = await service.store(decode(m[1]), decode(m[2]), bytes, null, {
       original_byte_size: isFinite(originalBytes) ? originalBytes : null,
+      original_filename: (function () { try { var f = decodeURIComponent(header(req, 'x-idauto-filename') || ''); return f ? f.slice(0, 255) : null; } catch (e) { return null; } })(),
       capture: { detection: header(req, 'x-idauto-capture'), quality: parseFloat(header(req, 'x-idauto-quality') || '') || null, max_edge: parseInt(header(req, 'x-idauto-max-edge') || '', 10) || null }
     }, actorOf(req));
     sendJson(res, out.replaced ? 200 : 201, out);

@@ -123,10 +123,12 @@ function createWorkspace(ctx) {
   }
   // Update 3.1 — « Scanner la plaque » for a signed-in workshop: the photograph is saved when it is taken
   // (photos/scan-service.js), then analysed, then saved as a vehicle or attached to an existing one.
+  // Update 4 — the file's original name, as the browser gave it (URI-encoded header), kept as metadata only
+  function originalName(req) { try { var f = decodeURIComponent(String(req.headers['x-idauto-filename'] || '')); return f ? f.replace(/[\u0000-\u001f\/\\]/g, '_').slice(0, 255) : null; } catch (e) { return null; } }
   async function postScan(req, res) {
     var rl = await rateLimit.enforcePublicResolution(db, 'scan:' + (req.mythosIdentity || 'anonymous'), PHOTO_LIMIT);
     if (!rl.allowed) return sendJson(res, 429, { error: 'RATE_LIMITED', message_fr: 'Trop d\'envois en peu de temps. Patientez quelques minutes.', retry_at: rl.retry_at });
-    sendJson(res, 201, { scan: await scans.create(await readBinaryBody(req), photoMeta(req), actorOf(req)) });
+    sendJson(res, 201, { scan: await scans.create(await readBinaryBody(req), photoMeta(req), actorOf(req), { original_filename: originalName(req) }) });
   }
   async function getScan(req, res, m) { sendJson(res, 200, { scan: await scans.get(m[1], actorOf(req)) }); }
   async function putScan(req, res, m) { sendJson(res, 200, { scan: await scans.update(m[1], await readJsonBody(req), actorOf(req)) }); }
@@ -143,7 +145,7 @@ function createWorkspace(ctx) {
   async function postPhoto(req, res, m) {
     var rl = await rateLimit.enforcePublicResolution(db, 'photo:' + (req.mythosIdentity || 'anonymous'), PHOTO_LIMIT);
     if (!rl.allowed) return sendJson(res, 429, { error: 'RATE_LIMITED', message_fr: 'Trop d\'envois en peu de temps. Patientez quelques minutes.', retry_at: rl.retry_at });
-    var out = await photos.add(decode(m[1]), await readBinaryBody(req), photoMeta(req), actorOf(req));
+    var out = await photos.add(decode(m[1]), await readBinaryBody(req), photoMeta(req), actorOf(req), { original_filename: originalName(req) });
     sendJson(res, out.duplicate ? 200 : 201, out);
   }
   async function putPhoto(req, res, m) { sendJson(res, 200, await photos.update(decode(m[1]), m[2], await readJsonBody(req), actorOf(req))); }

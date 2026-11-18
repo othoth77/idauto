@@ -257,17 +257,37 @@
   // Update 3.1 — the homepage photograph analysis (home-photo.js) hands a CONFIRMED plate to the same search.
   window.IdaHome = { applyScannedPlate: applyScannedPlate };
 
-  var ividForm = document.querySelector("[data-ivid-form]");
-  var ividErr = ividForm.querySelector("[data-ivid-error]");
-  ividForm.addEventListener("submit", function (e) {
+  /* Update 4 — VIN search (replaces the IVID field; the IVID stays the vehicle's identifier: QR, passport, result).
+   * Normalised here exactly as on the server (upper case, spaces / dashes / dots removed), checked against ISO 3779
+   * (17 characters, no I, O, Q), then POSTed — the VIN never appears in an address. Exact match only. */
+  function normalizeVin(raw) { return String(raw || "").toUpperCase().replace(/[\s\-_.]/g, ""); }
+  function vinProblem(v) {
+    if (!v) return "Saisissez le numéro de châssis.";
+    if (v.length !== 17) return "Le numéro de châssis compte 17 caractères (vous en avez saisi " + v.length + ").";
+    if (/[IOQ]/.test(v)) return "Les lettres I, O et Q n'existent pas dans un numéro de châssis : vérifiez 1 / 0.";
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(v)) return "Lettres et chiffres uniquement.";
+    return null;
+  }
+  var vinForm = document.querySelector("[data-vin-form]");
+  var vinErr = vinForm.querySelector("[data-vin-error]"), vinInput = document.getElementById("q-vin"), vinBtn = vinForm.querySelector("[data-vin-submit]");
+  vinInput.addEventListener("input", function () { var p = vinInput.selectionStart, v = vinInput.value.toUpperCase(); if (v !== vinInput.value) { vinInput.value = v; try { vinInput.setSelectionRange(p, p); } catch (e) {} } vinErr.hidden = true; });
+  vinForm.addEventListener("submit", async function (e) {
     e.preventDefault();
-    var raw = IdaIvid.normalize(document.getElementById("q-ivid").value);
-    if (!IdaIvid.validate(raw).ok) {
-      ividErr.textContent = "IVID invalide — format attendu : ivid:1:… (alphabet sans I, L, O, U).";
-      ividErr.hidden = false;
-      return;
-    }
-    ividErr.hidden = true;
-    window.location.href = "/passport?ivid=" + encodeURIComponent(raw);
+    var v = normalizeVin(vinInput.value), problem = vinProblem(v);
+    vinInput.value = v;
+    if (problem) { vinErr.textContent = problem; vinErr.hidden = false; vinInput.setAttribute("aria-invalid", "true"); return; }
+    vinErr.hidden = true; vinInput.removeAttribute("aria-invalid"); vinBtn.disabled = true;
+    try {
+      var r = await fetch("/public/vin", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ vin: v }) });
+      if (r.status === 404) { showMessage("Aucun véhicule pour ce numéro de châssis", "Ce numéro de châssis n'est relié à aucun véhicule identifié dans IDauto."); return; }
+      if (r.status === 429) { showMessage("Trop de recherches", "Vous avez fait trop de recherches en peu de temps. Patientez une minute avant de réessayer."); return; }
+      if (r.status === 400) { vinErr.textContent = "Numéro de châssis invalide."; vinErr.hidden = false; return; }
+      if (!r.ok) { showMessage("Consultation momentanément indisponible", "La recherche n'a pas abouti. Réessayez dans un instant."); return; }
+      var body = await r.json(), passport = await fetchPublicPassport(body.ivid);
+      var plate = passport && Array.isArray(passport.plates) && passport.plates[0] && passport.plates[0].plate_number || "—";   // the public plate (IDA-V6), if any
+      showResult(plate, body.ivid, passport);
+    } catch (err) {
+      showMessage("Connexion interrompue", "La recherche n'a pas pu aboutir. Vérifiez votre connexion et réessayez.");
+    } finally { vinBtn.disabled = false; }
   });
 })();

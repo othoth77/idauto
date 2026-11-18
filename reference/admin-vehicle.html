@@ -83,8 +83,32 @@
         <div id="observations" class="ida-table-wrap"></div>
       </section>
 
+      <!-- Update 4 — the vehicle's archive: photographs and cartes grises, each in its own section, every version kept -->
+      <section class="ida-card ida-stack" aria-labelledby="sec-photos" data-archive-photos>
+        <h2 id="sec-photos" class="ida-h3">Photos du véhicule</h2>
+        <form class="ida-cluster" data-photo-upload>
+          <label class="ida-btn ida-btn--secondary ida-btn--sm">Prendre une photo<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-photo-take hidden></label>
+          <label class="ida-btn ida-btn--ghost ida-btn--sm">Choisir un fichier<input type="file" accept="image/jpeg,image/png,image/webp" data-photo-pick hidden></label>
+          <label class="ida-small">Lieu (si la photo n'a pas de position)&nbsp;<input class="ida-input ida-input--sm" data-photo-place maxlength="120" autocomplete="off"></label>
+        </form>
+        <p class="ida-caption" data-photo-status aria-live="polite"></p>
+        <div data-photo-history></div>
+      </section>
+
+      <section class="ida-card ida-stack" aria-labelledby="sec-cg" data-archive-cg>
+        <h2 id="sec-cg" class="ida-h3">Carte grise</h2>
+        <form class="ida-cluster" data-cg-upload>
+          <label class="ida-small">Face&nbsp;<select class="ida-select ida-select--sm" data-cg-face><option value="1">Recto</option><option value="2">Verso</option></select></label>
+          <label class="ida-btn ida-btn--secondary ida-btn--sm">Scanner / photographier<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-cg-take hidden></label>
+          <label class="ida-btn ida-btn--ghost ida-btn--sm">Choisir un fichier<input type="file" accept="image/jpeg,image/png,image/webp" data-cg-pick hidden></label>
+        </form>
+        <p class="ida-caption">Chaque dépôt crée une nouvelle version ; les versions précédentes restent consultables.</p>
+        <p class="ida-caption" data-cg-status aria-live="polite"></p>
+        <div data-cg-history></div>
+      </section>
+
       <section class="ida-card ida-stack" aria-labelledby="sec-documents">
-        <h2 id="sec-documents" class="ida-h3">Documents</h2>
+        <h2 id="sec-documents" class="ida-h3">Documents (résumé)</h2>
         <div id="documents"></div>
       </section>
 
@@ -120,6 +144,8 @@
 <script src="/admin/assets/ui.js"></script>
 <script src="/admin/shell.js"></script>
 <script src="/admin/console.js"></script>
+<script src="/assets/photo-meta.js"></script>
 <script src="/admin/vehicle-ui.js"></script>
+<script src="/admin/vehicle-archive.js"></script>
 </body>
 </html>
