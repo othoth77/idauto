@@ -289,7 +289,7 @@ require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {
       return { rows: [{ plate_number: key, ivid: PLATES[key] }] };
     }
     if (/idauto_rate_limit_counters/i.test(sql)) { RATE_COUNT += 1; return { rows: [{ count: RATE_COUNT }] }; }
-    if (/idauto_vehicle_facts f JOIN idauto_vehicles v/.test(sql)) { return { rows: (VINS[params[1]] || []).map(function (i) { return { ivid: i }; }) }; }
+    if (/idauto_vehicle_facts f JOIN idauto_vehicles v/.test(sql)) { return { rows: (VINS[String(params[0]).toUpperCase()] || []).map(function (i) { return { ivid: i }; }) }; }
     if (/INSERT INTO idauto_audit/i.test(sql)) AUDIT.push({ sql: sql, params: params });
     return { rows: [] };
   },

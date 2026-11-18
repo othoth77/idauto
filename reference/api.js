@@ -1094,11 +1094,11 @@ async function handlePublicVinRoute(req, res) {
   var result = await db.query(
     'WITH RECURSIVE chain(id, ivid, merged_into_id, depth) AS (' +
     "  SELECT v.id, v.ivid, v.merged_into_id, 0 FROM idauto_vehicle_facts f JOIN idauto_vehicles v ON v.id = f.vehicle_id " +
-    "  WHERE f.fact_key = 'vin' AND f.is_active = TRUE AND (f.fact_value_normalized = $1 OR UPPER(TRIM(f.fact_value)) = $2)" +
+    "  WHERE f.fact_key = 'vin' AND f.is_active = TRUE AND f.fact_value_normalized = $1" +   // IDA-V10 partial index: no table scan
     '  UNION ALL' +
     '  SELECT v.id, v.ivid, v.merged_into_id, c.depth + 1 FROM chain c JOIN idauto_vehicles v ON v.id = c.merged_into_id WHERE c.depth < 16' +
     ') SELECT DISTINCT ivid FROM chain WHERE merged_into_id IS NULL LIMIT 2',
-    [check.vin.toLowerCase(), check.vin]);
+    [check.vin.toLowerCase()]);
   var fp = 'vin:' + require('crypto').createHash('sha256').update(check.vin).digest('hex').slice(0, 16);
   var hit = result.rows.length === 1 ? result.rows[0].ivid : null;
   try {

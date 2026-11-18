@@ -101,7 +101,7 @@ async function history(vehicleId) {
       location: r.latitude !== null ? { latitude: r.latitude, longitude: r.longitude, source: r.location_source, place_name: r.place_name } : r.place_name ? { source: r.location_source, place_name: r.place_name } : null,
       mime_type: r.mime_type, original_filename: r.original_filename, sha256: r.sha256, byte_size: r.byte_size,
       archive: { status: r.archive_status, path: r.archive_path }, corrected: r.meta_corrected_at ? { by: r.meta_corrected_by, at: r.meta_corrected_at } : null };
-    if (r.category === 'carte-grise') { item.face = r.face; item.version = r.version; item.current = !r.superseded_at; item.lens = { status: r.lens_status, fields: r.lens_fields || null }; out.carte_grise.push(item); }
+    if (r.category === 'carte-grise') { item.face = r.face; item.version = r.version; item.current = !r.superseded_at; item.lens = { status: r.lens_status, fields: Array.isArray(r.lens_fields) ? r.lens_fields.map(function (f) { return f.key === 'vin' || f.key === 'plate_tn' ? { key: f.key, value: null, read: !!f.value, state: f.state, confidence: f.confidence } : f; }) : null }; out.carte_grise.push(item); }   // the VIN read by LENS is disclosed through the audited fiche, not here
     else { item.lens = null; out.photos.push(item); }
   });
   return out;
@@ -113,7 +113,7 @@ async function sendOne(cfg, row) {
   var meta = { category: row.category, uploaded_at: iso(row.uploaded_at), captured_at: iso(row.captured_at), latitude: row.latitude, longitude: row.longitude, location_source: row.location_source,
     place_name: row.place_name, mime_type: row.mime_type, original_filename: row.original_filename, source: row.source, uploaded_by: row.uploaded_by,
     vehicle: v ? { ivid: v.ivid, vin: await vinOf(row.vehicle_id) } : null,
-    record: row.document_id ? { kind: row.category === 'carte-grise' ? 'carte_grise' : 'vehicle_photo', id: String(row.document_id), version: row.version || null } : row.scan_media_id ? { kind: 'scan', id: String(row.scan_media_id) } : null };
+    archive_id: String(row.id), record: row.document_id ? { kind: row.category === 'carte-grise' ? 'carte_grise' : 'vehicle_photo', id: String(row.document_id), version: row.version || null } : row.scan_media_id ? { kind: 'scan', id: String(row.scan_media_id) } : null };
   var r = await replica.request(cfg, 'POST', '/objects/' + row.object_key + '/archive', meta);
   if (r.status === 200 && r.json && typeof r.json.path === 'string') {
     await db.query("UPDATE idauto_media_archive SET archive_status = 'stored', archive_path = $2, archive_error = NULL, updated_at = NOW() WHERE id = $1", [row.id, r.json.path]);
@@ -123,8 +123,8 @@ async function sendOne(cfg, row) {
   return false;
 }
 async function lensOne(cfg, row) {
-  var r = await replica.request(cfg, 'GET', '/objects/' + row.object_key + '/lens');
-  if (r.status !== 200 || !r.json) return false;
+  var r = await replica.request(cfg, 'GET', '/objects/' + row.object_key + '/lens?record=' + row.id);
+  if (r.status !== 200 || !r.json) { await db.query('UPDATE idauto_media_archive SET updated_at = NOW() WHERE id = $1', [row.id]); return false; }
   var fields = Array.isArray(r.json.fields) ? r.json.fields.slice(0, 20).map(function (f) { return { key: String(f.key).slice(0, 40), value: f.value === null ? null : String(f.value).slice(0, 80), state: f.state ? String(f.state).slice(0, 20) : null, confidence: typeof f.confidence === 'number' ? f.confidence : null }; }) : null;
   await db.query('UPDATE idauto_media_archive SET lens_status = $2, lens_job_ref = coalesce($3, lens_job_ref), lens_fields = coalesce($4, lens_fields), updated_at = NOW() WHERE id = $1',
     [row.id, String(r.json.status || 'unknown').slice(0, 20), r.json.job_id ? String(r.json.job_id).slice(0, 128) : null, fields ? JSON.stringify(fields) : null]);
@@ -137,7 +137,7 @@ async function pass() {
   var rows = (await db.query("SELECT a.*, d.version FROM idauto_media_archive a JOIN idauto_media_replicas r ON r.object_key = a.object_key AND r.target = $1 AND r.status = 'stored' " +
     "LEFT JOIN idauto_vehicle_documents d ON d.id = a.document_id WHERE a.archive_status = 'pending' OR (a.archive_status = 'failed' AND a.updated_at < NOW() - interval '1 minute') ORDER BY a.id LIMIT 20", [replica.TARGET])).rows, n = 0;
   for (var i = 0; i < rows.length; i++) { try { if (await sendOne(cfg, rows[i])) n++; } catch (e) { await db.query("UPDATE idauto_media_archive SET archive_status = 'failed', archive_error = $2, updated_at = NOW() WHERE id = $1", [rows[i].id, String(e.message || e).slice(0, 200)]); } }
-  var lens = (await db.query("SELECT id, object_key FROM idauto_media_archive WHERE category = 'carte-grise' AND archive_status = 'stored' AND (lens_status IS NULL OR NOT (lens_status = ANY($1::text[]))) ORDER BY id LIMIT 10", [FINAL_LENS])).rows;
+  var lens = (await db.query("SELECT id, object_key FROM idauto_media_archive WHERE category = 'carte-grise' AND archive_status = 'stored' AND (lens_status IS NULL OR NOT (lens_status = ANY($1::text[]))) ORDER BY updated_at LIMIT 10", [FINAL_LENS])).rows;
   for (var j = 0; j < lens.length; j++) { try { await lensOne(cfg, lens[j]); } catch (e) { /* the next pass asks again */ } }
   return n;
 }

@@ -227,6 +227,14 @@ async function arch(where, params) { return (await db.query('SELECT * FROM idaut
   await settle(replica, archive, 10);
   var cgr = await arch("vehicle_id = $1 AND category = 'carte-grise'", [VID]);
   ok(cgr.length === 2 && cgr.every(function (r) { return r.archive_status === 'stored' && /\/carte-grise\//.test(r.archive_path); }), 'both versions are archived on Haddad under <YYYY>/<MM>/carte-grise/');
+  var SAME = png(1200, 800, 35);
+  await request('PUT', '/api/vehicles/' + encodeURIComponent(IVID) + '/registration-document/2', T.ADMIN, SAME);
+  await request('PUT', '/api/vehicles/' + encodeURIComponent(IVID) + '/registration-document/2', T.ADMIN, SAME);
+  await settle(replica, archive, 6);
+  var twin = await arch('object_key = $1', [sha(SAME)]);
+  ok(twin.length === 2 && twin[0].archive_path !== twin[1].archive_path && twin.every(function (r) { return fs.existsSync(path.join(HADDAD, r.archive_path + '.json')) && JSON.parse(fs.readFileSync(path.join(HADDAD, r.archive_path + '.json'), 'utf8')).archive_id === String(r.id); }), 'the same bytes deposited twice → two records, two archive entries, two .json (nothing overwritten)');
+  var wsDocs = await request('GET', '/api/vehicles/' + encodeURIComponent(IVID) + '/registration-document', T.ADMIN);
+  ok(JSON.stringify(wsDocs.body).split('"face":1').length - 1 === 1, 'the vehicle\'s carte grise lists ONE current recto, not every version');
   ok(LENS_SEEN.some(function (x) { return x.url === '/v1/files' && x.auth; }) && LENS_SEEN.some(function (x) { return x.url === '/v1/jobs' && x.body && x.body.workflow === 'extract_fields' && x.body.data_policy === 'local_only'; }), 'the receiver submitted the carte grise to LENS (authenticated, extract_fields, local only)');
   ok(!LENS_SEEN.some(function (x) { return !x.auth; }), 'every LENS call carried the LENS token');
   var lf = cgr.map(function (r) { return r.lens_fields; }).filter(Boolean)[0] || [], lsts = cgr.map(function (r) { return r.lens_status; });
@@ -237,10 +245,12 @@ async function arch(where, params) { return (await db.query('SELECT * FROM idaut
 
   say('\n9. ADMIN DOSSIER ROUTES — AND WHO CANNOT REACH THEM');
   var hist = await request('GET', '/api/admin/vehicles/' + encodeURIComponent(IVID) + '/archive', T.ADMIN);
-  ok(hist.status === 200 && hist.body.photos.length === 4 && hist.body.carte_grise.length === 2, 'history: 4 photographs and 2 carte grise versions');
+  ok(hist.status === 200 && hist.body.photos.length === 4 && hist.body.carte_grise.length === 4, 'history: 4 photographs and 4 carte grise versions (2 recto, 2 verso)');
   var ts = hist.body.photos.map(function (p) { return new Date(p.uploaded_at).getTime(); });
   ok(ts.every(function (t, i) { return i === 0 || ts[i - 1] >= t; }), 'newest first (chronological history)');
-  ok(hist.body.carte_grise[0].current === true && hist.body.carte_grise[0].version === 2 && hist.body.carte_grise[1].current === false && hist.body.carte_grise[1].version === 1, 'carte grise versions with their number and which one is current');
+  var rec = hist.body.carte_grise.filter(function (c) { return c.face === 1; });
+  ok(rec.length === 2 && rec[0].current === true && rec[0].version === 2 && rec[1].current === false && rec[1].version === 1, 'carte grise versions with their number and which one is current');
+  ok(hist.buf.toString().indexOf('KPT60A1YSLP025697') === -1 && hist.body.carte_grise.some(function (c) { return c.lens && (c.lens.fields || []).some(function (f) { return f.key === 'vin' && f.value === null && f.read === true; }); }), 'the VIN read by LENS is not returned by the admin history (only that it was read)');
   ok(hist.body.vin_known === true && hist.buf.toString().indexOf(VIN) === -1, 'the history says a VIN is known but does not return it (VIN disclosure stays on the audited fiche)');
   ok(hist.buf.toString().indexOf(MEDIA) === -1 && hist.buf.toString().indexOf(HADDAD) === -1 && !/"object_key"|storage_key/.test(hist.buf.toString()), 'no storage path and no storage key in the answer — only the archive-relative path');
   var one = hist.body.photos.filter(function (p) { return p.sha256 === PK; })[0];

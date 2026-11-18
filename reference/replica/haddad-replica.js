@@ -61,7 +61,7 @@ function call(cfg, method, key, body) {
 function request(cfg, method, p, body) {
   return new Promise(function (resolve, reject) {
     var u = new URL(cfg.url + p), lib = u.protocol === 'https:' ? https : http, data = body ? Buffer.from(JSON.stringify(body)) : null;
-    var opts = { method: method, hostname: cfg.addr || u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname,
+    var opts = { method: method, hostname: cfg.addr || u.hostname, port: u.port || (u.protocol === 'https:' ? 443 : 80), path: u.pathname + u.search,
       headers: { 'Authorization': 'Bearer ' + cfg.token, 'Host': u.host, 'Content-Length': data ? data.length : 0, 'Content-Type': 'application/json' }, timeout: 30000 };
     if (u.protocol === 'https:') opts.servername = u.hostname;
     var req = lib.request(opts, function (res) {

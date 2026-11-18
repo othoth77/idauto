@@ -51,7 +51,8 @@ function boot() {
 }
 
 function fileOf(key) { return path.join(ROOT, key.slice(0, 2), key.slice(2, 4), key); }
-function indexOf(key, category) { return path.join(ROOT, '.archive-index', key + '.' + category + '.json'); }
+// one entry per IDauto archive RECORD (the same bytes may belong to two records: two vehicles, a re-uploaded version)
+function indexOf(key, category, rid) { return path.join(ROOT, '.archive-index', key + '.' + category + (rid ? '.' + rid : '') + '.json'); }
 function authorised(req) {
   var h = String(req.headers.authorization || ''), want = 'Bearer ' + TOKEN;
   return h.length === want.length && crypto.timingSafeEqual(Buffer.from(h), Buffer.from(want));
@@ -80,6 +81,7 @@ function cleanMeta(raw) {
     source: ['public_scanner', 'admin', 'workshop'].indexOf(raw.source) !== -1 ? raw.source : null,
     uploaded_by: str(raw.uploaded_by, 80),
     vehicle: raw.vehicle && typeof raw.vehicle === 'object' ? { ivid: str(raw.vehicle.ivid, 80, /^ivid:[0-9a-z:._-]+$/i), vin: str(raw.vehicle.vin, 17, /^[A-HJ-NPR-Z0-9]{17}$/) } : null,
+    archive_id: str(raw.archive_id, 18, /^[0-9]+$/),
     record: raw.record && typeof raw.record === 'object' ? { kind: str(raw.record.kind, 30, /^[a-z_]+$/), id: str(raw.record.id, 40, /^[A-Za-z0-9_-]+$/), version: num(raw.record.version, 1, 100000) } : null
   };
 }
@@ -87,14 +89,14 @@ function monthPath(meta, key) {
   var d = new Date(meta.uploaded_at), p2 = function (n) { return String(n).padStart(2, '0'); };
   var y = String(d.getUTCFullYear()), mo = p2(d.getUTCMonth() + 1);
   var stamp = y + mo + p2(d.getUTCDate()) + 'T' + p2(d.getUTCHours()) + p2(d.getUTCMinutes()) + p2(d.getUTCSeconds()) + 'Z';
-  return path.join(y, mo, meta.category, stamp + '_' + key.slice(0, 16) + '.' + (EXT[meta.mime_type] || 'bin'));
+  return path.join(y, mo, meta.category, stamp + '_' + key.slice(0, 16) + (meta.archive_id ? '_' + meta.archive_id : '') + '.' + (EXT[meta.mime_type] || 'bin'));
 }
 
 // ---- archive: one hard link + one .json per (file, category) ---------------------------------------------------------
 function archive(key, meta) {
   var f = fileOf(key);
   if (!fs.existsSync(f)) return { code: 404, body: { error: 'file not stored yet' } };
-  var idx = indexOf(key, meta.category), known = readJson(idx), rel = known && known.path ? known.path : monthPath(meta, key);
+  var idx = indexOf(key, meta.category, meta.archive_id), known = readJson(idx), rel = known && known.path ? known.path : monthPath(meta, key);
   if (known && known.uploaded_at) meta.uploaded_at = known.uploaded_at;             // the first upload fixes the place in the archive
   var abs = path.join(ROOT, rel);
   if (path.relative(ROOT, abs).startsWith('..')) return { code: 400, body: { error: 'bad path' } };   // cannot happen: every piece is generated here
@@ -106,9 +108,10 @@ function archive(key, meta) {
   return { code: 200, body: { path: rel, created: !known } };
 }
 function unarchive(key) {
-  CATEGORIES.forEach(function (c) {
-    var idx = indexOf(key, c), known = readJson(idx);
-    if (!known || !known.path) return;
+  var dir = path.join(ROOT, '.archive-index');
+  (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter(function (n) { return n.indexOf(key + '.') === 0; }).forEach(function (n) {
+    var idx = path.join(dir, n), known = readJson(idx);
+    if (!known || !known.path) { try { fs.unlinkSync(idx); } catch (e) {} return; }
     var abs = path.join(ROOT, known.path);
     [abs, abs + '.json'].forEach(function (x) { try { fs.unlinkSync(x); } catch (e) {} });
     try { fs.unlinkSync(idx); } catch (e) {}
@@ -133,7 +136,7 @@ function lensCall(cfg, method, p, body, headers) {
   });
 }
 async function lensSubmit(key, meta) {
-  var cfg = lensConfig(), idx = indexOf(key, 'carte-grise'), known = readJson(idx) || {};
+  var cfg = lensConfig(), idx = indexOf(key, 'carte-grise', meta.archive_id), known = readJson(idx) || {};
   if (!cfg) { known.lens = { status: 'not_configured' }; writeAtomic(idx, JSON.stringify(known)); return; }
   if (known.lens && known.lens.job_id) return;                                        // submitted once per file
   try {
@@ -149,8 +152,8 @@ async function lensSubmit(key, meta) {
   } catch (e) { known.lens = { status: 'submit_failed', error: String(e.message || e).slice(0, 120) }; log({ event: 'lens_submit_failed', key: key }); }
   writeAtomic(idx, JSON.stringify(known));
 }
-async function lensStatus(key) {
-  var cfg = lensConfig(), idx = indexOf(key, 'carte-grise'), known = readJson(idx);
+async function lensStatus(key, rid) {
+  var cfg = lensConfig(), idx = indexOf(key, 'carte-grise', rid), known = readJson(idx);
   if (!known) return { code: 404, body: { error: 'not archived as carte-grise' } };
   var l = known.lens || { status: 'not_submitted' };
   if (!cfg || !l.job_id) return { code: 200, body: { status: l.status } };
@@ -199,7 +202,8 @@ function handler(req, res) {
   }
   if (sub === '/lens') {
     if (req.method !== 'GET') return send(res, 405, { error: 'method not allowed' });
-    return lensStatus(key).then(function (o) { send(res, o.code, o.body); }, function () { send(res, 502, { status: 'lens_unreachable' }); });
+    var rid = (/[?&]record=([0-9]{1,18})(&|$)/.exec(req.url) || [])[1] || null;
+    return lensStatus(key, rid).then(function (o) { send(res, o.code, o.body); }, function () { send(res, 502, { status: 'lens_unreachable' }); });
   }
   if (req.method === 'HEAD') return send(res, fs.existsSync(f) ? 200 : 404);
   if (req.method === 'DELETE') {
