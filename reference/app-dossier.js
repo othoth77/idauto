@@ -78,12 +78,16 @@
       if (meta) loadImage(f, box);
     });
     // Update 5 — one entry point for every input method (scanner, file image / PDF, paste image / text) and the history
-    var cgAdd = data.documents.can_upload ? el('button', { type: 'button', class: 'ida-btn ida-btn--secondary ida-btn--sm', 'data-cg-add': '' }, t('Ajouter une carte grise')) : null;
-    if (cgAdd) cgAdd.addEventListener('click', function () {
-      var S = window.IdaRegistrationScanner, hostEl = document.querySelector('[data-cg-root]');
-      if (S && hostEl && !hostEl.firstChild) { S.configure({ scanicUrl: '/atelier/assets/scanic.umd.js' }); S.mount(hostEl); }
-      window.IdaCarteGrise.open({ ivid: data.vehicle.ivid, mode: 'session', onDone: function () { load(); } });
-    });
+    // Update 5.1 — no carte grise yet: the three methods start at once. One already recorded: no ordinary add (a new
+    // version is an administrator's explicit action) — the history below shows what is there.
+    var cgAdd = null;
+    if (data.documents.can_upload && !data.documents.faces.length) {
+      cgAdd = el('div', { class: 'ida-cluster', 'data-cg-actions': '' }, [el('span', { class: 'ida-small' }, t('Ajouter la carte grise :'))].concat(['camera', 'file', 'paste'].map(function (m) {
+        var b = el('button', { type: 'button', class: 'ida-btn ida-btn--sm ' + (m === 'camera' ? 'ida-btn--primary' : 'ida-btn--secondary'), 'data-cgc-method': m }, t(m === 'camera' ? 'Scanner' : m === 'file' ? 'Importer un fichier' : 'Coller'));
+        b.addEventListener('click', function () { window.IdaCarteGrise.start(m, { ivid: data.vehicle.ivid, mode: 'session', onDone: function () { load(); } }); });
+        return b;
+      })));
+    } else if (data.documents.faces.length) cgAdd = el('p', { class: 'ida-small', 'data-cg-exists': '' }, t('Carte grise enregistrée.'));
     var cgHist = el('div', { 'data-cg-history': '' }); loadCgHistory(cgHist);
     root.appendChild(section('sec-docs', t('Carte grise'), null, el('div', { class: 'ida-stack' }, [faces, cgAdd, cgHist, el('p', { class: 'ida-small ida-muted' }, t('Pièces justificatives : les photos ne sont pas lues automatiquement. Remplacement et suppression sont enregistrés au journal.'))])));
     // Update 3 — the vehicle's photographs: front, rear, where and when each was taken

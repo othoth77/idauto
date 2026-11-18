@@ -113,10 +113,28 @@
       return b;
     });
   }
+  // Update 5.1 — the three methods start at once (camera, file picker, clipboard); when a carte grise is already recorded,
+  // only an explicit « Ajouter une nouvelle version » — never an ordinary add that could duplicate it.
+  function methodButtons(newVersion) {
+    return ['camera', 'file', 'paste'].map(function (m) {
+      var b = el('button', { type: 'button', class: 'ida-btn ida-btn--sm ' + (m === 'camera' ? 'ida-btn--primary' : 'ida-btn--secondary'), 'data-cgc-method': m }, m === 'camera' ? 'Scanner' : m === 'file' ? 'Importer un fichier' : 'Coller');
+      b.addEventListener('click', function () { window.IdaCarteGrise.start(m, { ivid: ref, mode: 'session', newVersion: newVersion, onDone: function () { load(); } }); });
+      return b;
+    });
+  }
+  function cgActions(exists) {
+    var box = C.clear(q('[data-cg-actions]'));
+    if (!exists) { box.appendChild(el('span', { class: 'ida-small' }, 'Ajouter la carte grise :')); methodButtons(false).forEach(function (b) { box.appendChild(b); }); return; }
+    box.appendChild(el('span', { class: 'ida-status ida-status--verified', 'data-cg-exists': '' }, 'Carte grise enregistrée'));
+    var nv = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm', 'data-cgc-new-version': '' }, 'Ajouter une nouvelle version');
+    nv.addEventListener('click', function () { nv.remove(); methodButtons(true).forEach(function (b) { box.appendChild(b); }); });
+    box.appendChild(nv);
+  }
   async function renderCg(arch) {
     var cg = C.clear(q('[data-cg-history]')), h;
     try { h = await C.api('/api/vehicles/' + encodeURIComponent(ref) + '/carte-grise'); } catch (e) { cg.appendChild(el('p', { class: 'ida-field-error' }, e.message)); return; }
     var archOf = {}; (arch.carte_grise || []).forEach(function (a) { if (a.document_id) archOf[a.document_id] = a.archive; });
+    cgActions(h.documents.some(function (d) { return d.current; }));
     if (!h.documents.length) { cg.appendChild(el('p', { class: 'ida-muted' }, 'Aucune carte grise pour ce véhicule.')); return; }
     var rows = [];
     for (var i = 0; i < h.documents.length; i++) {
@@ -189,11 +207,6 @@
   function bind(sel, fn) { var i = q(sel); i.addEventListener('change', function () { var f = i.files && i.files[0]; i.value = ''; fn(f); }); }
   bind('[data-photo-take]', function (f) { uploadPhoto(f, true); });
   bind('[data-photo-pick]', function (f) { uploadPhoto(f, false); });
-  var addBtn = q('[data-cg-add]');
-  if (addBtn) addBtn.addEventListener('click', function () {
-    if (window.IdaRegistrationScanner) { window.IdaRegistrationScanner.configure({ scanicUrl: '/assets/scanic.umd.js' }); var hostEl = document.querySelector('[data-cg-root]'); if (hostEl && !hostEl.firstChild) window.IdaRegistrationScanner.mount(hostEl); }
-    window.IdaCarteGrise.open({ ivid: ref, mode: 'session', onDone: function () { load(); } });
-  });
   window.IdaAdminArchive = { blobUrl: blobUrl, load: load, _uploadPhoto: uploadPhoto };
   load();
 })();
