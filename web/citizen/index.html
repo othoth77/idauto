@@ -107,14 +107,9 @@
           </dl>
           <div class="ida-search-actions">
             <a class="ida-btn ida-btn--primary" data-result-passport href="#">Ouvrir le passeport</a>
+            <button type="button" class="ida-btn ida-btn--secondary" data-cgc-home-open>Ajouter la carte grise</button>
           </div>
-          <!-- Update 5.1 — the carte grise belongs to the vehicle found: its status (from the database) and its actions -->
-          <div class="ida-stack ida-cgc-card" data-cgc-card hidden aria-live="polite">
-            <p class="ida-label">Carte grise</p>
-            <p class="ida-small" data-cgc-state></p>
-            <div class="ida-cluster" data-cgc-actions></div>
-            <p class="ida-small ida-muted" data-cgc-home-note hidden><span data-cgc-home-note-text></span> <a href="/login?next=%2F">Se connecter</a></p>
-          </div>
+          <p class="ida-small ida-muted" data-cgc-home-note hidden><span data-cgc-home-note-text></span> <a href="/login?next=%2F">Se connecter</a></p>
         </div>
 
         <div>
@@ -275,6 +270,8 @@
 <script src="/assets/photo-analysis.js"></script>
 <script src="/assets/home.js"></script>
 <script src="/assets/home-photo.js"></script>
+<div data-cg-root hidden></div>
+<script src="/assets/registration-scanner.js"></script>
 <script src="/assets/carte-grise-capture.js"></script>
 <script src="/assets/home-carte-grise.js"></script>
 </body>
