@@ -77,31 +77,92 @@
   }
   function dossierHref() { return (g().location && /^\/admin/.test(g().location.pathname) ? "/admin/vehicle?ref=" : "/atelier/vehicule?ref=") + encodeURIComponent(st.ivid); }
 
-  // ---- 1. scanner (camera / gallery / pasted image — through the existing scanner) -------------------------------------
-  function openScanner() {
-    var S = g().IdaRegistrationScanner, host = document.querySelector("[data-cg-root]");
-    if (!S || !host) { say(t("Le scanner n'est pas disponible sur cette page."), "error"); return; }
-    // one dialog at a time: this one steps aside while the scanner is open, and comes back after (used or cancelled)
-    st.root.hidden = true;
-    if (!host.getAttribute("data-cgc-return")) {
-      host.setAttribute("data-cgc-return", "1");
-      host.addEventListener("click", function (e) { var a = e.target.closest("[data-cg-action]"); if (a && /^(close|cancel)$/.test(a.getAttribute("data-cg-action"))) st.root.hidden = false; });
-      host.addEventListener("keydown", function (e) { if (e.key === "Escape") st.root.hidden = false; });
-    }
-    S.open({ root: host, ivid: st.ivid, mode: "capture", onCaptured: async function (faces) {
-      st.root.hidden = false;
-      if (!faces.length) return;
-      say(t("Envoi…")); var out = [];
-      for (var i = 0; i < faces.length; i++) {
-        var f = faces[i], label = f.face === 2 ? t("Verso") : t("Recto");
-        try {
-          var r = await send(f.original, f.original.type || "image/jpeg", f.face, f.method, f.original.name || null);
-          if (r.document && f.crop && st.ivid && st.mode !== "public") await sendPreview(r.document.id, f.crop);
-          out.push({ label: label, duplicate: !!(r.duplicate_of || r.duplicate) });
-        } catch (e) { out.push({ label: label, error: e.message }); }
+  // ---- 1. scanner: the camera, inside this dialog (Update 6.1) --------------------------------------------------------
+  // The « Scanner » tab itself calls getUserMedia() from its click: no second button, no file picker. Rear camera
+  // preferred, highest practical resolution; the photograph is kept as taken (JPEG 0.95 at the camera's full size, or
+  // the camera's own still via ImageCapture.takePhoto when available). The stream is stopped after capture, on cancel,
+  // on another tab and when the dialog closes.
+  var cam = { stream: null, devices: [], index: -1, blob: null, busy: false };
+  function camView(v) {
+    if (!st.root) return;
+    q("[data-cgc-video]").hidden = v !== "live"; q("[data-cgc-cam-live]").hidden = v !== "live";
+    q("[data-cgc-shot]").hidden = v !== "review"; q("[data-cgc-cam-review]").hidden = v !== "review";
+    if (v === "idle") { cam.blob = null; q("[data-cgc-cam-msg]").hidden = false; }
+  }
+  function camMsg(m, kind) { var p = q("[data-cgc-cam-msg]"); p.hidden = !m; p.textContent = m || ""; p.className = "ida-small" + (kind === "error" ? " ida-field-error" : ""); }
+  function camStop() {
+    if (cam.stream) { cam.stream.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e) {} }); cam.stream = null; }
+    if (st.root) { var v = q("[data-cgc-video]"); if (v) v.srcObject = null; }
+  }
+  function camError(e) {
+    var n = e && e.name;
+    var m = n === "NotAllowedError" || n === "SecurityError" ? t("Accès à la caméra refusé. Autorisez la caméra dans le navigateur, ou utilisez « Fichier ».")
+      : n === "NotFoundError" || n === "OverconstrainedError" ? t("Aucune caméra disponible sur cet appareil. Utilisez « Fichier ».")
+      : n === "NotReadableError" || n === "AbortError" ? t("La caméra est déjà utilisée par une autre application. Fermez-la et réessayez, ou utilisez « Fichier ».")
+      : t("La caméra n'a pas pu être ouverte. Utilisez « Fichier ».");
+    camMsg(m, "error"); camView("error");
+  }
+  function camStart() {
+    camStop(); cam.blob = null;
+    var w = g();
+    if (w.isSecureContext === false) { camMsg(t("La caméra exige une connexion sécurisée (HTTPS). Utilisez « Fichier »."), "error"); return camView("error"); }
+    var md = w.navigator && w.navigator.mediaDevices;
+    if (!md || !md.getUserMedia) { camMsg(t("Ce navigateur ne permet pas d'utiliser la caméra. Utilisez « Fichier »."), "error"); return camView("error"); }
+    var dev = cam.index >= 0 && cam.devices[cam.index];
+    var video = { width: { ideal: 4096 }, height: { ideal: 3072 } };
+    if (dev) video.deviceId = { exact: dev.deviceId }; else video.facingMode = { ideal: "environment" };
+    camMsg(t("Ouverture de la caméra…"));
+    // called synchronously from the click: the browser sees the user gesture
+    return md.getUserMedia({ video: video, audio: false }).then(function (stream) {
+      if (st.root.hidden || q("[data-cgc-pane='scan']").hidden) { stream.getTracks().forEach(function (tr) { tr.stop(); }); return; }   // closed meanwhile
+      cam.stream = stream;
+      var v = q("[data-cgc-video]"); v.srcObject = stream; var pl = v.play(); if (pl && pl.catch) pl.catch(function () {});
+      camMsg(t("Cadrez la carte grise (") + faceLabel() + t(") puis prenez la photo.")); camView("live");
+      if (md.enumerateDevices) md.enumerateDevices().then(function (list) {
+        cam.devices = list.filter(function (d) { return d.kind === "videoinput"; });
+        var cur = stream.getVideoTracks()[0], id = cur && cur.getSettings ? cur.getSettings().deviceId : null;
+        cam.index = Math.max(0, cam.devices.findIndex(function (d) { return d.deviceId === id; }));
+        q("[data-cgc-switch]").hidden = cam.devices.length < 2;
+      }).catch(function () {});
+    }, camError);
+  }
+  function camSwitch() { if (cam.devices.length < 2) return; cam.index = (cam.index + 1) % cam.devices.length; camStart(); }
+  function faceLabel() { return Number(q("[data-cgc-face]").value) === 2 ? t("Verso") : t("Recto"); }
+  async function camCapture() {
+    if (!cam.stream || cam.busy) return;
+    cam.busy = true;
+    try {
+      var track = cam.stream.getVideoTracks()[0], blob = null, IC = g().ImageCapture;
+      if (IC && track) { try { blob = await new IC(track).takePhoto(); } catch (e) { blob = null; } }   // the camera's full-resolution still
+      if (!blob) {
+        var v = q("[data-cgc-video]"), c = document.createElement("canvas");
+        c.width = v.videoWidth; c.height = v.videoHeight;
+        if (!c.width || !c.height) throw new Error("no frame");
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        blob = await new Promise(function (res) { c.toBlob(res, "image/jpeg", 0.95); });
       }
-      say(""); outcome(out);
-    } });
+      if (!blob) throw new Error("no image");
+      camStop();
+      cam.blob = blob; cam.face = Number(q("[data-cgc-face]").value) === 2 ? 2 : 1;
+      q("[data-cgc-shot]").src = url(blob);
+      camMsg(faceLabel() + " — " + t("vérifiez la photo, puis « Confirmer » ou « Reprendre »."));
+      camView("review");
+    } catch (e) { camMsg(t("La photo n'a pas pu être prise. Réessayez."), "error"); }
+    finally { cam.busy = false; }
+  }
+  async function camConfirm() {
+    if (!cam.blob) return;
+    var blob = cam.blob, face = cam.face, label = face === 2 ? t("Verso") : t("Recto");
+    q("[data-cgc-confirm]").disabled = true; say(t("Envoi…"));
+    var out;
+    try { var r = await send(blob, blob.type || "image/jpeg", face, "camera", "carte-grise-" + (face === 2 ? "verso" : "recto") + ".jpg"); out = { label: label, duplicate: !!(r.duplicate_of || r.duplicate) }; }
+    catch (e) { out = { label: label, error: e.message }; }
+    q("[data-cgc-confirm]").disabled = false; say(""); outcome([out]);
+    if (!out.error) {
+      camView("idle");
+      if (face === 1) { q("[data-cgc-face]").value = "2"; camMsg(t("Recto enregistré. Appuyez sur « Scanner » pour photographier le verso.")); }
+      else camMsg(t("Verso enregistré."));
+    }
   }
 
   // ---- 2. file (image or PDF) -----------------------------------------------------------------------------------------
@@ -174,8 +235,14 @@
       '<button type="button" class="ida-btn ida-btn--primary ida-btn--sm" role="tab" data-cgc-tab="scan">' + t("Scanner") + '</button>' +
       '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" role="tab" data-cgc-tab="file">' + t("Fichier (image ou PDF)") + '</button>' +
       '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" role="tab" data-cgc-tab="paste">' + t("Coller") + '</button></div>' +
-      '<div data-cgc-pane="scan" class="ida-stack"><p class="ida-small">' + t("Caméra, galerie ou image collée : la carte est détectée et redressée ; vous pouvez ajuster le cadrage, pivoter, refaire, ajouter le verso.") + '</p>' +
-      '<button type="button" class="ida-btn ida-btn--secondary" data-cgc-scan>' + t("Ouvrir le scanner") + '</button></div>' +
+      '<div data-cgc-pane="scan" class="ida-stack"><p class="ida-small" data-cgc-cam-msg>' + t("Appuyez sur « Scanner » pour ouvrir la caméra et photographier la face choisie.") + '</p>' +
+      '<video class="ida-cgc-video" data-cgc-video playsinline muted autoplay hidden></video>' +
+      '<img class="ida-cgc-video" data-cgc-shot alt="' + t("Photo prise") + '" hidden>' +
+      '<div class="ida-cluster" data-cgc-cam-live hidden><button type="button" class="ida-btn ida-btn--primary" data-cgc-capture>' + t("Prendre la photo") + '</button>' +
+      '<button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-cgc-switch hidden>' + t("Changer de caméra") + '</button>' +
+      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cgc-cam-cancel>' + t("Annuler") + '</button></div>' +
+      '<div class="ida-cluster" data-cgc-cam-review hidden><button type="button" class="ida-btn ida-btn--primary" data-cgc-confirm>' + t("Confirmer") + '</button>' +
+      '<button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-cgc-retake>' + t("Reprendre") + '</button></div></div>' +
       '<div data-cgc-pane="file" class="ida-stack" hidden><label class="ida-btn ida-btn--secondary ida-btn--sm">' + t("Choisir un fichier") + '<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-cgc-file hidden></label>' +
       '<div data-cgc-file-preview></div><button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-cgc-file-send disabled>' + t("Envoyer ce document") + '</button></div>' +
       '<div data-cgc-pane="paste" class="ida-stack" hidden><p class="ida-small">' + t("Collez ici (Ctrl+V) une image de la carte grise, ou son texte.") + '</p>' +
@@ -185,6 +252,7 @@
       '<p class="ida-small" data-cgc-status aria-live="polite"></p><div class="ida-stack" data-cgc-done hidden aria-live="polite"></div></div>';
   }
   function tab(name) {
+    if (name !== "scan") { camStop(); camView("idle"); }
     Array.from(st.root.querySelectorAll("[data-cgc-pane]")).forEach(function (p) { p.hidden = p.getAttribute("data-cgc-pane") !== name; });
     Array.from(st.root.querySelectorAll("[data-cgc-tab]")).forEach(function (b) { var on = b.getAttribute("data-cgc-tab") === name; b.className = "ida-btn ida-btn--sm " + (on ? "ida-btn--primary" : "ida-btn--ghost"); b.setAttribute("aria-selected", on ? "true" : "false"); });
     say("");
@@ -197,9 +265,14 @@
     if (r.getAttribute("data-cgc-bound")) return;
     r.setAttribute("data-cgc-bound", "1");
     r.addEventListener("click", function (e) {
-      var tb = e.target.closest("[data-cgc-tab]"); if (tb) return tab(tb.getAttribute("data-cgc-tab"));
+      var tb = e.target.closest("[data-cgc-tab]");
+      if (tb) { var name = tb.getAttribute("data-cgc-tab"); tab(name); if (name === "scan") return camStart(); return; }   // « Scanner » opens the camera on THIS click (user gesture)
       if (e.target.closest("[data-cgc-close]") || e.target === r) return close();
-      if (e.target.closest("[data-cgc-scan]")) return openScanner();
+      if (e.target.closest("[data-cgc-capture]")) return camCapture();
+      if (e.target.closest("[data-cgc-switch]")) return camSwitch();
+      if (e.target.closest("[data-cgc-cam-cancel]")) { camStop(); return camView("idle"); }
+      if (e.target.closest("[data-cgc-retake]")) return camStart();
+      if (e.target.closest("[data-cgc-confirm]")) return camConfirm();
       if (e.target.closest("[data-cgc-file-send]")) return sendFile();
       if (e.target.closest("[data-cgc-paste-send]")) return sendPaste();
       if (e.target.closest("[data-cgc-paste-clear]")) { q("[data-cgc-text]").value = ""; return setPaste(null); }
@@ -216,7 +289,7 @@
     st.root.hidden = false; st.root.setAttribute("aria-hidden", "false");
     var first = q("[data-cgc-tab]"); if (first) first.focus();
   }
-  function close() { st.urls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); st.urls = []; if (st.root) { st.root.hidden = true; st.root.setAttribute("aria-hidden", "true"); } }
+  function close() { camStop(); camView("idle"); st.urls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); st.urls = []; if (st.root) { st.root.hidden = true; st.root.setAttribute("aria-hidden", "true"); } }
 
-  return { open: open, close: close, LIMITS: LIMITS, _state: st, _pickFile: pickFile, _setText: function (v) { q("[data-cgc-text]").value = v; onText(); } };
+  return { open: open, close: close, LIMITS: LIMITS, _state: st, _cam: cam, _pickFile: pickFile, _setText: function (v) { q("[data-cgc-text]").value = v; onText(); } };
 });

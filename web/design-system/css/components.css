@@ -809,3 +809,7 @@
 .ida-hp-stage { aspect-ratio: 4 / 3; }
 .ida-hp-stage video { object-fit: cover; }
 @media (max-width: 640px) { .ida-hp-stage { aspect-ratio: 3 / 4; } }
+
+/* Update 6.1 — the carte grise camera, inside the carte grise dialog: live preview and the photograph taken */
+.ida-cgc-video { display: block; width: 100%; max-height: 60vh; object-fit: contain; border-radius: var(--ida-radius-card); }
+.ida-cgc-video[hidden] { display: none; }
