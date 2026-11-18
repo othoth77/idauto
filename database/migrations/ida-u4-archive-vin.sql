@@ -54,11 +54,11 @@ CREATE TABLE IF NOT EXISTS idauto_media_archive (
     CONSTRAINT chk_arch_locsrc   CHECK (location_source IS NULL OR location_source IN ('exif', 'browser', 'manual')),
     CONSTRAINT chk_arch_gps      CHECK (latitude IS NULL OR location_source IN ('exif', 'browser', 'manual')),
     CONSTRAINT chk_arch_lens     CHECK (lens_fields IS NULL OR (jsonb_typeof(lens_fields) = 'array' AND pg_column_size(lens_fields) <= 4096)),
-    CONSTRAINT chk_arch_path     CHECK (archive_path IS NULL OR archive_path ~ '^[0-9]{4}/[0-9]{2}/(vehicle-photos|carte-grise)/[0-9]{8}T[0-9]{6}Z_[a-f0-9]{16}(_[0-9]{1,18})?\.(jpg|png|webp|pdf|bin)$')
+    CONSTRAINT chk_arch_path     CHECK (archive_path IS NULL OR archive_path ~ '^[0-9]{4}/[0-9]{2}/(vehicle-photos|carte-grise)/[0-9]{8}T[0-9]{6}Z_[a-f0-9]{16}(_[0-9]{1,18})?\.(jpg|png|webp|pdf|txt|bin)$')
 );
 -- the archive file name carries the record id (one entry per record, even for identical bytes): redefine idempotently
 ALTER TABLE idauto_media_archive DROP CONSTRAINT IF EXISTS chk_arch_path;
-ALTER TABLE idauto_media_archive ADD CONSTRAINT chk_arch_path CHECK (archive_path IS NULL OR archive_path ~ '^[0-9]{4}/[0-9]{2}/(vehicle-photos|carte-grise)/[0-9]{8}T[0-9]{6}Z_[a-f0-9]{16}(_[0-9]{1,18})?\.(jpg|png|webp|pdf|bin)$');
+ALTER TABLE idauto_media_archive ADD CONSTRAINT chk_arch_path CHECK (archive_path IS NULL OR archive_path ~ '^[0-9]{4}/[0-9]{2}/(vehicle-photos|carte-grise)/[0-9]{8}T[0-9]{6}Z_[a-f0-9]{16}(_[0-9]{1,18})?\.(jpg|png|webp|pdf|txt|bin)$');
 CREATE INDEX IF NOT EXISTS idx_idauto_arch_vehicle ON idauto_media_archive (vehicle_id, category, uploaded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_idauto_arch_key     ON idauto_media_archive (object_key);
 CREATE INDEX IF NOT EXISTS idx_idauto_arch_pending ON idauto_media_archive (archive_status) WHERE archive_status IN ('pending', 'failed');

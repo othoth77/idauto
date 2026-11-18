@@ -35,6 +35,9 @@ var path = require('path');
 var crypto = require('crypto');
 
 var ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+// Update 5 — carte grise SOURCE documents only (a PDF, a pasted text). Accepted ONLY when the caller says so explicitly
+// (documents/carte-grise-service.js, after sniffing the bytes); every other upload path stays images-only.
+var DOCUMENT_MIME_TYPES = ['application/pdf', 'text/plain; charset=utf-8'];
 var MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB — matches idauto.example.json's media_processing.max_upload_size_mb
 
 function getStorageRoot() {
@@ -52,8 +55,8 @@ function keyToPath(root, imageHash) {
 // Validates mime type and size before touching disk. Throws with
 // httpStatus set (mirrors the pattern api.js already uses for other
 // validation errors) rather than a generic Error.
-function validate(buffer, mimeType) {
-  if (ALLOWED_MIME_TYPES.indexOf(mimeType) === -1) {
+function validate(buffer, mimeType, opts) {
+  if (ALLOWED_MIME_TYPES.indexOf(mimeType) === -1 && !(opts && opts.documents === true && DOCUMENT_MIME_TYPES.indexOf(mimeType) !== -1)) {
     throw Object.assign(new Error('unsupported mime type — allowed: ' + ALLOWED_MIME_TYPES.join(', ')), { httpStatus: 400 });
   }
   if (buffer.length === 0) {
@@ -71,8 +74,8 @@ function validate(buffer, mimeType) {
 // separate columns for them, and a future real object-storage backend
 // might reasonably make them differ (e.g. a bucket-relative key vs. a
 // content hash used only for dedup).
-function store(buffer, mimeType) {
-  validate(buffer, mimeType);
+function store(buffer, mimeType, opts) {
+  validate(buffer, mimeType, opts);
   var root = getStorageRoot();
   var imageHash = crypto.createHash('sha256').update(buffer).digest('hex');
   var filePath = keyToPath(root, imageHash);

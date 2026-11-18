@@ -53,6 +53,30 @@ function createV14(ctx) {
   }
   function header(req, name) { var v = req.headers[name]; return typeof v === 'string' ? v : undefined; }
 
+  // ---- Update 5 — carte grise SOURCE documents: one pipeline for camera, upload (image / PDF), paste (image / text) ----
+  var cg = require('./documents/carte-grise-service.js');
+  function fname(req) { try { var f = decodeURIComponent(header(req, 'x-idauto-filename') || ''); return f ? f.slice(0, 255) : null; } catch (e) { return null; } }
+  async function postCarteGrise(req, res, m) {
+    if (!(await throttle(req, res, 'upload'))) return;
+    var bytes = await readBinaryBody(req);
+    var out = await cg.store(decode(m[1]), { bytes: bytes, content_type: header(req, 'content-type'), face: header(req, 'x-idauto-face'), method: header(req, 'x-idauto-input'), filename: fname(req) }, actorOf(req));
+    sendJson(res, out.duplicate_of ? 200 : 201, out);
+  }
+  async function putCarteGrisePreview(req, res, m) {
+    if (!(await throttle(req, res, 'upload'))) return;
+    sendJson(res, 200, await cg.setPreview(decode(m[1]), m[2], await readBinaryBody(req), actorOf(req)));
+  }
+  async function getCarteGrise(req, res, m) { sendJson(res, 200, await cg.history(decode(m[1]), actorOf(req))); }
+  async function getCarteGriseFile(req, res, m) {
+    var f = await cg.bytesOf(decode(m[1]), m[2], actorOf(req), m[3]);
+    // a source document is DOWNLOADED or shown as an image — never rendered as a page (PDF and text included)
+    var inline = /^image\//.test(f.mime_type), safe = String(f.filename || ('carte-grise.' + (f.mime_type === 'application/pdf' ? 'pdf' : /^text/.test(f.mime_type) ? 'txt' : 'jpg'))).replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 120);
+    res.writeHead(200, { 'Content-Type': f.mime_type, 'Content-Length': f.bytes.length, 'Content-Disposition': (inline ? 'inline' : 'attachment') + '; filename="' + safe + '"',
+      'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    res.end(f.bytes);
+  }
+  async function postCarteGriseReview(req, res, m) { var b = await readJsonBody(req); sendJson(res, 200, await cg.review(m[1], b && b.decision, actorOf(req))); }
+
   async function getDocument(req, res, m) { sendJson(res, 200, await service.list(decode(m[1]), actorOf(req))); }
   async function putFace(req, res, m) {
     if (!(await throttle(req, res, 'upload'))) return;
@@ -126,9 +150,20 @@ function createV14(ctx) {
     { method: 'DELETE', pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/[^/]+$/,          scope: 'document:delete' },
     { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/ocr$/,            scope: 'document:write' },
     { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/registration-document\/confirm$/,        scope: 'vehicle:write' },
-    { method: 'POST',   pattern: /^\/api\/identify\/registration-document$/,                             scope: 'vehicle:resolve' }
+    { method: 'POST',   pattern: /^\/api\/identify\/registration-document$/,                             scope: 'vehicle:resolve' },
+    { method: 'POST',   pattern: /^\/api\/vehicles\/[^/]+\/carte-grise$/,                                   scope: 'document:write' },
+    { method: 'PUT',    pattern: /^\/api\/vehicles\/[^/]+\/carte-grise\/\d{1,18}\/preview$/,                scope: 'document:write' },
+    { method: 'GET',    pattern: /^\/api\/vehicles\/[^/]+\/carte-grise$/,                                   scope: 'document:read' },
+    { method: 'GET',    pattern: /^\/api\/vehicles\/[^/]+\/carte-grise\/\d{1,18}\/(original|preview)$/,     scope: 'document:read' }
+    // POST /api/carte-grise/:id/review is in NO scope table on purpose: organisation credentials get 403 before the
+    // handler runs; only an administrator reaches it (and the service checks again).
   ];
   var routes = [
+    { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/carte-grise$/, handler: guard(postCarteGrise) },
+    { method: 'PUT', pattern: /^\/api\/vehicles\/([^/]+)\/carte-grise\/(\d{1,18})\/preview$/, handler: guard(putCarteGrisePreview) },
+    { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/carte-grise$/, handler: guard(getCarteGrise) },
+    { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/carte-grise\/(\d{1,18})\/(original|preview)$/, handler: guard(getCarteGriseFile) },
+    { method: 'POST', pattern: /^\/api\/carte-grise\/(\d{1,18})\/review$/, handler: guard(postCarteGriseReview) },
     { method: 'POST', pattern: /^\/api\/identify\/registration-document$/, handler: guard(postIdentify) },
     { method: 'GET', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document$/, handler: guard(getDocument) },
     { method: 'POST', pattern: /^\/api\/vehicles\/([^/]+)\/registration-document\/ocr$/, handler: guard(postOcr) },

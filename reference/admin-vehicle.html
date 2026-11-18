@@ -97,11 +97,8 @@
 
       <section class="ida-card ida-stack" aria-labelledby="sec-cg" data-archive-cg>
         <h2 id="sec-cg" class="ida-h3">Carte grise</h2>
-        <form class="ida-cluster" data-cg-upload>
-          <label class="ida-small">Face&nbsp;<select class="ida-select ida-select--sm" data-cg-face><option value="1">Recto</option><option value="2">Verso</option></select></label>
-          <label class="ida-btn ida-btn--secondary ida-btn--sm">Scanner / photographier<input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-cg-take hidden></label>
-          <label class="ida-btn ida-btn--ghost ida-btn--sm">Choisir un fichier<input type="file" accept="image/jpeg,image/png,image/webp" data-cg-pick hidden></label>
-        </form>
+        <div class="ida-cluster"><button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-cg-add>Ajouter une carte grise</button></div>
+        <p class="ida-caption">Scanner, fichier (image ou PDF) ou collage (image ou texte). Le document est conservé tel quel ; ses informations seront lues plus tard par LENS — rien n'est extrait ici.</p>
         <p class="ida-caption">Chaque dépôt crée une nouvelle version ; les versions précédentes restent consultables.</p>
         <p class="ida-caption" data-cg-status aria-live="polite"></p>
         <div data-cg-history></div>
@@ -146,6 +143,9 @@
 <script src="/admin/console.js"></script>
 <script src="/assets/photo-meta.js"></script>
 <script src="/admin/vehicle-ui.js"></script>
+<script src="/assets/registration-scanner.js"></script>
+<script src="/assets/carte-grise-capture.js"></script>
 <script src="/admin/vehicle-archive.js"></script>
+<div data-cg-root hidden></div>
 </body>
 </html>

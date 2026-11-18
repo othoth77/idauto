@@ -40,7 +40,7 @@ var ROOT = process.env.IDAUTO_MEDIA_RECEIVER_ROOT || '';
 var PORT = parseInt(process.env.IDAUTO_MEDIA_RECEIVER_PORT || '8853', 10);
 var MAX = 25 * 1024 * 1024, MAX_META = 8192;
 var CATEGORIES = ['vehicle-photos', 'carte-grise'];
-var EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf' };
+var EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'application/pdf': 'pdf', 'text/plain; charset=utf-8': 'txt' };
 // what may leave LENS for IDauto: the technical fields of a carte grise — never the holder (name, CIN, address)
 var LENS_FIELDS = ['plate_tn', 'vin', 'date_premiere_circulation', 'marque', 'type_commercial', 'genre', 'energie', 'puissance_fiscale', 'places_assises'];
 

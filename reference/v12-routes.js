@@ -63,6 +63,7 @@ var ATELIER_ASSETS = {
   '/atelier/assets/scanic.umd.js': { root: WEB_ROOT, file: 'vendor/scanic/scanic.umd.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/registration-parser.js': { file: 'documents/registration-parser.js', contentType: 'application/javascript; charset=utf-8' },
   '/atelier/assets/registration-scanner.js': { root: WEB_ROOT, file: 'citizen/registration-scanner.js', contentType: 'application/javascript; charset=utf-8' },
+  '/atelier/assets/carte-grise-capture.js': { root: WEB_ROOT, file: 'citizen/carte-grise-capture.js', contentType: 'application/javascript; charset=utf-8' },   // Update 5
   '/atelier/assets/document.css': { root: WEB_ROOT, file: 'citizen/document.css', contentType: 'text/css; charset=utf-8' },
   // IDA-UI-1/2 — the one application shell, its stylesheet and the French/Arabic layer, shared with /admin.
   '/atelier/shell.js': { file: 'admin-shell.js', contentType: 'application/javascript; charset=utf-8' },

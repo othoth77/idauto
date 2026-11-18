@@ -84,22 +84,60 @@
         ]);
       }))
     ]));
-    var cg = C.clear(q('[data-cg-history]'));
-    if (!d.carte_grise.length) cg.appendChild(el('p', { class: 'ida-muted' }, 'Aucune carte grise archivée pour ce véhicule.'));
-    else cg.appendChild(el('table', { class: 'ida-table', 'data-cg-table': '' }, [
-      el('thead', null, el('tr', null, ['Document', 'Version', 'Déposé le', 'Par', 'Archive', 'Analyse', ''].map(function (h) { return el('th', { scope: 'col' }, h); }))),
-      el('tbody', null, d.carte_grise.map(function (it) {
-        return el('tr', { 'data-cg-row': it.id, class: it.current ? null : 'ida-admin-superseded' }, [
-          el('th', { scope: 'row' }, [(it.original_filename || 'Carte grise') + ' — ' + (it.face === 2 ? 'verso' : 'recto'), it.current ? null : el('span', { class: 'ida-caption ida-u-block' }, 'version remplacée')]),
-          el('td', null, 'v' + (it.version || 1)),
-          el('td', null, C.date(it.uploaded_at, true)),
-          el('td', null, (SOURCE[it.source] || it.source) + (it.uploaded_by ? ' · ' + it.uploaded_by : '')),
-          el('td', null, ARCH[it.archive.status] || it.archive.status),
-          el('td', null, lensCell(it.lens)),
-          el('td', null, openLink(it))
-        ]);
-      }))
-    ]));
+    await renderCg(d);
+  }
+  // Update 5 — the carte grise history from the one pipeline: every source (image, PDF, pasted text), every version,
+  // how it was captured, its review (public deposits), its LENS processing and validation, its Haddad archive.
+  var FORMAT = { CARTE_GRISE_IMAGE: 'Image', CARTE_GRISE_PDF: 'PDF', CARTE_GRISE_TEXT: 'Texte collé' };
+  var METHOD = { camera: 'caméra', upload: 'fichier', paste_image: 'image collée', paste_text: 'texte collé', legacy: 'ancien dépôt' };
+  var PROC = { PENDING_LENS: 'en attente de LENS', NONE: 'non soumis', PROCESSING: 'analyse en cours', DONE: 'analysé', FAILED: 'analyse en échec' };
+  var VALID = { NOT_VALIDATED: 'non validé', VALIDATED: 'validé', CORRECTED: 'corrigé', REJECTED: 'rejeté' };
+  var REVIEW = { accepted: null, pending_review: 'dépôt public — à vérifier', rejected: 'refusé' };
+  async function fileButton(it, which, label) {
+    var b = el('button', { type: 'button', class: 'ida-btn ida-btn--ghost ida-btn--sm', 'data-cg-open': which + ':' + it.id }, label);
+    b.addEventListener('click', async function () {
+      var w = window.open('', '_blank');
+      try {
+        var r = await fetch('/api/vehicles/' + encodeURIComponent(ref) + '/carte-grise/' + encodeURIComponent(it.id) + '/' + which, { credentials: 'same-origin', headers: { 'X-IDauto-Session': '1' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        var u = URL.createObjectURL(await r.blob()); if (w) w.location.href = u; else window.location.href = u;
+      } catch (e) { if (w) w.close(); b.textContent = 'Ouverture impossible (' + e.message + ')'; }
+    });
+    return b;
+  }
+  function reviewButtons(it) {
+    if (it.review.status !== 'pending_review') return null;
+    return ['accepted', 'rejected'].map(function (dec) {
+      var b = el('button', { type: 'button', class: 'ida-btn ida-btn--sm ' + (dec === 'accepted' ? 'ida-btn--secondary' : 'ida-btn--ghost'), 'data-cg-review': dec + ':' + it.id }, dec === 'accepted' ? 'Accepter' : 'Refuser');
+      b.addEventListener('click', async function () { b.disabled = true; try { await C.send('POST', '/api/carte-grise/' + encodeURIComponent(it.id) + '/review', { decision: dec }); await load(); } catch (e) { b.disabled = false; b.textContent = e.message; } });
+      return b;
+    });
+  }
+  async function renderCg(arch) {
+    var cg = C.clear(q('[data-cg-history]')), h;
+    try { h = await C.api('/api/vehicles/' + encodeURIComponent(ref) + '/carte-grise'); } catch (e) { cg.appendChild(el('p', { class: 'ida-field-error' }, e.message)); return; }
+    var archOf = {}; (arch.carte_grise || []).forEach(function (a) { if (a.document_id) archOf[a.document_id] = a.archive; });
+    if (!h.documents.length) { cg.appendChild(el('p', { class: 'ida-muted' }, 'Aucune carte grise pour ce véhicule.')); return; }
+    var rows = [];
+    for (var i = 0; i < h.documents.length; i++) {
+      var it = h.documents[i], ar = archOf[it.id];
+      var actions = [await fileButton(it, 'original', it.source_format === 'CARTE_GRISE_TEXT' ? 'Ouvrir le texte' : "Ouvrir l'original")];
+      if (it.has_preview) actions.push(await fileButton(it, 'preview', 'Aperçu recadré'));
+      rows.push(el('tr', { 'data-cg-row': it.id, 'data-cg-format': it.source_format, class: it.current ? null : 'ida-admin-superseded' }, [
+        el('th', { scope: 'row' }, [FORMAT[it.source_format] + ' — ' + (it.face === 2 ? 'verso' : 'recto'), el('span', { class: 'ida-caption ida-u-block' }, (it.original_filename || '') + (it.text_chars ? it.text_chars + ' caractères' : '') + (it.byte_size ? ' · ' + Math.max(1, Math.round(it.byte_size / 1024)) + ' Ko' : '')),
+          it.current ? el('span', { class: 'ida-status ida-status--verified' }, 'actuelle') : REVIEW[it.review.status] ? el('span', { class: 'ida-status ida-status--pending' }, REVIEW[it.review.status]) : el('span', { class: 'ida-caption ida-u-block' }, 'version remplacée')]),
+        el('td', null, 'v' + it.version),
+        el('td', null, METHOD[it.input_method] || it.input_method),
+        el('td', null, [C.date(it.uploaded_at, true), el('span', { class: 'ida-caption ida-u-block' }, it.uploaded_by || '')]),
+        el('td', { 'data-cg-processing': it.processing_status }, PROC[it.processing_status] || it.processing_status),
+        el('td', { 'data-cg-validation': it.validation_status }, VALID[it.validation_status] || it.validation_status),
+        el('td', null, ar ? (ARCH[ar.status] || ar.status) : '—'),
+        el('td', null, actions.concat(reviewButtons(it) || []))
+      ]));
+    }
+    cg.appendChild(el('table', { class: 'ida-table', 'data-cg-table': '' }, [
+      el('thead', null, el('tr', null, ['Document', 'Version', 'Saisie', 'Déposé', 'Traitement', 'Validation', 'Archive', ''].map(function (x) { return el('th', { scope: 'col' }, x); }))),
+      el('tbody', null, rows)]));
   }
   function lensCell(l) {
     if (!l || !l.status) return 'non soumise';
@@ -148,21 +186,14 @@
       await load();
     } catch (e) { st.textContent = 'La photo n\'a pas été enregistrée : ' + e.message; }
   }
-  async function uploadCg(file) {
-    var st = q('[data-cg-status]'), face = q('[data-cg-face]').value === '2' ? 2 : 1;
-    if (!file) return;
-    st.textContent = 'Envoi de la carte grise…';
-    try {
-      var out = await C.send('PUT', '/api/vehicles/' + encodeURIComponent(ref) + '/registration-document/' + face, file, { raw: true, headers: { 'Content-Type': file.type || 'image/jpeg', 'X-IDauto-Original-Bytes': String(file.size), 'X-IDauto-Capture': 'none', 'X-IDauto-Filename': encodeURIComponent(file.name || '') } });
-      st.textContent = 'Carte grise enregistrée (' + (face === 2 ? 'verso' : 'recto') + (out.replaced ? ', nouvelle version — la précédente est conservée' : '') + ').';
-      await load();
-    } catch (e) { st.textContent = 'La carte grise n\'a pas été enregistrée : ' + e.message; }
-  }
   function bind(sel, fn) { var i = q(sel); i.addEventListener('change', function () { var f = i.files && i.files[0]; i.value = ''; fn(f); }); }
   bind('[data-photo-take]', function (f) { uploadPhoto(f, true); });
   bind('[data-photo-pick]', function (f) { uploadPhoto(f, false); });
-  bind('[data-cg-take]', uploadCg);
-  bind('[data-cg-pick]', uploadCg);
-  window.IdaAdminArchive = { blobUrl: blobUrl, load: load, _uploadPhoto: uploadPhoto, _uploadCg: uploadCg };
+  var addBtn = q('[data-cg-add]');
+  if (addBtn) addBtn.addEventListener('click', function () {
+    if (window.IdaRegistrationScanner) { window.IdaRegistrationScanner.configure({ scanicUrl: '/assets/scanic.umd.js' }); var hostEl = document.querySelector('[data-cg-root]'); if (hostEl && !hostEl.firstChild) window.IdaRegistrationScanner.mount(hostEl); }
+    window.IdaCarteGrise.open({ ivid: ref, mode: 'session', onDone: function () { load(); } });
+  });
+  window.IdaAdminArchive = { blobUrl: blobUrl, load: load, _uploadPhoto: uploadPhoto };
   load();
 })();
