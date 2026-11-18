@@ -54,7 +54,7 @@ function pdf(extra) { return Buffer.from('%PDF-1.4\n1 0 obj << /Type /Catalog /P
 function sha(b) { return crypto.createHash('sha256').update(b).digest('hex'); }
 async function freePlate() { for (;;) { var a = crypto.randomInt(100, 999), b = crypto.randomInt(1000, 9999); if (!(await db.query('SELECT 1 FROM idauto_plates WHERE plate_number = $1', [a + ' TUN ' + b])).rows.length) return { series: String(a), number: String(b) }; } }
 function freeVin() { var A = 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789', s = 'VF1'; for (var i = 0; i < 14; i++) s += A[crypto.randomInt(0, A.length)]; return s; }
-function cg(token, ivid, bytes, type, face, method, filename) { var h = { 'Content-Type': type, 'X-IDauto-Face': String(face || 1), 'X-IDauto-Input': method }; if (filename) h['X-IDauto-Filename'] = encodeURIComponent(filename); return request('POST', '/api/vehicles/' + encodeURIComponent(ivid) + '/carte-grise', token, bytes, h); }
+function cg(token, ivid, bytes, type, face, method, filename, newVersion) { var h = { 'Content-Type': type, 'X-IDauto-Face': String(face || 1), 'X-IDauto-Input': method }; if (newVersion) h['X-IDauto-New-Version'] = '1'; if (filename) h['X-IDauto-Filename'] = encodeURIComponent(filename); return request('POST', '/api/vehicles/' + encodeURIComponent(ivid) + '/carte-grise', token, bytes, h); }
 async function newVehicle(token) { var P = await freePlate(); var r = await request('POST', '/api/vehicles/register', token || T.ADMIN, { plate: { type: 'TU', series: P.series, number: P.number }, vin: freeVin(), make: 'Renault', model: 'Clio' }); return r.body.ivid; }
 async function docs(ivid) { return (await db.query("SELECT d.* FROM idauto_vehicle_documents d JOIN idauto_vehicles v ON v.id = d.vehicle_id WHERE v.ivid = $1 AND d.document_type = 'carte_grise' ORDER BY d.id", [ivid])).rows; }
 
@@ -103,21 +103,21 @@ async function docs(ivid) { return (await db.query("SELECT d.* FROM idauto_vehic
   var r2 = await cg(T.MGR, IV, UP, 'image/png', 2, 'upload', 'verso.png');
   ok(r2.status === 201 && r2.body.document.face === 2 && r2.body.document.input_method === 'upload' && r2.body.document.original_filename === 'verso.png', 'image file uploaded as the verso, original filename kept');
   var PDF = pdf();
-  var r3 = await cg(T.ADMIN, IV, PDF, 'application/pdf', 1, 'upload', 'carte grise scannée.pdf');
+  var r3 = await cg(T.ADMIN, IV, PDF, 'application/pdf', 1, 'upload', 'carte grise scannée.pdf', true);
   ok(r3.status === 201 && r3.body.document.source_format === 'CARTE_GRISE_PDF' && r3.body.document.mime_type === 'application/pdf' && r3.body.document.version === 2, 'PDF uploaded: CARTE_GRISE_PDF, version 2 of the recto');
   var po = await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise/' + r3.body.document.id + '/original', T.ADMIN);
   ok(po.status === 200 && po.buf.equals(PDF) && /^attachment/.test(po.headers['content-disposition']) && /sandbox/.test(po.headers['content-security-policy']) && po.headers['x-content-type-options'] === 'nosniff', 'the PDF comes back identical, as an attachment (never rendered in the site), sandboxed, nosniff');
 
   say('\n4. PASTE — an image, and the TEXT exactly as pasted (UTF-8: Arabic, French, digits)');
   var PI = png(900, 600, 9);
-  var r4 = await cg(T.MGR, IV, PI, 'image/png', 2, 'paste_image');
+  var r4 = await cg(T.ADMIN, IV, PI, 'image/png', 2, 'paste_image', null, true);
   if (r4.status !== 201) console.log('    paste_image answer:', r4.status, JSON.stringify(r4.body).slice(0, 300));
   ok(r4.status === 201 && r4.body.document.input_method === 'paste_image', 'pasted image stored (input « paste_image »)');
   var TEXT = 'REPUBLIQUE TUNISIENNE — الجمهورية التونسية\nCERTIFICAT D\'IMMATRICULATION  شهادة تسجيل\nN° d\'immatriculation : 173 تونس 8116\nN° de série (VIN) : ' + VIN0.slice(0, 10) + 'XXXXXXX\nMarque : CHEVROLET   Type : AVEO LS\n  espaces  conservés\ttabulation\r\nfin';
   var TB = Buffer.from(TEXT, 'utf8');
-  var r5 = await cg(T.MGR, IV, TB, 'text/plain; charset=utf-8', 1, 'paste_text');
+  var r5 = await cg(T.ADMIN, IV, TB, 'text/plain; charset=utf-8', 1, 'paste_text', null, true);
   ok(r5.status === 201 && r5.body.document.source_format === 'CARTE_GRISE_TEXT' && r5.body.document.mime_type === 'text/plain; charset=utf-8' && r5.body.document.processing_status === 'PENDING_LENS', 'pasted text stored as CARTE_GRISE_TEXT, PENDING_LENS');
-  var to = await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise/' + r5.body.document.id + '/original', T.MGR);
+  var to = await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise/' + r5.body.document.id + '/original', T.ADMIN);
   ok(to.status === 200 && to.buf.equals(TB) && to.buf.toString('utf8') === TEXT, 'the text comes back BYTE FOR BYTE (Arabic, French, digits, spaces, tab, CRLF) — never converted');
   ok(r5.body.document.text_chars === Array.from(TEXT).length && sha(TB) === r5.body.document.sha256, 'character count and SHA-256 of the exact text');
   ok(/^attachment/.test(to.headers['content-disposition']), 'the text is downloaded, never rendered as a page');
@@ -171,8 +171,8 @@ async function docs(ivid) { return (await db.query("SELECT d.* FROM idauto_vehic
   ok((await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise', null)).status === 401, 'anonymous: no history (401)');
   ok((await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise/' + r1.body.document.id + '/original', null)).status === 401, 'anonymous: no original (401)');
   var other = await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise', T.OTHER);
-  ok(other.status === 200 && !other.body.documents.some(function (d) { return d.id === r1.body.document.id || d.id === r5.body.document.id; }) && other.body.documents.some(function (d) { return d.id === r3.body.document.id; }), 'another workshop sees the administration\'s accepted PDF, never workshop A\'s own deposits');
-  ok((await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise/' + r5.body.document.id + '/original', T.OTHER)).status === 404, 'and cannot open them (404)');
+  ok(other.status === 200 && !other.body.documents.some(function (d) { return d.id === r1.body.document.id || d.id === r2.body.document.id; }) && other.body.documents.some(function (d) { return d.id === r3.body.document.id; }), 'another workshop sees the administration\'s accepted PDF, never workshop A\'s own deposits');
+  ok((await request('GET', '/api/vehicles/' + encodeURIComponent(IV) + '/carte-grise/' + r1.body.document.id + '/original', T.OTHER)).status === 404, 'and cannot open them (404)');
 
   say('\n9. PUBLIC DEPOSIT — off by default; when on, it waits for an administrator');
   var cfg0 = await request('GET', '/public/carte-grise-config', null);
@@ -197,7 +197,25 @@ async function docs(ivid) { return (await db.query("SELECT d.* FROM idauto_vehic
   ok((await request('POST', '/public/vehicles/' + encodeURIComponent(IV) + '/carte-grise', null, png(900, 600, 40), { 'Content-Type': 'image/png', 'X-IDauto-Input': 'upload' })).status === 429, 'public deposits are rate-limited per visitor (429)');
   delete process.env.IDAUTO_PUBLIC_CARTE_GRISE;
 
-  say('\n10. PERSISTENCE AND THE HADDAD ARCHIVE (PDF and text included)');
+  say('\n10. UPDATE 5.1 — STATUS FROM THE DATABASE; NO ACCIDENTAL DUPLICATE');
+  var st1 = await request('GET', '/public/vehicles/' + encodeURIComponent(IV) + '/carte-grise-status', null);
+  ok(st1.status === 200 && st1.body.exists === true && /^\d{4}-\d{2}-\d{2}$/.test(st1.body.latest_date) && Object.keys(st1.body).sort().join() === 'exists,latest_date', 'existing carte grise detected from the database: { exists: true, latest_date } — nothing else (no id, no file)');
+  var IV3 = await newVehicle(T.ADMIN);
+  var st0 = await request('GET', '/public/vehicles/' + encodeURIComponent(IV3) + '/carte-grise-status', null);
+  ok(st0.status === 200 && st0.body.exists === false && st0.body.latest_date === null, 'missing carte grise: { exists: false }');
+  ok((await request('GET', '/public/vehicles/' + encodeURIComponent('ivid:1:ZZZZZZZZZZZZZZZZ:ZZ') + '/carte-grise-status', null)).status === 404, 'unknown vehicle → 404');
+  var w1 = await cg(T.MGR, IV, png(1000, 700, 61), 'image/png', 1, 'upload');
+  ok(w1.status === 409 && w1.body.details.reason === 'carte_grise_exists', 'a workshop upload over an existing recto is refused (409 carte_grise_exists): nothing replaced');
+  var a1 = await cg(T.ADMIN, IV, png(1000, 700, 63), 'image/png', 1, 'upload');
+  ok(a1.status === 409 && a1.body.details.reason === 'carte_grise_exists_new_version_required', 'even an administrator needs the explicit « new version » (409 without it)');
+  var a2 = await cg(T.ADMIN, IV, png(1000, 700, 63), 'image/png', 1, 'upload', 'v-new.png', true);
+  ok(a2.status === 201 && a2.body.replaced === true && a2.body.document.current, 'administrator + explicit new version → a new current version, the previous one kept');
+  ok((await cg(T.MGR, IV, png(1000, 700, 65), 'image/png', 1, 'upload', null, true)).status === 409, 'a workshop cannot force a new version with the flag (409)');
+  var f1 = await cg(T.MGR, IV3, png(1000, 700, 67), 'image/png', 1, 'camera');
+  var st2 = await request('GET', '/public/vehicles/' + encodeURIComponent(IV3) + '/carte-grise-status', null);
+  ok(f1.status === 201 && st2.body.exists === true, 'first carte grise of a vehicle: stored, and the status flips to « exists » at once');
+
+  say('\n11. PERSISTENCE AND THE HADDAD ARCHIVE (PDF and text included)');
   for (var s = 0; s < 8; s++) { await replica.pass(); await archive.pass(); await sleep(250); }
   var ar = (await db.query("SELECT a.archive_status, a.archive_path, a.mime_type, a.sha256 FROM idauto_media_archive a JOIN idauto_vehicles v ON v.id = a.vehicle_id WHERE v.ivid = $1 AND a.category = 'carte-grise'", [IV])).rows;
   var arTxt = ar.filter(function (a) { return a.sha256 === sha(TB); })[0], arPdf = ar.filter(function (a) { return a.sha256 === sha(PDF); })[0];

@@ -1,216 +1,230 @@
-/* IDauto — Update 5 — carte grise capture: THREE input methods, ONE pipeline.
+/* IDauto — Update 5.1 — carte grise capture, direct: three separate methods, ONE preview, ONE upload.
  * ============================================================================
- *   1. Scanner      the camera (or a gallery image, or a pasted image) through the existing scanner
- *                   (registration-scanner.js, mode "capture"): card detection, perspective, manual corners, rotation,
- *                   recto / verso, retake. Sends the ORIGINAL photograph and, separately, its corrected crop.
- *   2. Fichier      an image (JPEG / PNG / WebP) or a PDF, previewed (image) or described (PDF), replaceable, sent as is.
- *   3. Coller       an image pasted from another application (previewed), or the carte grise TEXT pasted as is
- *                   (UTF-8: Arabic, French, digits — never converted to a PDF or an image).
- * Every method ends in the same call: POST /api/vehicles/:ivid/carte-grise (signed in) or
- * POST /public/vehicles/:ivid/carte-grise (a visitor, only when the owner has enabled it). The server decides the type
- * from the bytes, stores the original unchanged and marks it PENDING_LENS. Nothing here reads the document:
- * no OCR, no parser (owner decision 2026-11-18 — LENS will do it later).
+ *   Scanner            → the camera opens at once (rear camera on mobile), live preview, « Capturer »; the captured
+ *                        image is shown; « Reprendre » or « Confirmer ». Never a file picker. The original is the
+ *                        camera's own photograph (ImageCapture.takePhoto) or, where that does not exist, the full frame
+ *                        as a lossless PNG — never a recompressed copy.
+ *   Importer un fichier → the system file picker opens at once (image or PDF).
+ *   Coller             → the clipboard image is read at once (navigator.clipboard.read); where that is not available or
+ *                        not allowed, a focused paste target takes Ctrl+V. Text in the clipboard is NOT an image: it is
+ *                        said so; it can be kept, explicitly, as a text source (CARTE_GRISE_TEXT).
+ * Every method ends in the same preview (image / PDF / text, type, size, replace, cancel, confirm) and the same upload:
+ * POST /api/vehicles/:ivid/carte-grise (the one pipeline: original unchanged, SHA-256, versions, Haddad, PENDING_LENS).
+ * Nothing is uploaded before « Confirmer ». No OCR, no extraction here.
  *
- *   IdaCarteGrise.open({ ivid, mode: "session" | "public", onDone(results) })
+ *   IdaCarteGrise.start(method, { ivid, mode: "session" | "public", newVersion: bool, onDone(result) })
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.IdaCarteGrise = factory();
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
-  var LIMITS = { image: 12 * 1024 * 1024, pdf: 10 * 1024 * 1024, textChars: 20000, textMin: 10 };
+  var LIMITS = { image: 12 * 1024 * 1024, pdf: 10 * 1024 * 1024, textMin: 10 };
   var IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-  var st = { root: null, ivid: null, mode: "session", onDone: null, file: null, paste: null, urls: [] };
+  var st = { root: null, opts: null, method: null, item: null, stream: null, urls: [], busy: false };
   function g() { return typeof self !== "undefined" ? self : globalThis; }
   function t(s) { var T = g().IdaI18n; return T && T.t ? T.t(s) : s; }
   function q(sel) { return st.root.querySelector(sel); }
-  function el(tag, attrs, text) { var n = document.createElement(tag); Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]); }); if (text !== undefined && text !== null) n.textContent = text; return n; }
+  function el(tag, attrs, text) { var n = document.createElement(tag); Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) n.setAttribute(k, attrs[k] === true ? "" : attrs[k]); }); if (text !== undefined && text !== null) n.textContent = text; return n; }
   function clear(n) { while (n && n.firstChild) n.removeChild(n.firstChild); return n; }
   function url(blob) { var u = URL.createObjectURL(blob); st.urls.push(u); return u; }
   function kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " Mo" : Math.max(1, Math.round(n / 1024)) + " Ko"; }
-  function say(msg, kind) { var s = q("[data-cgc-status]"); s.textContent = msg || ""; s.className = "ida-small" + (kind === "error" ? " ida-field-error" : kind === "ok" ? " ida-text-success" : ""); }
+  function view(name) { ["camera", "paste", "preview", "done"].forEach(function (v) { var e = q("[data-cgc-view=" + v + "]"); if (e) e.hidden = v !== name; }); }
+  function say(msg, kind) { var s = q("[data-cgc-status]"); s.textContent = msg || ""; s.className = "ida-small" + (kind === "error" ? " ida-field-error" : ""); s.hidden = !msg; }
 
-  // ---- the one submission --------------------------------------------------------------------------------------------
-  function endpoint() { return st.mode === "public" ? "/public/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise" : "/api/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise"; }
-  async function send(body, type, face, method, filename) {
-    var h = { "Content-Type": type, "X-IDauto-Face": String(face || 1), "X-IDauto-Input": method };
-    if (filename) h["X-IDauto-Filename"] = encodeURIComponent(filename);
-    if (st.mode !== "public") h["X-IDauto-Session"] = "1";
-    var r = await fetch(endpoint(), { method: "POST", credentials: st.mode === "public" ? "omit" : "same-origin", headers: h, body: body });
-    var b = await r.json().catch(function () { return {}; });
-    if (!r.ok) { var e = new Error(reason(b, r.status)); e.status = r.status; throw e; }
-    return b;
-  }
-  async function sendPreview(id, crop) {
-    var r = await fetch("/api/vehicles/" + encodeURIComponent(st.ivid) + "/carte-grise/" + encodeURIComponent(id) + "/preview", { method: "PUT", credentials: "same-origin", headers: { "Content-Type": "image/jpeg", "X-IDauto-Session": "1" }, body: crop });
-    return r.ok;
-  }
-  var REASONS = {
-    unsupported_type: "Type de fichier non accepté : JPEG, PNG, WebP ou PDF.", too_large: "Fichier trop volumineux.", too_small: "Image trop petite pour être lisible.",
-    pdf_incomplete: "Ce PDF est incomplet ou endommagé.", pdf_encrypted: "Ce PDF est protégé par un mot de passe : il ne peut pas être conservé tel quel.",
-    not_utf8: "Ce texte n'a pas pu être lu.", too_short: "Le texte collé est trop court.", face_1_required_first: "Ajoutez d'abord le recto (face 1).", unreadable_image: "Cette image ne peut pas être lue."
-  };
-  function reason(b, status) {
-    if (status === 401 || status === 403) return t("Connectez-vous pour ajouter une carte grise.");
-    if (status === 404 && st.mode === "public") return t("Le dépôt public de carte grise n'est pas ouvert : connectez-vous.");
-    if (status === 429) return t("Trop d'envois : réessayez plus tard.");
-    var r = b && (b.reason || (b.details && b.details.reason));
-    return t(REASONS[r] || b.message_fr || "L'envoi n'a pas abouti.");
-  }
-  function outcome(list) {
-    var box = clear(q("[data-cgc-done]")); box.hidden = false;
-    list.forEach(function (o) {
-      var line = o.error ? t("Non enregistré : ") + o.error
-        : o.duplicate ? t("Ce document est déjà dans le dossier du véhicule : rien n'a été ajouté.")
-        : st.mode === "public" ? t("Reçu — un administrateur le vérifiera avant de l'ajouter au dossier.")
-        : t("Enregistré dans le dossier — en attente d'analyse (LENS).");
-      box.appendChild(el("p", { class: "ida-small" + (o.error ? " ida-field-error" : ""), "data-cgc-result": o.error ? "error" : o.duplicate ? "duplicate" : "stored" }, (o.label ? o.label + " — " : "") + line));
-    });
-    if (st.mode !== "public" && list.some(function (o) { return !o.error; })) box.appendChild(el("a", { class: "ida-btn ida-btn--secondary ida-btn--sm", href: dossierHref(), "data-cgc-open-dossier": "" }, t("Ouvrir le dossier du véhicule")));
-    if (st.onDone) st.onDone(list);
-  }
-  function dossierHref() { return (g().location && /^\/admin/.test(g().location.pathname) ? "/admin/vehicle?ref=" : "/atelier/vehicule?ref=") + encodeURIComponent(st.ivid); }
-
-  // ---- 1. scanner (camera / gallery / pasted image — through the existing scanner) -------------------------------------
-  function openScanner() {
-    var S = g().IdaRegistrationScanner, host = document.querySelector("[data-cg-root]");
-    if (!S || !host) { say(t("Le scanner n'est pas disponible sur cette page."), "error"); return; }
-    // one dialog at a time: this one steps aside while the scanner is open, and comes back after (used or cancelled)
-    st.root.hidden = true;
-    if (!host.getAttribute("data-cgc-return")) {
-      host.setAttribute("data-cgc-return", "1");
-      host.addEventListener("click", function (e) { var a = e.target.closest("[data-cg-action]"); if (a && /^(close|cancel)$/.test(a.getAttribute("data-cg-action"))) st.root.hidden = false; });
-      host.addEventListener("keydown", function (e) { if (e.key === "Escape") st.root.hidden = false; });
-    }
-    S.open({ root: host, ivid: st.ivid, mode: "capture", onCaptured: async function (faces) {
-      st.root.hidden = false;
-      if (!faces.length) return;
-      say(t("Envoi…")); var out = [];
-      for (var i = 0; i < faces.length; i++) {
-        var f = faces[i], label = f.face === 2 ? t("Verso") : t("Recto");
-        try {
-          var r = await send(f.original, f.original.type || "image/jpeg", f.face, f.method, f.original.name || null);
-          if (r.document && f.crop && st.mode !== "public") await sendPreview(r.document.id, f.crop);
-          out.push({ label: label, duplicate: !!(r.duplicate_of || r.duplicate) });
-        } catch (e) { out.push({ label: label, error: e.message }); }
-      }
-      say(""); outcome(out);
-    } });
-  }
-
-  // ---- 2. file (image or PDF) -----------------------------------------------------------------------------------------
-  function looksPdf(head) { return head.length >= 5 && String.fromCharCode.apply(null, head.slice(0, 5)) === "%PDF-"; }
-  async function pickFile(file) {
-    var box = clear(q("[data-cgc-file-preview]"));
-    st.file = null; q("[data-cgc-file-send]").disabled = true;
-    if (!file) return;
-    var head = new Uint8Array(await file.slice(0, 8).arrayBuffer()), pdf = looksPdf(head);
-    if (!pdf && IMAGE_TYPES.indexOf(file.type) === -1) { say(t(REASONS.unsupported_type), "error"); return; }
-    if (file.size > (pdf ? LIMITS.pdf : LIMITS.image)) { say(t(REASONS.too_large) + " (" + kb(file.size) + ")", "error"); return; }
-    st.file = { blob: file, pdf: pdf };
-    if (pdf) {
-      var txt = new TextDecoder("latin1").decode(new Uint8Array(await file.slice(0, Math.min(file.size, 2 * 1024 * 1024)).arrayBuffer()));
-      var pages = (txt.match(/\/Type\s*\/Page[^s]/g) || []).length;
-      box.appendChild(el("p", { class: "ida-small", "data-cgc-pdf": "" }, "PDF — " + (file.name || "document.pdf") + " · " + kb(file.size) + (pages ? " · " + pages + " " + t("page(s)") : "")));
-    } else box.appendChild(el("img", { src: url(file), alt: t("Aperçu du document"), class: "ida-cgc-preview", "data-cgc-image": "" }));
-    say(t("Vérifiez l'aperçu, puis envoyez — ou choisissez un autre fichier.")); q("[data-cgc-file-send]").disabled = false;
-  }
-  async function sendFile() {
-    if (!st.file) return;
-    q("[data-cgc-file-send]").disabled = true; say(t("Envoi…"));
-    var f = st.file, face = q("[data-cgc-face]").value === "2" ? 2 : 1, out;
-    try { var r = await send(f.blob, f.pdf ? "application/pdf" : f.blob.type, face, "upload", f.blob.name || null); out = { duplicate: !!(r.duplicate_of || r.duplicate) }; }
-    catch (e) { out = { error: e.message }; q("[data-cgc-file-send]").disabled = false; }
-    say(""); outcome([out]);
-  }
-
-  // ---- 3. paste (an image from another application, or the text) -----------------------------------------------------
-  function setPaste(p) {
-    st.paste = p; var box = clear(q("[data-cgc-paste-preview]"));
-    q("[data-cgc-paste-send]").disabled = !p; q("[data-cgc-paste-clear]").hidden = !p;
-    if (!p) return;
-    if (p.kind === "image") box.appendChild(el("img", { src: url(p.blob), alt: t("Image collée"), class: "ida-cgc-preview", "data-cgc-paste-image": "" }));
-    else box.appendChild(el("p", { class: "ida-caption", "data-cgc-paste-count": "" }, Array.from(p.text).length + " " + t("caractères — le texte est conservé tel quel, sans conversion.")));
-  }
-  function onPaste(e) {
-    var dt = e.clipboardData; if (!dt) return;
-    var items = Array.from(dt.items || []), img = items.filter(function (i) { return i.kind === "file" && /^image\//.test(i.type); })[0];
-    if (img) { e.preventDefault(); var f = img.getAsFile(); if (f) { q("[data-cgc-text]").value = ""; setPaste({ kind: "image", blob: f }); } return; }
-    // text: let the textarea receive it, then preview
-    setTimeout(onText, 0);
-  }
-  function onText() {
-    var v = q("[data-cgc-text]").value;
-    if (!v.trim()) return setPaste(null);
-    if (Array.from(v).length > LIMITS.textChars) { say(t("Texte trop long."), "error"); return setPaste(null); }
-    say(""); setPaste({ kind: "text", text: v });
-  }
-  async function sendPaste() {
-    var p = st.paste; if (!p) return;
-    if (p.kind === "text" && p.text.trim().length < LIMITS.textMin) { say(t(REASONS.too_short), "error"); return; }
-    q("[data-cgc-paste-send]").disabled = true; say(t("Envoi…"));
-    var face = q("[data-cgc-face]").value === "2" ? 2 : 1, out;
-    try {
-      var r = p.kind === "image" ? await send(p.blob, p.blob.type || "image/png", face, "paste_image", null)
-        : await send(new Blob([new TextEncoder().encode(p.text)], { type: "text/plain;charset=utf-8" }), "text/plain; charset=utf-8", face, "paste_text", null);   // the exact UTF-8 bytes of what was pasted
-      out = { duplicate: !!(r.duplicate_of || r.duplicate) };
-    } catch (e) { out = { error: e.message }; q("[data-cgc-paste-send]").disabled = false; }
-    say(""); outcome([out]);
-  }
-
-  // ---- dialog ---------------------------------------------------------------------------------------------------------
+  // ---- dialog (a fixed template: no value from a request is ever placed in it) -------------------------------------
   function template() {
     return '<div class="ida-scan-panel ida-card ida-stack" role="document">' +
       '<div class="ida-scan-head"><h2 class="ida-h3" id="cgc-title">' + t("Carte grise") + '</h2><button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cgc-close aria-label="' + t("Fermer") + '">✕</button></div>' +
-      '<p class="ida-small ida-muted">' + t("Le document est conservé tel quel dans le dossier du véhicule. Ses informations seront lues plus tard (LENS) : rien n'est extrait ici.") + '</p>' +
+      '<p class="ida-small" data-cgc-status aria-live="polite" hidden></p>' +
+      '<div class="ida-stack" data-cgc-view="camera" hidden><div class="ida-cgc-stage"><video data-cgc-video autoplay playsinline muted></video></div>' +
+      '<div class="ida-cluster"><button type="button" class="ida-btn ida-btn--primary" data-cgc-shutter disabled>' + t("Capturer") + '</button>' +
+      '<button type="button" class="ida-btn ida-btn--ghost" data-cgc-cancel>' + t("Annuler") + '</button></div></div>' +
+      '<div class="ida-stack" data-cgc-view="paste" hidden><div class="ida-cgc-paste-target" tabindex="0" role="textbox" aria-label="' + t("Zone de collage") + '" data-cgc-paste-target>' + t("Appuyez sur Ctrl+V (ou ⌘+V) pour coller l'image de la carte grise.") + '</div>' +
+      '<div class="ida-cluster" data-cgc-text-offer hidden><button type="button" class="ida-btn ida-btn--secondary ida-btn--sm" data-cgc-keep-text>' + t("Enregistrer ce texte comme source texte") + '</button></div>' +
+      '<div class="ida-cluster"><button type="button" class="ida-btn ida-btn--ghost" data-cgc-cancel>' + t("Annuler") + '</button></div></div>' +
+      '<div class="ida-stack" data-cgc-view="preview" hidden><div data-cgc-preview></div><p class="ida-caption" data-cgc-meta></p>' +
       '<label class="ida-small">' + t("Face") + ' <select class="ida-select ida-select--sm" data-cgc-face><option value="1">' + t("Recto") + '</option><option value="2">' + t("Verso") + '</option></select></label>' +
-      '<div class="ida-cluster" role="tablist" data-cgc-tabs>' +
-      '<button type="button" class="ida-btn ida-btn--primary ida-btn--sm" role="tab" data-cgc-tab="scan">' + t("Scanner") + '</button>' +
-      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" role="tab" data-cgc-tab="file">' + t("Fichier (image ou PDF)") + '</button>' +
-      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" role="tab" data-cgc-tab="paste">' + t("Coller") + '</button></div>' +
-      '<div data-cgc-pane="scan" class="ida-stack"><p class="ida-small">' + t("Caméra, galerie ou image collée : la carte est détectée et redressée ; vous pouvez ajuster le cadrage, pivoter, refaire, ajouter le verso.") + '</p>' +
-      '<button type="button" class="ida-btn ida-btn--secondary" data-cgc-scan>' + t("Ouvrir le scanner") + '</button></div>' +
-      '<div data-cgc-pane="file" class="ida-stack" hidden><label class="ida-btn ida-btn--secondary ida-btn--sm">' + t("Choisir un fichier") + '<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-cgc-file hidden></label>' +
-      '<div data-cgc-file-preview></div><button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-cgc-file-send disabled>' + t("Envoyer ce document") + '</button></div>' +
-      '<div data-cgc-pane="paste" class="ida-stack" hidden><p class="ida-small">' + t("Collez ici (Ctrl+V) une image de la carte grise, ou son texte.") + '</p>' +
-      '<textarea class="ida-input" rows="6" dir="auto" data-cgc-text aria-label="' + t("Zone de collage") + '" placeholder="' + t("Collez ici…") + '"></textarea>' +
-      '<div data-cgc-paste-preview></div><div class="ida-cluster"><button type="button" class="ida-btn ida-btn--primary ida-btn--sm" data-cgc-paste-send disabled>' + t("Envoyer") + '</button>' +
-      '<button type="button" class="ida-btn ida-btn--ghost ida-btn--sm" data-cgc-paste-clear hidden>' + t("Effacer") + '</button></div></div>' +
-      '<p class="ida-small" data-cgc-status aria-live="polite"></p><div class="ida-stack" data-cgc-done hidden aria-live="polite"></div></div>';
-  }
-  function tab(name) {
-    Array.from(st.root.querySelectorAll("[data-cgc-pane]")).forEach(function (p) { p.hidden = p.getAttribute("data-cgc-pane") !== name; });
-    Array.from(st.root.querySelectorAll("[data-cgc-tab]")).forEach(function (b) { var on = b.getAttribute("data-cgc-tab") === name; b.className = "ida-btn ida-btn--sm " + (on ? "ida-btn--primary" : "ida-btn--ghost"); b.setAttribute("aria-selected", on ? "true" : "false"); });
-    say("");
+      '<div class="ida-cluster"><button type="button" class="ida-btn ida-btn--primary" data-cgc-confirm>' + t("Confirmer et enregistrer") + '</button>' +
+      '<button type="button" class="ida-btn ida-btn--secondary" data-cgc-again></button>' +
+      '<button type="button" class="ida-btn ida-btn--ghost" data-cgc-cancel>' + t("Annuler") + '</button></div></div>' +
+      '<div class="ida-stack" data-cgc-view="done" hidden><p class="ida-alert ida-alert--success ida-small" data-cgc-done-msg></p>' +
+      '<div class="ida-cluster"><button type="button" class="ida-btn ida-btn--secondary" data-cgc-close>' + t("Fermer") + '</button></div></div>' +
+      '<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-cgc-file hidden></div>';
   }
   function mount() {
     var r = document.querySelector("[data-cgc-root]");
-    if (!r) { r = el("div", { "data-cgc-root": "", class: "ida-scan", role: "dialog", "aria-modal": "true", "aria-labelledby": "cgc-title", hidden: "" }); document.body.appendChild(r); }
-    if (!r.firstChild) r.innerHTML = template();          // a fixed template: no value from a request is ever placed in it
+    if (!r) { r = el("div", { "data-cgc-root": "", class: "ida-scan", role: "dialog", "aria-modal": "true", "aria-labelledby": "cgc-title", hidden: true }); document.body.appendChild(r); }
+    if (!r.firstChild) r.innerHTML = template();
     st.root = r;
     if (r.getAttribute("data-cgc-bound")) return;
     r.setAttribute("data-cgc-bound", "1");
     r.addEventListener("click", function (e) {
-      var tb = e.target.closest("[data-cgc-tab]"); if (tb) return tab(tb.getAttribute("data-cgc-tab"));
-      if (e.target.closest("[data-cgc-close]") || e.target === r) return close();
-      if (e.target.closest("[data-cgc-scan]")) return openScanner();
-      if (e.target.closest("[data-cgc-file-send]")) return sendFile();
-      if (e.target.closest("[data-cgc-paste-send]")) return sendPaste();
-      if (e.target.closest("[data-cgc-paste-clear]")) { q("[data-cgc-text]").value = ""; return setPaste(null); }
+      if (e.target.closest("[data-cgc-close]") || e.target.closest("[data-cgc-cancel]") || e.target === r) return close();
+      if (e.target.closest("[data-cgc-shutter]")) return capture();
+      if (e.target.closest("[data-cgc-confirm]")) return confirm();
+      if (e.target.closest("[data-cgc-again]")) return start(st.method, st.opts);
+      if (e.target.closest("[data-cgc-keep-text]")) return keepText();
+      if (e.target.closest("[data-cgc-fallback-file]")) return start("file", st.opts);
     });
-    q("[data-cgc-file]").addEventListener("change", function (e) { var f = e.target.files && e.target.files[0]; e.target.value = ""; pickFile(f); });
-    q("[data-cgc-text]").addEventListener("paste", onPaste);
-    q("[data-cgc-text]").addEventListener("input", onText);
+    q("[data-cgc-file]").addEventListener("change", function (e) { var f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) fromFile(f); else if (!st.item) close(); });
+    q("[data-cgc-paste-target]").addEventListener("paste", onPaste);
     r.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
   }
-  function open(opts) {
-    mount();
-    st.ivid = opts.ivid; st.mode = opts.mode === "public" ? "public" : "session"; st.onDone = opts.onDone || null; st.file = null; st.paste = null;
-    clear(q("[data-cgc-file-preview]")); q("[data-cgc-text]").value = ""; setPaste(null); q("[data-cgc-done]").hidden = true; tab("scan");
-    st.root.hidden = false; st.root.setAttribute("aria-hidden", "false");
-    var first = q("[data-cgc-tab]"); if (first) first.focus();
+  function show() { st.root.hidden = false; st.root.setAttribute("aria-hidden", "false"); }
+  function close() {
+    stopCamera();
+    st.urls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); st.urls = []; st.item = null;
+    if (st.root) { st.root.hidden = true; st.root.setAttribute("aria-hidden", "true"); }
   }
-  function close() { st.urls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} }); st.urls = []; if (st.root) { st.root.hidden = true; st.root.setAttribute("aria-hidden", "true"); } }
 
-  return { open: open, close: close, LIMITS: LIMITS, _state: st, _pickFile: pickFile, _setText: function (v) { q("[data-cgc-text]").value = v; onText(); } };
+  // ---- entry: each method starts at once, from the click itself (camera, picker and clipboard need that gesture) ---
+  function start(method, opts) {
+    mount(); st.opts = opts || st.opts || {}; st.method = method; st.item = null; say("");
+    var again = q("[data-cgc-again]");
+    again.textContent = method === "camera" ? t("Reprendre") : method === "paste" ? t("Coller une autre image") : t("Choisir un autre fichier");
+    if (method === "camera") return openCamera();
+    if (method === "paste") return paste();
+    // file: the system picker, nothing else; the dialog appears only with the preview
+    stopCamera(); q("[data-cgc-file]").click();
+  }
+
+  // ---- 1. camera ------------------------------------------------------------------------------------------------------
+  function stopCamera() { if (st.stream) { st.stream.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e) {} }); st.stream = null; } var v = st.root && q("[data-cgc-video]"); if (v) v.srcObject = null; }
+  async function openCamera() {
+    view("camera"); show();
+    var v = q("[data-cgc-video]"), shutter = q("[data-cgc-shutter]"); shutter.disabled = true;
+    var md = g().navigator && g().navigator.mediaDevices;
+    if (!md || !md.getUserMedia) return cameraFailed("unsupported");
+    try {
+      try { st.stream = await md.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false }); }
+      catch (e) { if (e && (e.name === "NotAllowedError" || e.name === "SecurityError")) throw e; st.stream = await md.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false }); }
+      v.srcObject = st.stream; await v.play().catch(function () {});
+      var waited = 0; while (!v.videoWidth && waited < 4000) { await new Promise(function (r) { setTimeout(r, 100); }); waited += 100; }
+      shutter.disabled = false; say(t("Cadrez la carte grise entière, puis capturez."));
+    } catch (e) { cameraFailed(e && e.name); }
+  }
+  function cameraFailed(reason) {
+    stopCamera(); view("camera");
+    var msg = reason === "NotAllowedError" || reason === "SecurityError" ? t("L'accès à la caméra a été refusé. Autorisez-le dans le navigateur, ou importez un fichier.")
+      : reason === "NotFoundError" || reason === "OverconstrainedError" ? t("Aucune caméra n'est disponible sur cet appareil. Importez un fichier.")
+      : t("La caméra n'a pas pu être ouverte. Importez un fichier.");
+    say(msg, "error");
+    var box = q("[data-cgc-view=camera] .ida-cluster");
+    if (!q("[data-cgc-fallback-file]")) box.insertBefore(el("button", { type: "button", class: "ida-btn ida-btn--secondary", "data-cgc-fallback-file": "" }, t("Importer un fichier")), box.firstChild);
+    q("[data-cgc-shutter]").disabled = true;
+  }
+  async function capture() {
+    var v = q("[data-cgc-video]"); if (!st.stream || !v.videoWidth) return;
+    q("[data-cgc-shutter]").disabled = true;
+    var blob = null, track = st.stream.getVideoTracks()[0];
+    // the camera's own photograph when the browser offers it (full sensor resolution, as the camera encodes it)
+    if (g().ImageCapture && track) { try { blob = await new g().ImageCapture(track).takePhoto(); } catch (e) { blob = null; } }
+    if (!blob) {   // otherwise the full frame, losslessly (PNG): no recompression of the archival original
+      var c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
+      blob = await new Promise(function (r) { c.toBlob(r, "image/png"); });
+    }
+    stopCamera();
+    var stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
+    preview({ blob: blob, type: blob.type || "image/png", method: "camera", name: "carte-grise-" + stamp + (blob.type === "image/jpeg" ? ".jpg" : ".png") });
+  }
+
+  // ---- 2. file --------------------------------------------------------------------------------------------------------
+  async function fromFile(f) {
+    var head = new Uint8Array(await f.slice(0, 5).arrayBuffer()), pdf = String.fromCharCode.apply(null, head) === "%PDF-";
+    show();
+    if (!pdf && IMAGE_TYPES.indexOf(f.type) === -1) { view("preview"); clear(q("[data-cgc-preview]")); q("[data-cgc-meta]").textContent = ""; q("[data-cgc-confirm]").disabled = true; return say(t("Type de fichier non accepté : JPEG, PNG, WebP ou PDF."), "error"); }
+    if (f.size > (pdf ? LIMITS.pdf : LIMITS.image)) { view("preview"); clear(q("[data-cgc-preview]")); q("[data-cgc-confirm]").disabled = true; return say(t("Fichier trop volumineux.") + " (" + kb(f.size) + ")", "error"); }
+    preview({ blob: f, type: pdf ? "application/pdf" : f.type, method: "upload", name: f.name || null });
+  }
+
+  // ---- 3. clipboard ---------------------------------------------------------------------------------------------------
+  async function paste() {
+    var clip = g().navigator && g().navigator.clipboard;
+    if (clip && typeof clip.read === "function") {
+      try {
+        var items = await clip.read();
+        for (var i = 0; i < items.length; i++) {
+          var type = items[i].types.filter(function (x) { return IMAGE_TYPES.indexOf(x) !== -1; })[0];
+          if (type) { var b = await items[i].getType(type); return preview({ blob: b, type: type, method: "paste_image", name: null }); }
+        }
+        var tt = items.some(function (it) { return it.types.indexOf("text/plain") !== -1; });
+        if (tt) { var tb = await items.filter(function (it) { return it.types.indexOf("text/plain") !== -1; })[0].getType("text/plain"); return textInClipboard(await tb.text()); }
+        return pasteTarget(t("Le presse-papiers ne contient pas d'image. Copiez l'image de la carte grise, puis appuyez sur Ctrl+V ici."));
+      } catch (e) { /* not allowed or not supported here: the Ctrl+V target below */ }
+    }
+    pasteTarget(null);
+  }
+  function pasteTarget(msg) {
+    view("paste"); show(); q("[data-cgc-text-offer]").hidden = true; say(msg || "");
+    var tgt = q("[data-cgc-paste-target]"); tgt.focus();
+  }
+  function onPaste(e) {
+    var dt = e.clipboardData; if (!dt) return;
+    e.preventDefault();
+    var img = Array.from(dt.items || []).filter(function (i) { return i.kind === "file" && IMAGE_TYPES.indexOf(i.type) !== -1; })[0];
+    if (img) { var f = img.getAsFile(); if (f) return preview({ blob: f, type: f.type, method: "paste_image", name: null }); }
+    var text = dt.getData && dt.getData("text/plain");
+    if (text) return textInClipboard(text);
+    say(t("Le presse-papiers ne contient pas d'image."), "error");
+  }
+  // text is NOT an image: said plainly; keeping it as a text source is a separate, explicit choice
+  function textInClipboard(text) {
+    view("paste"); show(); st.pendingText = text;
+    say(t("Le presse-papiers contient du texte, pas une image de carte grise."), "error");
+    q("[data-cgc-text-offer]").hidden = !(text && text.trim().length >= LIMITS.textMin);
+  }
+  function keepText() {
+    var text = st.pendingText || ""; if (text.trim().length < LIMITS.textMin) return;
+    preview({ blob: new Blob([new TextEncoder().encode(text)], { type: "text/plain;charset=utf-8" }), type: "text/plain; charset=utf-8", method: "paste_text", name: null, text: text });
+  }
+
+  // ---- the one preview ------------------------------------------------------------------------------------------------
+  var TYPE_FR = { "image/jpeg": "Image JPEG", "image/png": "Image PNG", "image/webp": "Image WebP", "application/pdf": "PDF", "text/plain; charset=utf-8": "Texte" };
+  function preview(item) {
+    st.item = item; view("preview"); show(); say("");
+    var box = clear(q("[data-cgc-preview]")), conf = q("[data-cgc-confirm]");
+    if (/^image\//.test(item.type)) box.appendChild(el("img", { src: url(item.blob), alt: t("Aperçu de la carte grise"), class: "ida-cgc-preview", "data-cgc-preview-image": "" }));
+    else if (item.type === "application/pdf") {
+      var u = url(item.blob);
+      box.appendChild(el("p", { class: "ida-cgc-doc", "data-cgc-preview-pdf": "" }, "PDF — " + (item.name || "document.pdf")));
+      box.appendChild(el("a", { href: u, target: "_blank", rel: "noopener", class: "ida-btn ida-btn--ghost ida-btn--sm" }, t("Ouvrir l'aperçu du PDF")));
+    } else box.appendChild(el("pre", { class: "ida-cgc-text", dir: "auto", "data-cgc-preview-text": "" }, item.text));
+    q("[data-cgc-meta]").textContent = t(TYPE_FR[item.type] || item.type) + " · " + kb(item.blob.size) + (item.name ? " · " + item.name : "");
+    conf.disabled = false; conf.focus();
+  }
+
+  // ---- upload, only on « Confirmer » ----------------------------------------------------------------------------------
+  var REASONS = {
+    carte_grise_exists: "Une carte grise est déjà enregistrée pour cette face : rien n'a été remplacé.",
+    carte_grise_exists_new_version_required: "Une carte grise existe déjà : utilisez « Ajouter une nouvelle version ».",
+    unsupported_type: "Type de fichier non accepté : JPEG, PNG, WebP ou PDF.", too_large: "Fichier trop volumineux.", too_small: "Image trop petite pour être lisible.",
+    pdf_incomplete: "Ce PDF est incomplet ou endommagé.", pdf_encrypted: "Ce PDF est protégé par un mot de passe.", not_utf8: "Ce texte n'a pas pu être lu.", too_short: "Le texte est trop court.",
+    face_1_required_first: "Ajoutez d'abord le recto (face 1)."
+  };
+  async function confirm() {
+    var it = st.item, o = st.opts || {}; if (!it || st.busy) return;
+    st.busy = true; var btn = q("[data-cgc-confirm]"); btn.disabled = true; say(t("Enregistrement…"));
+    var h = { "Content-Type": it.type, "X-IDauto-Face": q("[data-cgc-face]").value === "2" ? "2" : "1", "X-IDauto-Input": it.method };
+    if (it.name) h["X-IDauto-Filename"] = encodeURIComponent(it.name);
+    if (o.mode !== "public") h["X-IDauto-Session"] = "1";
+    if (o.newVersion) h["X-IDauto-New-Version"] = "1";
+    try {
+      var path = o.mode === "public" ? "/public/vehicles/" + encodeURIComponent(o.ivid) + "/carte-grise" : "/api/vehicles/" + encodeURIComponent(o.ivid) + "/carte-grise";
+      var r = await fetch(path, { method: "POST", credentials: o.mode === "public" ? "omit" : "same-origin", headers: h, body: it.blob });
+      var b = await r.json().catch(function () { return {}; });
+      if (!r.ok) {
+        var why = b && b.details && b.details.reason || b.reason;
+        throw new Error(r.status === 401 || r.status === 403 ? t("Connectez-vous pour enregistrer une carte grise.") : r.status === 429 ? t("Trop d'envois : réessayez plus tard.") : t(REASONS[why] || b.message_fr || "L'enregistrement n'a pas abouti."));
+      }
+      var dup = !!(b.duplicate_of || b.duplicate);
+      q("[data-cgc-done-msg]").textContent = dup ? t("Ce document est déjà dans le dossier du véhicule : rien n'a été ajouté.")
+        : o.mode === "public" ? t("Reçu — un administrateur le vérifiera avant de l'ajouter au dossier.") : t("Carte grise enregistrée dans le dossier du véhicule.");
+      view("done"); say("");
+      if (o.onDone) o.onDone({ duplicate: dup, document: b.document || null });
+    } catch (e) { say(e.message, "error"); btn.disabled = false; }
+    finally { st.busy = false; }
+  }
+
+  return { start: start, close: close, LIMITS: LIMITS, _state: st, _fromFile: fromFile, _onPaste: onPaste, _textInClipboard: textInClipboard };
 });

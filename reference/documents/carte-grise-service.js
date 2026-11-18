@@ -95,6 +95,13 @@ async function store(vehicleRef, input, actor, opts) {
   // a face 2 alone is not a document (as in IDA-V14) — except a public deposit, which is reviewed anyway
   // (any current recto counts, whoever deposited it — the verso completes the vehicle's document, not the caller's)
   if (face === 2 && !opts.public && !(await db.query("SELECT 1 FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = 1 AND superseded_at IS NULL AND review_status = 'accepted'", [vehicle.id])).rows.length) throw Object.assign(errors.IdautoError('CONFLICT', { reason: 'face_1_required_first' }), { httpStatus: 409 });
+  // A carte grise already recorded for this face is never replaced by an ordinary upload (no accidental duplicate):
+  // only an administrator, with an EXPLICIT « new version » request, adds a version. Public deposits are reviewed anyway.
+  if (!opts.public) {
+    var cur = (await db.query("SELECT 1 FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND face = $2 AND superseded_at IS NULL AND review_status = 'accepted'", [vehicle.id, face])).rows.length;
+    var p = actor && actor.principal || {}, isAdmin = p.kind !== 'organisation' && p.kind !== 'public';
+    if (cur && !(input.new_version === true && isAdmin)) throw Object.assign(errors.IdautoError('CONFLICT', { reason: isAdmin ? 'carte_grise_exists_new_version_required' : 'carte_grise_exists' }), { httpStatus: 409 });
+  }
   var derivedMeta = null;
   if (input.derived && input.derived.length) {
     if (kind.source_format !== 'CARTE_GRISE_IMAGE') throw bad('derived_only_for_images');
@@ -158,6 +165,15 @@ async function bytesOf(vehicleRef, id, actor, which) {
   return { bytes: bytes, mime_type: which === 'preview' ? 'image/jpeg' : r.mime_type, filename: r.original_filename };
 }
 // The corrected crop of a photographed card, sent after the original (one request per file: the original travels untouched).
+// Is there a carte grise for this vehicle? Read from the database (never from the page's state). For a visitor the answer
+// is only « yes / no » and the date of the latest document — no id, no file, no holder data.
+async function status(vehicleRef) {
+  var vehicle = await vehicleFor(vehicleRef);
+  var rows = (await db.query("SELECT face, created_at FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND superseded_at IS NULL AND review_status = 'accepted' ORDER BY created_at DESC", [vehicle.id])).rows;
+  var n = (await db.query("SELECT count(*)::int n FROM idauto_vehicle_documents WHERE vehicle_id = $1 AND document_type = 'carte_grise' AND review_status = 'accepted'", [vehicle.id])).rows[0].n;
+  return { vehicle: vehicle.ivid, exists: rows.length > 0, latest_at: rows[0] ? rows[0].created_at : null, faces: rows.map(function (r) { return r.face; }).sort(), documents: n };
+}
+
 async function setPreview(vehicleRef, id, bytes, actor) {
   var vehicle = await vehicleFor(vehicleRef);
   if (!bytes || !bytes.length || bytes.length > LIMITS.derived_bytes) throw bad(bytes && bytes.length ? 'derived_too_large' : 'empty', bytes && bytes.length ? 413 : 400);
@@ -194,4 +210,4 @@ async function review(id, decision, actor) {
   return { id: String(row.id), review: decision };
 }
 
-module.exports = { setPreview: setPreview, store: store, history: history, bytesOf: bytesOf, review: review, classify: classify, LIMITS: LIMITS, METHODS: METHODS, TEXT_MIME: TEXT_MIME };
+module.exports = { status: status, setPreview: setPreview, store: store, history: history, bytesOf: bytesOf, review: review, classify: classify, LIMITS: LIMITS, METHODS: METHODS, TEXT_MIME: TEXT_MIME };
