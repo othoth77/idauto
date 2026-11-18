@@ -98,7 +98,7 @@ async function arch(where, params) { return (await db.query('SELECT * FROM idaut
   if (!/^idauto_scratch_/.test(dbName)) { console.error('FATAL: refusing to run against "' + dbName + '"'); process.exit(1); }
 
   say('\n1. MIGRATION');
-  for (var f of ['ida-u31-scan-photos.sql', 'ida-u4-archive-vin.sql']) {
+  for (var f of ['ida-u31-scan-photos.sql', 'ida-u4-archive-vin.sql', 'ida-u4b-vin-lookup-index.sql']) {
     var sql = fs.readFileSync(path.join(BASE, 'database', 'migrations', f), 'utf8');
     for (var i = 0; i < 2; i++) { var c = await db.getClientForTransaction(); try { await c.query('BEGIN'); await c.query(sql); await c.query('COMMIT'); } catch (e) { await c.query('ROLLBACK'); throw e; } finally { c.release(); } }
   }
@@ -162,6 +162,12 @@ async function arch(where, params) { return (await db.query('SELECT * FROM idaut
   ok(vh.status === 200 && vh.body.ivid === IVID && vh.buf.toString().indexOf(VIN) === -1, 'public VIN search (lower case, a space) → this vehicle\'s IVID, the VIN never echoed');
   ok((await request('POST', '/public/vin', null, { vin: VIN.slice(0, 16) + (VIN[16] === '1' ? '2' : '1') })).status === 404, 'one character different → 404 (exact only)');
   ok((await request('POST', '/public/vin', null, { vin: 'KPT60A1YSLO025697' })).status === 400, 'a VIN with an O → 400');
+  // a VIN fact written WITHOUT its normalized value (as found in production) is still found
+  var P2 = await freePlate(), VIN2 = freeVin();
+  var reg2 = await request('POST', '/api/vehicles/register', T.ADMIN, { plate: { type: 'TU', series: P2.series, number: P2.number }, vin: VIN2 });
+  await db.query("UPDATE idauto_vehicle_facts SET fact_value_normalized = NULL WHERE fact_key = 'vin' AND vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1)", [reg2.body.ivid]);
+  var vh2 = await request('POST', '/public/vin', null, { vin: VIN2.toLowerCase() });
+  ok(vh2.status === 200 && vh2.body.ivid === reg2.body.ivid, 'a VIN fact stored without its normalized value is still found (exact)');
   var pl = await request('GET', '/public/plates/' + encodeURIComponent(P.series + ' TUN ' + P.number));
   ok(pl.status === 200 && pl.body.ivid === IVID, 'the plate search still works and finds the same vehicle');
   var audit = (await db.query("SELECT target_ref FROM idauto_audit_log WHERE event_type IN ('public_vin_lookup_hit','public_vin_lookup_miss') ORDER BY id DESC LIMIT 5")).rows;
