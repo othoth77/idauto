@@ -1,7 +1,7 @@
 # Privacy Architecture
 
 **Status:** partly IMPLEMENTED and test-enforced, partly SPECIFIED. §9 states which.
-**Last updated:** 2026-11-05 (§1a owner contact, owner decision)
+**Last updated:** 2026-11-20 (§1a: owner identity moving to CONTACT; previous: 2026-11-05 owner contact, owner decision)
 **Predecessors:** the privacy contract established at IDA-0/IDA-1 in
 [`PRODUCT_SPEC.md`](PRODUCT_SPEC.md) and [`CAPTURE_PIPELINE.md`](CAPTURE_PIPELINE.md), which
 this document preserves rather than replaces.
@@ -26,6 +26,14 @@ tables, and it runs in the suite on every change.
 
 ### 1a. Owner contact, per workshop (owner decision 2026-11-05, IDA-UI-3)
 
+> **Status 2026-11-20 — Legacy / being superseded.** Person identity in Mythos is owned by
+> [CONTACT](https://github.com/othoth77/contact), the master contact registry (`CNT` ids). IDauto
+> becomes a Contact Consumer that stores only the owner's `contact_id`. **Integration in progress:**
+> shadow mode is available (`IDAUTO_CONTACT_MODE=shadow`), the mode is `off` by default, and the
+> local owner store described below **stays authoritative until the migration is verified.** See
+> §1b. The text below is kept as the record of the 2026-11-05 design and still describes the
+> running behaviour.
+
 The platform owner decided that a workshop may record **the owner's name and contact** (phone,
 e-mail, address) for a vehicle it handles, as its own client record, readable by the workshop's
 administrator, manager and technician accounts. §1 still holds for every **public** record; the
@@ -42,6 +50,31 @@ change is exactly the "separate, access-controlled association" §2 anticipated:
 
 Workshop tables still hold no name, phone, address or e-mail (`ida-v12` test): the workshop keeps
 its opaque `customer_ref`; the contact is attached to the vehicle, per workshop.
+
+### 1b. Owner identity in CONTACT (2026-11-20, integration in progress)
+
+| Mode (`IDAUTO_CONTACT_MODE`) | What IDauto stores | CONTACT unavailable |
+|---|---|---|
+| `off` (default) | the §1a row (legacy) | not called |
+| `shadow` | the §1a row **plus** `contact_id` (the CNT returned by CONTACT), written AFTER the local commit | the request succeeds; the row is marked `contact_sync_pending = TRUE` and retried later (`drainPending`) |
+| `authoritative` (**not enabled anywhere**) | `contact_id` only — no name, phone, e-mail, address or notes | the save is refused with `503 CONTACT_UNAVAILABLE`; no local fallback, no invented id |
+
+Rules kept by `reference/contact/owner-identity.js` (test: `tests/ida-contact-owner-identity-test.js`):
+
+- no call to CONTACT inside a database transaction (shadow: after the commit; authoritative: before it);
+- IDauto never creates a CNT itself; only ids returned by CONTACT are stored (`chk_owner_contact_cnt`);
+- audit rows and log lines carry the internal vehicle id, the mode and the outcome only — never a
+  name, phone, e-mail, address, the CNT, or the CONTACT token;
+- the owner reference sent to CONTACT is `ref_kind = vehicle_owner`, `record_id = <vehicle_id>@<org_id|admin>`,
+  `relationship_type = vehicle_owner`; the workshop's free-text notes are never sent.
+
+**Known risk — owner search in a URL.** `GET /api/search?q=` carries the typed owner name or phone
+in the query string, which reverse proxies and access logs may record. The CONTACT SDK's search is
+also a GET with the phone in the query string. Not changed by this integration; proxy access logs
+must not retain query strings for `/api/search` until the search moves to a POST body.
+
+The local table `idauto_vehicle_owner_contacts` is **not** removed: that is blocked until CONTACT is
+deployed and the backfill is verified with before/after counts.
 
 ---
 

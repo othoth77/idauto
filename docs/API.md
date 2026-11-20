@@ -91,12 +91,20 @@ Uploads and OCR runs: 60 per user per 10 minutes.
 Every route filters by organisation in SQL: an organisation sees the shared registry (identity, plates) plus only
 ITS OWN interventions, documents and owner contacts; an admin sees everything.
 
+**Owner identity — CONTACT (2026-11-20, integration in progress).** Owner identity is moving to
+[CONTACT](https://github.com/othoth77/contact), the Mythos master contact registry. The owner routes below
+keep their shape. `IDAUTO_CONTACT_MODE` = `off` (default, legacy: local store only) · `shadow` (local store
+authoritative; the CNT is added after the commit; a CONTACT outage never fails the request) · `authoritative`
+(**not enabled anywhere**; CONTACT first, CNT only, 503 on outage). `docs/PRIVACY_ARCHITECTURE.md` §1b.
+**Known risk:** the owner search (`GET /api/search?q=`) puts the typed name or phone in the URL query string,
+which proxies and access logs may record.
+
 | Route | Scope | Notes |
 |---|---|---|
 | `POST /api/vehicles/register` | `vehicle:write` | manual registration from the carte grise: `{ plate: {type:'TU'\|'RS', series, number} (« 123 TU 4567 », « 123 RS 4567 ») \| "123 TU 4567", vin?, make (required), model?, variant?, year?, fuel_type?: petrol\|diesel\|lpg\|electric\|hybrid\|other, engine_cc?, seats?, gross_weight_kg?, category_code?, body_type?, colour?, engine_code?, owner?: {full_name, phone?, email?, address?} }` — a plate or a VIN is required. One transaction (plate/VIN locked): vehicle, IVID, plate, VIN, owner. 409 `vehicle_already_registered`: the IVID is given for a plate only with `plate:read`, for a VIN only with `vin:search`; a VIN conflict is a VIN lookup and is audited (`vehicle.search.vin`, digest only) even though the registration rolls back. 30 attempts/min per account (429). Photos then go to `PUT …/registration-document/:face`. |
 | `GET /api/vehicles/:ref/dossier` | `vehicle:read` | `{ vehicle (VIN only with vin:search — audited), plates, documents{faces, can_upload, can_delete}, owner{recorded, can_read, can_write}, maintenance[interventions with operations, parts, source, technician], identification, scope }` |
-| `GET /api/vehicles/:ref/owner` | `owner:read` | `{ contacts[] }` — this workshop's contact (admin: all); **every read audited** (`vehicle.owner.read`, no personal data in the row) |
-| `PUT /api/vehicles/:ref/owner` · `DELETE` | `owner:write` | `{ full_name (required), phone?, email?, address?, notes? }` — supersedes the previous row (history kept); delete supersedes too |
+| `GET /api/vehicles/:ref/owner` | `owner:read` | `{ contacts[] }` — this workshop's contact (admin: all); **every read audited** (`vehicle.owner.read`, no personal data in the row). Each contact also carries `contact_id` (the owner's CONTACT id, `CNT…`, or `null` while unlinked) |
+| `PUT /api/vehicles/:ref/owner` · `DELETE` | `owner:write` | `{ full_name (required), phone?, email?, address?, notes? }` — supersedes the previous row (history kept); delete supersedes too. With `IDAUTO_CONTACT_MODE=authoritative` (not enabled anywhere) the owner is resolved in CONTACT first: **503 `CONTACT_UNAVAILABLE`** when CONTACT is down, **409 `CONTACT_REVIEW_REQUIRED`** when CONTACT cannot decide without a human |
 | `GET /api/workspace/vehicles?q&page` | `vehicle:read` | the workshop's vehicles (visited, registered, documented, with an owner contact or a note); admin: all. `total` = rows matching the search; each row carries `odometer_km` |
 | `GET /api/workspace/documents?page` | `document:read` | vehicles with carte grise photos |
 | `GET /api/workspace/interventions?status&id&vehicle` | `workshop:read` | interventions with their operations |
