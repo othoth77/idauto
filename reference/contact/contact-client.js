@@ -1,4 +1,5 @@
-// VENDORED from othoth77/contact integrations/sdk/contact-client.js at commit 08566c3 — do NOT edit locally; update by re-copying from CONTACT.
+/* VENDORED from othoth77/contact integrations/sdk/contact-client.js @ 2fc5599.
+ * Do not edit locally: change it upstream in CONTACT and re-vendor. */
 'use strict';
 
 /* CONTACT client SDK — the one way a Mythos project talks to CONTACT.
@@ -66,7 +67,7 @@ function createClient(cfg) {
     if (idem && opts.idempotent !== false) headers['Idempotency-Key'] = idem;
     if (opts.correlationId) headers['X-Correlation-Id'] = opts.correlationId;
     if (opts.actor) headers['X-Contact-Actor'] = String(opts.actor).slice(0, 80);
-    var retryable = method === 'GET' || !!headers['Idempotency-Key'];
+    var retryable = method === 'GET' || method === 'PUT' || !!headers['Idempotency-Key'];   // PUT record upserts are idempotent by key
     var attempts = 1 + (retryable ? cfg.retries : 0);
     var lastErr;
     for (var i = 0; i < attempts; i++) {
@@ -132,6 +133,10 @@ function createClient(cfg) {
     associations: function (id, o) { return request('GET', '/contacts/' + assertContactId(id) + '/associations', undefined, o); },
     // One event, or { events: [...] }. event_id gives a stable idempotency key across retries/restarts.
     recordEvents: function (evOrBatch, o) { return request('POST', '/events', evOrBatch, Object.assign({ idempotencyKey: evOrBatch.event_id ? tokenProject + ':ev:' + evOrBatch.event_id : undefined }, o)); },
+    // Project record references (e.g. a CMF order on the contact fiche). Idempotent upsert per (project, record_type, record_id, contact).
+    upsertRecord: function (id, rec, o) { return request('PUT', '/contacts/' + assertContactId(id) + '/records', rec, o); },
+    records: function (id, params, o) { return request('GET', '/contacts/' + assertContactId(id) + '/records' + q(params), undefined, o); },
+    profile: function (id, o) { return request('GET', '/contacts/' + assertContactId(id) + '/profile', undefined, o); },
     timeline: function (id, params, o) { return request('GET', '/contacts/' + assertContactId(id) + '/timeline' + q(params), undefined, o); },
     notes: function (id, o) { return request('GET', '/contacts/' + assertContactId(id) + '/notes', undefined, o); },
     addNote: function (id, note, o) { return request('POST', '/contacts/' + assertContactId(id) + '/notes', note, o); },

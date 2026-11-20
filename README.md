@@ -24,7 +24,7 @@ migration is verified.**
 
 | Item | State |
 |---|---|
-| SDK | vendored verbatim (one header line added, never edited locally): `reference/contact/contact-client.js` (CONTACT commit `08566c3`) |
+| SDK | vendored verbatim (one header line added, never edited locally): `reference/contact/contact-client.js` (CONTACT commit `2fc5599`) |
 | Seam | `reference/contact/owner-identity.js`, mode `IDAUTO_CONTACT_MODE` = `off` (default) · `shadow` · `authoritative` |
 | `off` | today's behaviour everywhere: no CONTACT call |
 | `shadow` | the owner is still written to `idauto_vehicle_owner_contacts`; after the commit it is resolved in CONTACT and the CNT is stored in `contact_id`. CONTACT down → the request still succeeds, the row is marked `contact_sync_pending` |
