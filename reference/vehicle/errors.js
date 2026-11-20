@@ -26,7 +26,10 @@ var CATALOG = {
   NOT_FOUND:              { status: 404, fr: 'Élément introuvable.' },
   VALIDATION:             { status: 400, fr: 'Données invalides.' },
   FORBIDDEN:              { status: 403, fr: 'Accès refusé.' },
-  CONFLICT:               { status: 409, fr: 'Conflit avec un enregistrement existant.' }
+  CONFLICT:               { status: 409, fr: 'Conflit avec un enregistrement existant.' },
+  // CONTACT (master contact registry) — used only when IDAUTO_CONTACT_MODE=authoritative.
+  CONTACT_UNAVAILABLE:     { status: 503, fr: 'Le registre des contacts (CONTACT) est indisponible. Le propriétaire n\'a pas été enregistré ; réessayez dans un instant.' },
+  CONTACT_REVIEW_REQUIRED: { status: 409, fr: 'Le propriétaire doit être vérifié dans le registre des contacts avant d\'être rattaché au véhicule.' }
 };
 
 function IdautoError(code, details, message) {

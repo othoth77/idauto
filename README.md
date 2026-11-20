@@ -13,6 +13,31 @@ Citizen → Vehicle Identity → Digital Vehicle Passport → Evidence
 
 ---
 
+## CONTACT OWNERSHIP NOTICE
+
+**Person and organisation identity in Mythos is owned by [CONTACT](https://github.com/othoth77/contact)**,
+the master contact registry (ids `CNT000001`). IDauto is a *Contact Consumer*: in the target
+state it stores only the owner's `contact_id`, plus its own vehicle, dossier, workshop and audit data.
+
+**Integration in progress — shadow mode available, local owner store still authoritative until
+migration is verified.**
+
+| Item | State |
+|---|---|
+| SDK | vendored verbatim (one header line added, never edited locally): `reference/contact/contact-client.js` (CONTACT commit `2fc5599`) |
+| Seam | `reference/contact/owner-identity.js`, mode `IDAUTO_CONTACT_MODE` = `off` (default) · `shadow` · `authoritative` |
+| `off` | today's behaviour everywhere: no CONTACT call |
+| `shadow` | the owner is still written to `idauto_vehicle_owner_contacts`; after the commit it is resolved in CONTACT and the CNT is stored in `contact_id`. CONTACT down → the request still succeeds, the row is marked `contact_sync_pending` |
+| `authoritative` | implemented and tested, **not enabled anywhere**: CONTACT first, the row keeps only `contact_id`, an outage refuses the save (503) |
+| Migration | `database/migrations/ida-c1-contact-owner-link.sql` — draft, not applied to any deployed database; it must be applied before `shadow` is switched on |
+| Removal of the local owner table | **BLOCKED** until CONTACT is deployed and the backfill is verified (before/after counts) |
+
+The owner-identity design described in `docs/PRIVACY_ARCHITECTURE.md` §1a (local owner contact
+per workshop) is **Legacy** from now on: it remains the running behaviour until the switch, and is
+kept for history.
+
+---
+
 ## What IDauto is
 
 A **protocol** for stating and verifying facts about a vehicle, plus a **reference
@@ -123,6 +148,7 @@ Nothing in this repository pretends to be further along than it is.
 | Client restructuring (2026-11-06): five-section menu (Tableau de bord · Véhicules · Ateliers · Pièces · Paramètres), dashboard of five database counts each linked to its list, workshop page (vehicles and repairs), parts with totals per declared source | **IMPLEMENTED** (branch `feature/client-restructure-20261106`) — superseded by IDA-UI-4 (`docs/SIMPLIFICATION_2026-11.md`) |
 | Simplification IDA-UI-4 (2026-11-06): five menu links (Tableau de bord · Véhicules · Interventions · Pièces · Paramètres), vehicle form with only the plate required, file editing, one intervention form with several parts and a two-choice declared source, simple parts page, one light theme | **IMPLEMENTED** (branch `feature/simplification-20261106`) — `docs/SIMPLIFICATION_2026-11.md` |
 | Operator console, admin only, read only: dashboard `/admin/dashboard`, vehicle registry `/admin/vehicles` + dossier `/admin/vehicle`, maintenance history `/admin/maintenance`, ateliers & data sources `/admin/sources`, data quality `/admin/quality` (+ French review queue `/admin/review`), security & audit `/admin/security`, one shared responsive sidebar (IDA-ADMIN-1..7) | **IMPLEMENTED** — [`docs/ADMIN_CONSOLE.md`](docs/ADMIN_CONSOLE.md) |
+| Owner identity in CONTACT, the Mythos master contact registry (2026-11-20) | **IN PROGRESS** — shadow mode available, off by default; local owner store still authoritative (see « CONTACT OWNERSHIP NOTICE » above) |
 | Web authentication: `/login` (e-mail + password, Better Auth), server-side sessions, HttpOnly + Secure cookie, roles admin / manager / technician (IDA-V13) | **IMPLEMENTED** — the manual admin access token is gone from every web page; Bearer remains for server-to-server integrations |
 
 Every roadmap item is tagged IMPLEMENTED / SPECIFIED / PLANNED / BLOCKED /

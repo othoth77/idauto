@@ -23,6 +23,7 @@ var vinModule = require('../vehicle/vin.js');
 var repository = require('../vehicle/vehicle-repository.js');
 var owners = require('./owner-contacts.js');
 var details = require('./vehicle-details.js');
+var ownerIdentity = require('../contact/owner-identity.js');
 
 var FUELS = ['petrol', 'diesel', 'lpg', 'electric', 'hybrid', 'other'];
 var CURRENT_YEAR = new Date().getUTCFullYear();
@@ -92,7 +93,11 @@ async function register(body, actor) {
   // transaction (with its audit row) is rolled back by the 409. It is audited on its own, before the
   // answer leaves, like every VIN search; if that audit cannot be written, the request fails closed.
   var vinProbe = null;
-  var created;
+  var created, vehicleId = null, ownerLink = null;
+  // CONTACT 'authoritative' (not enabled anywhere): resolve the owner BEFORE the transaction — a remote call never
+  // runs inside it. The vehicle id does not exist yet, so the CONTACT reference is attached after the commit.
+  // An outage refuses the whole registration (503 CONTACT_UNAVAILABLE): no vehicle without its owner link, no invented id.
+  if (v.owner && ownerIdentity.mode() === 'authoritative') ownerLink = await ownerIdentity.resolveOwner(v.owner, actor, null);
   try {
   created = await writes.withAudit(
     { principal: actor.principal, event_type: 'vehicle.register.manual', target_type: 'idauto_vehicles', change_summary: 'Vehicle registered manually from its carte grise' },
@@ -115,13 +120,17 @@ async function register(body, actor) {
       if (v.vehicle.recognition) await client.query('UPDATE idauto_vehicles SET visual_recognition = $1::jsonb WHERE id = $2', [JSON.stringify(v.vehicle.recognition), row.id]);
       if (v.vehicle.odometer_km !== null && v.vehicle.odometer_km !== undefined) await client.query('UPDATE idauto_vehicles SET odometer_km = $1, odometer_at = CURRENT_DATE WHERE id = $2', [v.vehicle.odometer_km, row.id]);
       if (v.vehicle.notes) await details.upsertNotesWith(client, row.id, v.vehicle.notes, actor);
-      var ownerFields = v.owner ? await owners.upsertWith(client, row.id, v.ownerInput, actor) : [];
+      vehicleId = row.id;
+      var ownerFields = ownerLink ? await owners.linkContactWith(client, row.id, ownerLink.contact_id, owners.sentFields(v.owner), actor)
+        : v.owner ? await owners.upsertWith(client, row.id, v.ownerInput, actor) : [];
       return { record: { ivid: row.ivid, plate: p ? p.canonical : null, vin_recorded: !!v.vehicle.vin, owner_fields: ownerFields }, auditTargetRef: row.ivid };
     });
   } catch (err) {
     if (vinProbe) await writes.recordVinSearchAudit(actor.principal, actor.identity, vinProbe.vin, vinProbe.ivid);
     throw err;
   }
+  // shadow: resolve in CONTACT now that the local owner row is committed — never blocks, never fails the registration
+  if (v.owner) ownerIdentity.afterOwnerWrite(vehicleId, actor, v.owner, ownerLink);
   return { ivid: created.ivid, plate: created.plate, vin_recorded: created.vin_recorded, owner_recorded: created.owner_fields.length > 0 };
 }
 
