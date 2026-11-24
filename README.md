@@ -246,3 +246,7 @@ The IDauto name and brand are not covered by that licence; see [`GOVERNANCE.md`]
 ## Miniature / Details and cross-system workflow
 
 See [Miniature/Details and Cross-System Workflow](docs/MINIATURE_DETAILS_AND_CROSS_SYSTEM_WORKFLOW.md) for the shared fiche model, one-click create/resolve orchestration, ID ownership, independent numbering, related-card navigation, and retry/recovery rules.
+
+
+## AutoCatalog integration
+AutoCatalog is the canonical parts catalog; IDAUTO remains the authority for vehicle identity and passport. Existing IDAUTO parts/stock functions remain operational/local, not global catalog ownership. See [docs/AUTOCATALOG-INTEGRATION.md](docs/AUTOCATALOG-INTEGRATION.md).
