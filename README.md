@@ -242,3 +242,7 @@ IDauto remains compatible with Mythos ecosystem services, but does not require a
 
 Apache-2.0 for the software and the protocol specification — see [`LICENSE`](LICENSE).
 The IDauto name and brand are not covered by that licence; see [`GOVERNANCE.md`](GOVERNANCE.md).
+
+## Miniature / Details and cross-system workflow
+
+See [Miniature/Details and Cross-System Workflow](docs/MINIATURE_DETAILS_AND_CROSS_SYSTEM_WORKFLOW.md) for the shared fiche model, one-click create/resolve orchestration, ID ownership, independent numbering, related-card navigation, and retry/recovery rules.
