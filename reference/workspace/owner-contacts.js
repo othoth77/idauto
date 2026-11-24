@@ -11,11 +11,18 @@
 //   * every read is audited BEFORE the data leaves (fails closed), with no
 //     personal data in the audit row (who read whose vehicle, never what);
 //   * a change supersedes the previous row — history is kept, never edited.
+//
+// CONTACT (master contact registry) — integration in progress. With
+// IDAUTO_CONTACT_MODE=off (default) nothing below changes. In 'shadow' the
+// local row stays authoritative and ../contact/owner-identity.js stores the
+// owner's CNT on it after the commit. 'authoritative' (not enabled anywhere)
+// resolves in CONTACT first and stores only contact_id (linkContactWith).
 // =====================================================
 
 var db = require('../db.js');
 var writes = require('../writes.js');
 var errors = require('../vehicle/errors.js');
+var ownerIdentity = require('../contact/owner-identity.js');
 
 function orgOf(actor) { return actor.principal && actor.principal.kind === 'organisation' ? actor.principal.org_id : null; }
 function isAdmin(actor) { return !!(actor.principal && actor.principal.kind !== 'organisation'); }
@@ -41,7 +48,7 @@ function validate(input) {
 }
 
 function view(r) {
-  return { full_name: r.full_name, phone: r.phone, email: r.email, address: r.address, notes: r.notes, recorded_at: r.created_at, recorded_by: r.created_by, org_id: r.org_id };
+  return { full_name: r.full_name, phone: r.phone, email: r.email, address: r.address, notes: r.notes, recorded_at: r.created_at, recorded_by: r.created_by, org_id: r.org_id, contact_id: r.contact_id || null };
 }
 
 // The audit row for a read: who, which vehicle, how many contacts — never their content.
@@ -74,16 +81,35 @@ async function upsertWith(client, vehicleId, input, actor) {
     throw err;
   }
   // What the audit row may say: which fields are present, never their values.
-  return ['full_name', 'phone', 'email', 'address', 'notes'].filter(function (k) { return !!c[k]; });
+  return presentFields(c);
 }
 
+// CONTACT 'authoritative' mode only: the row holds the CNT and NO personal data (resolved before the transaction).
+async function linkContactWith(client, vehicleId, contactId, fields, actor) {
+  var org = orgOf(actor);
+  await client.query('UPDATE idauto_vehicle_owner_contacts SET superseded_at = NOW(), superseded_by = $3 WHERE vehicle_id = $1 AND COALESCE(org_id, 0) = COALESCE($2::int, 0) AND superseded_at IS NULL', [vehicleId, org, actor.identity]);
+  try {
+    await client.query('INSERT INTO idauto_vehicle_owner_contacts (vehicle_id, org_id, contact_id, created_by) VALUES ($1,$2,$3,$4)', [vehicleId, org, contactId, actor.identity]);
+  } catch (err) {
+    if (err && err.code === '23505') throw errors.IdautoError('CONFLICT', { reason: 'owner_contact_changed_concurrently' });
+    throw err;
+  }
+  return fields;
+}
+function presentFields(c) { return ['full_name', 'phone', 'email', 'address', 'notes'].filter(function (k) { return !!c[k]; }); }
+// authoritative: the identity fields went to CONTACT; the workshop's free-text notes are not carried (not stored locally either)
+function sentFields(c) { return presentFields(c).filter(function (k) { return k !== 'notes'; }); }
+
 async function put(vehicle, input, actor) {
-  var fields;
+  var fields, owner = validate(input), link = null;
+  // authoritative: CONTACT first, outside any transaction; an outage refuses the save (503), nothing local is written
+  if (ownerIdentity.mode() === 'authoritative') link = await ownerIdentity.resolveOwner(owner, actor, { ref_kind: 'vehicle_owner', record_id: ownerIdentity.recordId(vehicle.id, orgOf(actor)) });
   await writes.withAudit({ principal: actor.principal, event_type: 'vehicle.owner.set', target_type: 'idauto_vehicle_owner_contacts', change_summary: 'Owner contact recorded' },
     actor.identity, async function (client) {
-      fields = await upsertWith(client, vehicle.id, input, actor);
+      fields = link ? await linkContactWith(client, vehicle.id, link.contact_id, sentFields(owner), actor) : await upsertWith(client, vehicle.id, input, actor);
       return { record: { vehicle: vehicle.ivid, fields_present: fields }, auditTargetRef: vehicle.ivid };
     });
+  ownerIdentity.afterOwnerWrite(vehicle.id, actor, owner, link);   // shadow: CONTACT after the commit; never blocks, never fails the save
   return { vehicle: vehicle.ivid, fields_present: fields };
 }
 
@@ -127,4 +153,4 @@ async function hasContact(vehicleId, actor) {
   return (await db.query('SELECT 1 FROM idauto_vehicle_owner_contacts WHERE ' + where + ' LIMIT 1', params)).rows.length > 0;
 }
 
-module.exports = { validate: validate, normalizePhone: normalizePhone, current: current, upsertWith: upsertWith, put: put, remove: remove, search: search, hasContact: hasContact };
+module.exports = { validate: validate, normalizePhone: normalizePhone, current: current, upsertWith: upsertWith, linkContactWith: linkContactWith, sentFields: sentFields, put: put, remove: remove, search: search, hasContact: hasContact };

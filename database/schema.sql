@@ -40,8 +40,13 @@
 --   owner name, owner address, national ID (CIN), passport number,
 --   phone, email, insurance policy number, insurer identity.
 -- PII columns are marked -- [NO PII] to make absences explicit.
--- Owner PII from carte grise scans goes to fixpert.clients (with consent),
--- never to any idauto_ table.
+-- SUPERSEDED (2026-11-20): "Owner PII from carte grise scans goes to fixpert.clients
+-- (with consent), never to any idauto_ table." — kept for history. Since IDA-UI-3
+-- (2026-11-05) a workshop's owner contact lives in idauto_vehicle_owner_contacts
+-- (migration ida-ui3-registration-maintenance.sql, docs/PRIVACY_ARCHITECTURE.md §1a),
+-- and owner identity is moving to CONTACT, the Mythos master contact registry
+-- (https://github.com/othoth77/contact; ida-c1-contact-owner-link.sql, §1b).
+-- Still true: no table queryable by plate number stores owner PII.
 --
 -- OBSERVATION-FIRST INVARIANT
 -- ---------------------------
@@ -585,7 +590,7 @@ CREATE TABLE idauto_document_scans (
     has_owner_pii   BOOLEAN      NOT NULL DEFAULT FALSE,
         -- TRUE if OCR found owner PII fields; PII never stored in this table
     pii_handled     BOOLEAN,
-        -- NULL=not applicable; TRUE=PII routed to fixpert.clients or discarded; FALSE=pending
+        -- NULL=not applicable; TRUE=PII routed out (historically fixpert.clients — superseded, see header) or discarded; FALSE=pending
     technical_fields_extracted TEXT,                 -- JSON of extracted public technical fields
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -600,7 +605,7 @@ CREATE TABLE idauto_document_scans (
 
 COMMENT ON TABLE idauto_document_scans IS
     'Document scan records. Original in protected storage. '
-    'Owner PII is NEVER stored in this table — routed to fixpert.clients or discarded.';
+    'Owner PII is NEVER stored in this table — routed out (fixpert.clients: superseded by CONTACT) or discarded.';
 
 CREATE INDEX idx_idauto_docs_obs     ON idauto_document_scans (observation_id);
 CREATE INDEX idx_idauto_docs_vehicle ON idauto_document_scans (vehicle_id);
