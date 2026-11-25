@@ -20,10 +20,6 @@ function ok(v, l) { if (v) { pass++; console.log('  PASS ' + l); } else { fail++
 function say(m) { console.log('\n' + m); }
 
 var TOKEN = 'idauto-token-' + 'x'.repeat(30);
-// Boundary values of the tailnet range (RFC 6598 shared address space) for the URL rule. They are fixtures, not
-// hosts, and are assembled from octets so that no literal address is committed (secret_scan rule public-ipv4).
-function ip(a, b, c, d) { return [a, b, c, d].join('.'); }
-var TAILNET_IN = ip(100, 64, 0, 9), BELOW_TAILNET = ip(100, 63, 0, 1), ABOVE_TAILNET = ip(100, 128, 0, 1);
 var dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ida-auto-'));
 function tokenFile(name, value, mode) { var f = path.join(dir, name); fs.writeFileSync(f, value + '\n'); fs.chmodSync(f, mode); return f; }
 var GOOD = tokenFile('good', TOKEN, 0o600);
@@ -82,9 +78,15 @@ async function rejects(p, code) { try { await p; return null; } catch (e) { retu
 
   say('2. WHERE THE BEARER MAY GO');
   ok(A.config({ IDAUTO_AUTO_URL: 'https://auto.example.tn', IDAUTO_AUTO_TOKEN_FILE: GOOD }).enabled, 'https to any host is allowed');
-  ok(A.config({ IDAUTO_AUTO_URL: 'http://127.0.0.1:8760', IDAUTO_AUTO_TOKEN_FILE: GOOD }).enabled, 'http on loopback is allowed');
-  ok(A.config({ IDAUTO_AUTO_URL: 'http://' + TAILNET_IN + ':8760', IDAUTO_AUTO_TOKEN_FILE: GOOD }).enabled, 'http on the tailnet (RFC 6598 range) is allowed');
-  ['http://auto.example.tn', 'http://192.168.1.5:8760', 'http://' + ABOVE_TAILNET, 'http://' + BELOW_TAILNET, 'ftp://127.0.0.1', 'https://user:password@auto.example.tn', 'https://auto.example.tn/?x=1', 'not a url']
+  ok(A.config({ IDAUTO_AUTO_URL: 'https://192.0.2.10:8760', IDAUTO_AUTO_TOKEN_FILE: GOOD }).enabled, 'https to an address is allowed (TEST-NET-1 documentation address)');
+  // Plain http only where the bearer cannot leave this host: the whole loopback range, localhost, ::1.
+  ['http://127.0.0.1:8760', 'http://127.255.255.254:8760', 'http://localhost:8760', 'http://[::1]:8760']
+    .forEach(function (u) { ok(A.config({ IDAUTO_AUTO_URL: u, IDAUTO_AUTO_TOKEN_FILE: GOOD }).enabled, 'http on loopback is allowed: ' + u); });
+  // Everything else over plain http is refused, private networks and documentation addresses included; so are other
+  // schemes, credentials in the URL, a query or fragment, a host that only looks like loopback, and garbage.
+  ['http://auto.example.tn', 'http://10.0.0.5:8760', 'http://172.16.0.1:8760', 'http://192.168.1.5:8760', 'http://192.0.2.10:8760',
+    'http://198.51.100.7:8760', 'http://203.0.113.9:8760', 'http://127.0.0.1.example.tn', 'ftp://127.0.0.1', 'https://user:password@auto.example.tn',
+    'https://auto.example.tn/?x=1', 'https://auto.example.tn/#frag', 'not a url']
     .forEach(function (u) { ok(A.config({ IDAUTO_AUTO_URL: u, IDAUTO_AUTO_TOKEN_FILE: GOOD }).reason === 'url_not_allowed', 'refused: ' + u); });
   ok(A.config({ IDAUTO_AUTO_URL: auto.url }).reason === 'token_file_missing', 'a URL without a token file is not enabled');
   ok(A.config({ IDAUTO_AUTO_TOKEN_FILE: GOOD }).reason === 'url_missing', 'a token file without a URL is not enabled');
@@ -164,6 +166,45 @@ async function rejects(p, code) { try { await p; return null; } catch (e) { retu
   var dead = client({ IDAUTO_AUTO_URL: 'http://127.0.0.1:9', IDAUTO_AUTO_TOKEN_FILE: GOOD });
   var de = await rejects(dead.capabilities(), 'AUTO_UNREACHABLE');
   ok(de && de.retryable === true && dead.sleeps.length === 2, 'connection refused → AUTO_UNREACHABLE after bounded retries');
+
+  say('7b. RETRY-AFTER: DELAY-SECONDS AND HTTP-DATE (RFC 9110 §10.2.3, §5.6.7)');
+  var NOW = Date.UTC(2026, 10, 25, 21, 0, 0);                       // Wed, 25 Nov 2026 21:00:00 GMT
+  [['3', 3000], ['0', 0], [' 7 ', 7000], ['60', 60000], ['61', 60000], ['999999999999999999999', 60000],
+    ['Wed, 25 Nov 2026 21:00:10 GMT', 10000], ['Wednesday, 25-Nov-26 21:00:05 GMT', 5000], ['Wed Nov 25 21:00:20 2026', 20000],
+    ['Wed, 25 Nov 2026 20:59:00 GMT', 0], ['Wed Nov  4 21:00:20 2026', 0], ['Wed, 25 Nov 2026 23:00:00 GMT', 60000],
+    ['-5', null], ['1.5', null], ['0x10', null], ['1e3', null], ['', null], ['   ', null], ['soon', null], [undefined, null], [['1', '2'], null],
+    ['Thu, 25 Nov 2026 21:00:10 GMT', null], ['Wed, 31 Feb 2026 21:00:10 GMT', null], ['Wed, 25 Nov 2026 25:00:10 GMT', null],
+    ['Wed, 25 Nov 2026 21:00:10 UTC', null], ['2026-11-25T21:00:10Z', null], ['wed, 25 nov 2026 21:00:10 gmt', null]]
+    .forEach(function (t) {
+      var got = A.parseRetryAfter(t[0], NOW);
+      ok(got === t[1], 'Retry-After ' + JSON.stringify(t[0]) + ' → ' + (t[1] === null ? 'invalid, own backoff' : t[1] + ' ms') + (got === t[1] ? '' : ' (got ' + got + ')'));
+    });
+  ok(A.MAX_RETRY_AFTER_MS === 60000, 'the longest wait a server can impose is 60 s');
+  var clock = function () { return NOW; };
+  var busy = { status: 503, body: { error: { code: 'QUEUE_FULL', message: 'busy', retryable: true } } };
+  function withHeader(v) { return Object.assign({}, busy, { headers: { 'retry-after': v } }); }
+  var c1 = client(env, { now: clock });
+  auto.script.push(withHeader('Wed, 25 Nov 2026 21:00:05 GMT'), { status: 201, body: reqBody('accepted') });
+  ok((await c1.requestCapability('data.extract', {}, { idempotencyKey: KEY })).state === 'accepted' && c1.sleeps.join() === '5000', 'an HTTP-date 5 s ahead → the retry waits exactly 5000 ms');
+  var c2 = client(env, { now: clock });
+  auto.script.push(withHeader('Wed, 25 Nov 2026 20:00:00 GMT'), { status: 201, body: reqBody('accepted') });
+  await c2.requestCapability('data.extract', {}, { idempotencyKey: KEY });
+  ok(c2.sleeps.join() === '0', 'an HTTP-date already past → retry at once (0 ms)');
+  var c3 = client(env, { now: clock });
+  auto.script.push(withHeader('Fri, 25 Dec 2026 21:00:00 GMT'), { status: 201, body: reqBody('accepted') });
+  await c3.requestCapability('data.extract', {}, { idempotencyKey: KEY });
+  ok(c3.sleeps.join() === '60000', 'an HTTP-date a month ahead → capped at 60000 ms');
+  var c4 = client(env, { now: clock });
+  auto.script.push(withHeader('-5'), withHeader('soon'), { status: 201, body: reqBody('accepted') });
+  await c4.requestCapability('data.extract', {}, { idempotencyKey: KEY });
+  ok(c4.sleeps.length === 2 && c4.sleeps[0] >= 250 && c4.sleeps[0] <= 500 && c4.sleeps[1] >= 500 && c4.sleeps[1] <= 1000, 'invalid values ("-5", "soon") are ignored: exponential backoff instead (' + c4.sleeps.join(', ') + ' ms)');
+  var c5 = client(env, { now: clock }), n5 = auto.seen.length;
+  auto.script.push(withHeader('5'), withHeader('Wed, 25 Nov 2026 21:00:02 GMT'), withHeader('1'));
+  var e5 = await rejects(c5.requestCapability('data.extract', {}, { idempotencyKey: KEY }), 'QUEUE_FULL');
+  ok(e5 && e5.retryable === true && auto.seen.length - n5 === 3 && c5.sleeps.join() === '5000,2000', 'Retry-After never adds attempts: 3 attempts, 2 waits (5000, 2000 ms), then the retryable error');
+  var c6 = client(env, { now: clock }), n6 = auto.seen.length;
+  auto.script.push({ status: 409, body: { error: { code: 'idempotency_key_reused', message: 'm', retryable: false } }, headers: { 'retry-after': '1' } });
+  ok(await rejects(c6.requestCapability('data.extract', {}, { idempotencyKey: KEY }), 'idempotency_key_reused') && auto.seen.length - n6 === 1 && c6.sleeps.length === 0, 'Retry-After on a final error does not make it retryable');
 
   say('8. MALFORMED ANSWERS');
   var cb = client(env);

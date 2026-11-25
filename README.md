@@ -150,12 +150,13 @@ psql -d idauto -f database/seed-synthetic-test-data.sql   # synthetic data only
 node tests/ida-2a-schema-and-plate-validation-test.js
 ```
 
-`npm test` → `npm run test:offline` runs the database-free suites: **20 suites, 1856 assertions,
+`npm test` → `npm run test:offline` runs the database-free suites: **20 suites, 1930 assertions,
 0 failures** on a clean checkout with no PostgreSQL and no `IDAUTO_DB_*` in the environment
 (measured 2026-11-25, and re-proved on every push by
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which starts no database). The AUTO contract
-suite skips there, as it needs checkouts of `othoth77/auto` and `othoth77/agents`; with them it adds
-26 assertions ([`docs/AUTO_CLIENT.md`](docs/AUTO_CLIENT.md)).
+suite runs there against its recorded fixture (replay, 32 assertions); with checkouts of
+`othoth77/auto` and `othoth77/agents` it runs live instead and checks the fixture for drift
+(27 assertions, 1925 in total) — [`docs/AUTO_CLIENT.md`](docs/AUTO_CLIENT.md) §5.
 
 `npm run test:db` runs the suites that need a live scratch database; `npm run test:v12`,
 `test:v13` and `test:v14` run the identification / auth / registration suites against one. Test

@@ -38,7 +38,7 @@ Behaviour:
 - **Authentication:** `X-Auto-Caller: idauto` and `Authorization: Bearer <token>`.
 - **Idempotency:** an idempotency key is mandatory (`^[a-z0-9][a-z0-9-]{7,63}$`, AUTO's rule). Keep the same key across retries: a replay returns the original request (`duplicate: true`), and the same key with a different input is `409 idempotency_key_reused`.
 - **Correlation:** pass your own correlation id, or the client generates `idauto-<uuid>`. It reaches the AGENTS task unchanged.
-- **Retries:** bounded, 3 attempts by default, with exponential backoff and `Retry-After` honoured. Only transport errors, timeouts, 429, 502, 503 and 504, and FICHES errors marked `retryable: true` are retried. Everything else (validation, `capability_not_granted`, `NOT_DISPATCHABLE`, `unauthenticated`, …) is returned at once.
+- **Retries:** bounded, 3 attempts by default, with exponential backoff. `Retry-After` is honoured in both forms of RFC 9110: delay-seconds and HTTP-date (IMF-fixdate, RFC 850 and asctime, all UTC). A past date means retry now; any wait is capped at 60 s; an invalid value (negative, decimal, unparsable date) is ignored in favour of the backoff. `Retry-After` never adds attempts and never makes a final error retryable. Only transport errors, timeouts, 429, 502, 503 and 504, and FICHES errors marked `retryable: true` are retried. Everything else (validation, `capability_not_granted`, `NOT_DISPATCHABLE`, `unauthenticated`, …) is returned at once.
 - **Timeouts:** each call has one (10 s by default). An unanswered POST is an unknown outcome (`AUTO_TIMEOUT`, retryable) that the same key resolves safely. `waitFor…` ends with `AUTO_WAIT_TIMEOUT` and the last state; the work continues in AUTO.
 - **No fallback:** if AUTO or AGENTS does not execute, IDauto gets the non-execution code. The client never calls an agent, LENS or a provider itself.
 - **Observability:** a `log` callback receives one structured event per HTTP call (`op`, `status`, `attempt`, `ms`, `code`, `retryable`, `correlation_id`). It never contains the token or the request input.
@@ -47,7 +47,7 @@ Behaviour:
 
 | Variable | Meaning |
 |---|---|
-| `IDAUTO_AUTO_URL` | AUTO's base URL. `https://` to any host; `http://` only on loopback or the tailnet (the RFC 6598 shared address space Tailscale uses), so the bearer never crosses an untrusted network in clear. |
+| `IDAUTO_AUTO_URL` | AUTO's base URL. `https://` to any host, a tailnet listener included (for example through `tailscale serve`). Plain `http://` is accepted only on loopback (`127.0.0.0/8`, `localhost`, `::1`), so the bearer never leaves this host unencrypted. |
 | `IDAUTO_AUTO_TOKEN_FILE` | IDauto's caller token for AUTO: a regular file, mode 0600 or tighter, ≥ 16 characters. The same file AUTO reads as `<AUTO_CALLER_TOKENS_DIR>/idauto`. Re-read on every call (rotation needs no restart), never logged. |
 
 With either unset, `enabled()` is false and every call fails with `AUTO_NOT_CONFIGURED` before any
@@ -68,8 +68,15 @@ LENS fails that test.
 
 | Suite | What it proves |
 |---|---|
-| `tests/ida-auto-client-test.js` (offline, 69 assertions) | Against a scripted AUTO: off by default; URL and token-file rules; the exact v1 headers and body; input refused before the network; final errors not retried; transient errors retried with the same key (`Retry-After`, timeouts, refused connections); malformed answers rejected; waiting and workflow runs; logs without secrets; token rotation; the guard of §4. |
-| `tests/ida-auto-contract-test.js` (26 assertions with checkouts of `othoth77/auto` and `othoth77/agents`; skips without them) | On the **real** AUTO server (its own registry) and the **real** AGENTS server (service authentication and policy), with only the Haddad worker played: capabilities offered to idauto; `data.extract` resolved by AGENTS to MY003 / `vision.extract` and followed to `LENS_SUCCEEDED`; caller `svc:auto` and IDauto's correlation id on the AGENTS task; replay and key reuse across the chain; validation, grant and credential refusals before AGENTS; `vehicle-document-intake` running inspect, then extract; AGENTS policy refusal and a missing worker returned as non-execution with nothing run. |
+| `tests/ida-auto-client-test.js` (offline, 111 assertions) | Against a scripted AUTO: off by default; the URL rule (plain http only on loopback) with readable boundary values (the whole loopback range, `localhost`, `::1`; RFC 1918 and documentation addresses refused); token-file rules; the exact v1 headers and body; input refused before the network; final errors not retried; transient errors retried with the same key; `Retry-After` in both RFC 9110 forms (delay-seconds and all three HTTP-date forms; past dates, invalid values and the 60 s cap), never adding attempts; timeouts and refused connections; malformed answers rejected; waiting and workflow runs; logs without secrets; token rotation; the guard of §4. |
+| `tests/ida-auto-contract-test.js` (offline; replay 32 assertions, live 27) | Section 6 below. |
 
-Run the contract test locally with sibling checkouts (`../auto`, `../agents`) or `AUTO_REPO` / `AGENTS_REPO`.
-Set `IDAUTO_REQUIRE_CONTRACT=1` to fail instead of skipping. CI has no such checkouts, so there it skips.
+## 6. The contract suite in CI: a recorded, pinned contract
+
+`othoth77/auto` and `othoth77/agents` are private, so CI cannot check them out, and copying their code into this
+public repository would publish it. The suite therefore has two modes with the same 26 assertions:
+
+- **Live**, where checkouts exist (`../auto` and `../agents`, or `AUTO_REPO` / `AGENTS_REPO`). It runs IDauto's client → the real AUTO server (its own registry) → the real AGENTS server (service authentication and policy). Only the Haddad worker is a stand-in. Every IDauto ↔ AUTO exchange, and every provider-side fact an assertion reads (the AGENTS task, the jobs the worker received), is recorded and normalised: credentials become roles, and random ids and times become stable placeholders. The recording is then compared with the committed fixture [`tests/fixtures/auto-agents-contract-v1.json`](../tests/fixtures/auto-agents-contract-v1.json). If AUTO or AGENTS changed behaviour, the suite fails with the first differing exchange (assertion 27).
+- **Replay**, everywhere else, CI included. The same scenarios run IDauto's real client against a strict replay of the fixture: every request must equal the recorded one (method, path, `X-Auto-Caller`, credential role, body), in order, and every recorded exchange and fact must be used (2 assertions per scenario). The provider-side assertions read the recorded facts of the real providers at the pinned commits.
+
+The fixture names the commits it was recorded against: AUTO `f89165d` and AGENTS `a5200c8`, both clean `main`. Re-record it only after reviewing a drift: `IDAUTO_CONTRACT_RECORD=1 node tests/ida-auto-contract-test.js`. `IDAUTO_CONTRACT_MODE=replay` forces replay where checkouts exist. The suite never skips: without a fixture and without providers it fails.

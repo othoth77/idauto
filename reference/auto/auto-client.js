@@ -26,7 +26,8 @@
 // AUTO ↔ AGENTS contract v1 (§5, AGENTS gap AG-4). See docs/AUTO_CLIENT.md.
 //
 // Configuration (server environment, never in Git):
-//   IDAUTO_AUTO_URL          https://… , or http:// on loopback / the tailnet (RFC 6598 shared address space) only
+//   IDAUTO_AUTO_URL          https://… ; plain http:// only on loopback (a tailnet listener is reached over https,
+//                            e.g. `tailscale serve`), so the bearer never leaves this host unencrypted
 //   IDAUTO_AUTO_TOKEN_FILE   IDauto's caller token for AUTO: a regular file, mode 0600 or tighter, ≥ 16 characters,
 //                            read on every call (rotation needs no restart) and never logged
 // Without both, enabled() is false and every call fails with AUTO_NOT_CONFIGURED before any network use.
@@ -61,7 +62,7 @@ function AutoClientError(code, message, extra) {
   return e;
 }
 
-// http only where the bearer cannot cross an untrusted network.
+// Plain http only on loopback: the bearer never leaves this host unencrypted. Every other host needs https.
 function allowedUrl(raw) {
   var u;
   try { u = new URL(String(raw || '')); } catch (e) { return null; }
@@ -69,9 +70,7 @@ function allowedUrl(raw) {
   if (u.protocol === 'https:') return u;
   if (u.protocol !== 'http:') return null;
   var h = u.hostname.replace(/^\[|\]$/g, '');
-  if (h === 'localhost' || h === '::1' || /^127\.\d+\.\d+\.\d+$/.test(h)) return u;
-  var m = /^100\.(\d+)\.\d+\.\d+$/.exec(h);
-  return m && Number(m[1]) >= 64 && Number(m[1]) <= 127 ? u : null;
+  return h === 'localhost' || h === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h) ? u : null;
 }
 
 // The token file follows AUTO's own rule (src/util.mjs readSecretFile): regular file, no group/other bits, ≥ 16 chars.
@@ -96,10 +95,54 @@ function config(env) {
 
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+// ---- Retry-After (RFC 9110 §10.2.3): delay-seconds, or an HTTP-date in any of the three forms §5.6.7 requires a
+// recipient to accept. Returns the wait in milliseconds, capped at MAX_RETRY_AFTER_MS, or null when the header is
+// absent or invalid (the caller then uses its own backoff). A date in the past means "now" (0). A server can never
+// make IDauto wait longer than the cap, and the number of attempts is unchanged.
+var MAX_RETRY_AFTER_MS = 60000;
+var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+var LONG_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var IMF_FIXDATE = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/;
+var RFC850_DATE = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/;
+var ASCTIME_DATE = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/;
+
+// UTC milliseconds for a valid calendar date and time, or null (31 Feb, 25:00, a weekday that does not match…).
+function utc(year, monthIndex, day, hh, mm, ss, weekday) {
+  if (hh > 23 || mm > 59 || ss > 59 || day < 1) return null;
+  var t = Date.UTC(year, monthIndex, day, hh, mm, ss), d = new Date(t);
+  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== monthIndex || d.getUTCDate() !== day) return null;
+  return d.getUTCDay() === weekday ? t : null;
+}
+
+function parseHttpDate(v, nowMs) {
+  var m;
+  if ((m = IMF_FIXDATE.exec(v))) return utc(+m[4], MONTHS.indexOf(m[3]), +m[2], +m[5], +m[6], +m[7], DAYS.indexOf(m[1]));
+  if ((m = RFC850_DATE.exec(v))) {
+    // Two-digit year: a date that would be more than 50 years in the future is in the previous century (§5.6.7).
+    var year = 2000 + Number(m[4]);
+    if (year > new Date(nowMs).getUTCFullYear() + 50) year -= 100;
+    return utc(year, MONTHS.indexOf(m[3]), +m[2], +m[5], +m[6], +m[7], LONG_DAYS.indexOf(m[1]));
+  }
+  if ((m = ASCTIME_DATE.exec(v))) return utc(+m[7], MONTHS.indexOf(m[2]), +m[3].trim(), +m[4], +m[5], +m[6], DAYS.indexOf(m[1]));
+  return null;
+}
+
+function parseRetryAfter(value, nowMs) {
+  if (Array.isArray(value)) return null;               // several Retry-After headers: ambiguous, ignore
+  if (typeof value !== 'string') return null;
+  var v = value.trim();
+  if (!v) return null;
+  if (/^\d+$/.test(v)) return Math.min(Number(v) * 1000, MAX_RETRY_AFTER_MS);   // also caps "999999999999999999999"
+  var t = parseHttpDate(v, nowMs);
+  if (t === null) return null;                         // "-5", "1.5", "0x10", "soon", an impossible date…
+  return Math.min(Math.max(0, t - nowMs), MAX_RETRY_AFTER_MS);
+}
+
 function newCorrelationId() { return 'idauto-' + crypto.randomUUID(); }
 
-// One HTTP exchange. Resolves { status, json, retryAfterS } or rejects with a transport error.
-function exchange(cfg, method, path, body, timeoutMs, token, correlationId) {
+// One HTTP exchange. Resolves { status, json, retryAfterMs } or rejects with a transport error.
+function exchange(cfg, method, path, body, timeoutMs, token, now) {
   return new Promise(function (resolve, reject) {
     var u = new URL(cfg.url + path);
     var mod = u.protocol === 'https:' ? https : http;
@@ -114,8 +157,7 @@ function exchange(cfg, method, path, body, timeoutMs, token, correlationId) {
         if (done) return; done = true; clearTimeout(timer);
         var json = null;
         try { json = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { json = null; }
-        var ra = Number(res.headers['retry-after']);
-        resolve({ status: res.statusCode, json: json, retryAfterS: Number.isFinite(ra) && ra >= 0 ? Math.min(ra, 60) : null });
+        resolve({ status: res.statusCode, json: json, retryAfterMs: parseRetryAfter(res.headers['retry-after'], now()) });
       });
     });
     var timer = setTimeout(function () { req.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })); }, timeoutMs);
@@ -133,6 +175,7 @@ function createClient(opts) {
   Object.keys(DEFAULTS).forEach(function (k) { o[k] = opts[k] !== undefined ? opts[k] : DEFAULTS[k]; });
   var log = typeof opts.log === 'function' ? opts.log : function () {};
   var wait = opts.sleep || sleep;
+  var now = typeof opts.now === 'function' ? opts.now : Date.now;
 
   function current() {
     var cfg = config(opts.env);
@@ -150,7 +193,7 @@ function createClient(opts) {
     for (var attempt = 1; attempt <= o.attempts; attempt++) {
       var t0 = Date.now(), status = 0, code = null;
       try {
-        var r = await exchange(c.cfg, method, path, body, o.timeoutMs, c.token, correlationId);
+        var r = await exchange(c.cfg, method, path, body, o.timeoutMs, c.token, now);
         status = r.status;
         var err = r.json && r.json.error && typeof r.json.error === 'object' ? r.json.error : null;
         if (status >= 200 && status < 300 && r.json && !err) {
@@ -163,7 +206,7 @@ function createClient(opts) {
           { httpStatus: status, retryable: retryable, details: err && Array.isArray(err.details) ? err.details.slice(0, 20) : undefined, requestId: err && err.request_id });
         log({ event: 'auto_call', op: op, status: status, attempt: attempt, ms: Date.now() - t0, code: code, retryable: retryable, correlation_id: correlationId || null });
         if (!retryable) throw lastErr;
-        if (attempt < o.attempts) await wait(r.retryAfterS !== null ? r.retryAfterS * 1000 : backoff(attempt));
+        if (attempt < o.attempts) await wait(r.retryAfterMs !== null ? r.retryAfterMs : backoff(attempt));
       } catch (e) {
         if (e && e.name === 'AutoClientError') { if (!e.retryable || attempt >= o.attempts) throw e; continue; }
         code = e && e.code === 'ETIMEDOUT' ? 'AUTO_TIMEOUT' : 'AUTO_UNREACHABLE';
@@ -291,4 +334,5 @@ function createClient(opts) {
 }
 
 module.exports = { createClient: createClient, config: config, allowedUrl: allowedUrl, readToken: readToken, AutoClientError: AutoClientError,
+  parseRetryAfter: parseRetryAfter, MAX_RETRY_AFTER_MS: MAX_RETRY_AFTER_MS,
   CALLER: CALLER, TERMINAL: TERMINAL, IDEMPOTENCY_RE: IDEMPOTENCY_RE, CORRELATION_RE: CORRELATION_RE };
