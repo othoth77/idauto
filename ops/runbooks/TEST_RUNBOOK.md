@@ -33,6 +33,17 @@ POSTGRES_DB=
 
 The ID Auto runtime reads `IDAUTO_DB_USER` / `IDAUTO_DB_PASSWORD` / `IDAUTO_DB_NAME`. **The names do not match and nothing maps them for you.** Sourcing the `.env` alone is not enough; you must map the three names explicitly (§3, step 2).
 
+### 1.2 The synthetic seed is a prerequisite
+
+On a **freshly created** database (a scratch `idauto_scratch_*` database, or the CI one), apply
+`database/schema.sql`, every file of `database/migrations/`, and then
+`database/seed-synthetic-test-data.sql`. The seed is not optional: `ida-2c-readonly-api` and
+`ida-v13-auth-session` read its synthetic vehicles and abort on an unseeded database with
+`FATAL: Cannot read properties of undefined` and no summary line (measured 2026-11-25; 26/0 and 61/0 once
+the seed is applied) — the same signature §5 lists for a missing database environment. The seed holds
+synthetic data only. `.github/workflows/database.yml` applies exactly this sequence and is the reference
+for the migration order, since the repository has no migration runner.
+
 ## 2. Run as `deploy`
 
 In the reference deployment the media root is `drwxr-x---` mode `750`, owned by the deployment user. Only that user (and root) can read or write it, so **IDA-2F and IDA-2H must run as that user**. Running them as another user produces filesystem errors that look like storage bugs.
