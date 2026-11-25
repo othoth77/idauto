@@ -1,0 +1,153 @@
+# IDauto database suites.
+#
+# `npm run test:db`, `test:v12`, `test:v13` and `test:v14` open a PostgreSQL
+# connection and, for seven of them, drive headless Chrome. Until 2026-11-25 no
+# gate ran them, which is how four assertions of `test:v14` stayed red on main
+# after the carte grise became versioned (Update 4) and the scanner came back in
+# capture mode (Update 5): the code was right, the suites were stale, nobody saw.
+#
+# This is a SEPARATE workflow file on purpose. ci.yml proves that
+# `npm run test:offline` needs no database, and tests/test-script-coverage-test.js
+# fails if ci.yml gains a `services:` block or an IDAUTO_DB_* assignment. Both
+# live here instead, so that guarantee is untouched.
+#
+# The database is a throwaway PostgreSQL 16 that exists for the length of one
+# job on the runner. Its password below is not a credential of any
+# deployment. The database is named `idauto_scratch_ci` because most suites
+# refuse to run against a database not named `idauto_scratch_*`.
+#
+# There is no migration runner in this repository; the list in the "Schema,
+# migrations, seed" step is the order in which the migrations were written
+# (base schema, then each stage). A new migration must be appended there.
+# `database/seed-synthetic-test-data.sql` is required: ida-2c and ida-v13 read
+# its synthetic vehicles.
+#
+# The job name below is what branch protection should require, next to the two
+# jobs of ci.yml.
+
+name: Database suites
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database:
+    name: database and browser suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: idauto
+          POSTGRES_PASSWORD: ci-scratch-not-a-deployment-credential
+          POSTGRES_DB: idauto_scratch_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U idauto -d idauto_scratch_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      IDAUTO_DB_HOST: 127.0.0.1
+      IDAUTO_DB_PORT: "5432"
+      IDAUTO_DB_USER: idauto
+      IDAUTO_DB_PASSWORD: ci-scratch-not-a-deployment-credential
+      IDAUTO_DB_NAME: idauto_scratch_ci
+      PGPASSWORD: ci-scratch-not-a-deployment-credential
+    steps:
+      # Both actions pinned to commits (checkout v4.3.1, setup-node v4.4.0), as in ci.yml.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Private media root for this job
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/idauto-media"
+          echo "IDAUTO_MEDIA_STORAGE_PATH=$RUNNER_TEMP/idauto-media" >> "$GITHUB_ENV"
+
+      # test:v12 requires a session-signing secret (the other suites generate their own).
+      # Generated per job, masked, never a deployment value.
+      - name: Throwaway session secret for this job
+        run: |
+          set -eu
+          secret=$(openssl rand -base64 32)
+          echo "::add-mask::$secret"
+          echo "IDAUTO_AUTH_SECRET=$secret" >> "$GITHUB_ENV"
+
+      - name: Schema, migrations, seed
+        run: |
+          set -eu
+          for f in \
+            schema.sql \
+            migrations/ida-3a-ingestion-schema.sql \
+            migrations/ida4-option-c-ivid.sql \
+            migrations/ida-v4-verification-scope-separation.sql \
+            migrations/ida-v8-identity-resolution.sql \
+            migrations/ida-v9-organisation-scoped-access.sql \
+            migrations/ida-v10-vehicle-search.sql \
+            migrations/ida-v12-vehicle-identification.sql \
+            migrations/ida-v13-auth-session.sql \
+            migrations/ida-v13b-auth-account-issuer.sql \
+            migrations/ida-v14-registration-document.sql \
+            migrations/ida-ui3-registration-maintenance.sql \
+            migrations/ida-ui4-simplification.sql \
+            migrations/ida-u2-visual-recognition.sql \
+            migrations/ida-u3-vehicle-photos.sql \
+            migrations/ida-u31-scan-photos.sql \
+            migrations/ida-u4-archive-vin.sql \
+            migrations/ida-u4b-vin-lookup-index.sql \
+            migrations/ida-u5-carte-grise-sources.sql \
+            migrations/ida-u6-carte-grise-intake.sql \
+            seed-synthetic-test-data.sql
+          do
+            echo "applying database/$f"
+            psql -q -v ON_ERROR_STOP=1 -h "$IDAUTO_DB_HOST" -p "$IDAUTO_DB_PORT" -U "$IDAUTO_DB_USER" -d "$IDAUTO_DB_NAME" -f "database/$f" >/dev/null
+          done
+
+      - name: Every migration file is in the list above
+        run: |
+          set -eu
+          missing=0
+          for f in database/migrations/*.sql; do
+            grep -q "migrations/$(basename "$f") " .github/workflows/database.yml \
+              || { echo "::error::$f is not applied by this workflow"; missing=1; }
+          done
+          exit "$missing"
+
+      - name: A browser is present (the browser suites must not silently skip)
+        run: |
+          set -eu
+          command -v google-chrome || command -v chromium || command -v chromium-browser || command -v google-chrome-stable \
+            || { echo "::error::no Chrome on PATH; the headless suites would report SKIPPED"; exit 1; }
+
+      - name: Database suites
+        run: npm run test:db
+
+      - name: Identification and workshop suites
+        run: npm run test:v12
+
+      - name: Authentication suite
+        run: npm run test:v13
+
+      - name: Registration document suites
+        run: npm run test:v14

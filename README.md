@@ -103,11 +103,11 @@ Nothing in this repository pretends to be further along than it is.
 | Area | State |
 |---|---|
 | PostgreSQL schema (24 tables, zero owner-PII columns on vehicles and plates) | **IMPLEMENTED** — since IDA-UI-3 the owner's contact lives in a separate, per-workshop, audited table (`docs/PRIVACY_ARCHITECTURE.md` §1a, owner decision 2026-11-05) |
-| Read + write API, atomic audit logging | **IMPLEMENTED** (reference implementation; not deployed publicly) |
+| Read + write API, atomic audit logging | **IMPLEMENTED** (reference implementation; for what is deployed, see the Deployment row below) |
 | Content-addressed media storage | **IMPLEMENTED** |
 | Community ingestion service, rate limiting, review queue | **IMPLEMENTED** (admin-only route; no public endpoint exists) |
 | Off-host backup, restore-verified | **IMPLEMENTED** — a verified off-host copy of the database exists (2026-08-14); since then a nightly scheduled off-host backup (database + media), remote verification and a monthly restore test run on the host (re-checked 2026-10-30) |
-| Real multi-user authentication | **BLOCKED** — see [`docs/ROADMAP.md`](docs/ROADMAP.md) IDA-2E |
+| Real multi-user authentication | **IMPLEMENTED** for web users since IDA-V13 (see the Web authentication row below). Server-to-server callers still use the static bearer map `IDAUTO_ADMIN_IDENTITIES`; the Mythos OS auth service integration of [`docs/ROADMAP.md`](docs/ROADMAP.md) IDA-2E does not exist |
 | Citizen passport, professional issuers, AI verification | **SPECIFIED**, not implemented |
 | W3C Verifiable Credentials / DID interoperability | **SPECIFIED**, not implemented |
 | Blockchain anchoring and Merkle batching | **SPECIFIED**, not implemented — no chain integration exists in this repository |
@@ -150,15 +150,17 @@ psql -d idauto -f database/seed-synthetic-test-data.sql   # synthetic data only
 node tests/ida-2a-schema-and-plate-validation-test.js
 ```
 
-`npm test` → `npm run test:offline` runs the database-free suites: **16 suites, 1021 assertions,
+`npm test` → `npm run test:offline` runs the database-free suites: **18 suites, 1783 assertions,
 0 failures** on a clean checkout with no PostgreSQL and no `IDAUTO_DB_*` in the environment
-(measured 2026-09-22, and re-proved on every push by
+(measured 2026-11-25, and re-proved on every push by
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which starts no database).
 
 `npm run test:db` runs the suites that need a live scratch database; `npm run test:v12`,
 `test:v13` and `test:v14` run the identification / auth / registration suites against one. Test
 execution, including which suites need a live database, is documented in
-[`ops/runbooks/TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md).
+[`ops/runbooks/TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md). These four scripts run on every
+push in [`.github/workflows/database.yml`](.github/workflows/database.yml), against a throwaway
+PostgreSQL 16 built from `database/schema.sql`, the migrations and the synthetic seed.
 
 > **Corrected 2026-09-22.** This paragraph said `test:offline` "runs the database-free suites",
 > and it did not: `ida-v8`, `ida-v9` and `ida-v10` had been added to it and each opens a

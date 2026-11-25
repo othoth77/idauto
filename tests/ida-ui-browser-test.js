@@ -135,8 +135,12 @@ function get(u) { return new Promise(function (r, j) { http.get(u, function (res
   var stored = (await db.query("SELECT w.odometer_km, w.status, array_agg(op.part_source ORDER BY op.id) AS s FROM idauto_workshop_visits w JOIN idauto_workshop_operations op ON op.visit_id = w.id WHERE w.id = $1 GROUP BY w.id", [VISIT])).rows[0];
   ok(stored && stored.odometer_km === 86200 && stored.s.join() === 'our_shop,customer_supplied', 'stored: mileage and each part\'s source');
   ok(await ev('document.querySelectorAll("#parts [data-part]").length === 2 && document.querySelectorAll("#parts [data-part]")[0].querySelector("input[value=our_shop]").checked'), 'reopened: the parts and their source are filled');
+  // The page is ALREADY on ?id=…&saved=1 with two parts, and « AMPOULE » is typed before the submit, so the wait below
+  // would be true before the PUT is even sent; the page's own reload after the PUT then overrode the next navigation
+  // and the list assertion failed intermittently. The marker dies with the document: its absence proves the reload.
+  await ev('window.__idaBeforeEdit = true;');
   await ev('document.querySelectorAll("#parts [data-part]")[1].querySelector(".ida-part-remove").click();document.getElementById("add-part").click();var r=document.querySelectorAll("#parts [data-part]");r[1].querySelector("[data-f=label]").value="AMPOULE";r[1].querySelector("input[value=customer_supplied]").click();document.querySelector("#iv-form button[type=submit]").click();true');
-  ok(await waitFor('/saved=1/.test(location.search) && document.querySelectorAll("#parts [data-part]").length === 2 && /AMPOULE/.test(Array.from(document.querySelectorAll("#parts [data-f=label]")).map(function(i){return i.value}).join(" "))', 20000), 'edit: one part removed, one added');
+  ok(await waitFor('!window.__idaBeforeEdit && document.readyState === "complete" && /saved=1/.test(location.search) && document.querySelectorAll("#parts [data-part]").length === 2 && /AMPOULE/.test(Array.from(document.querySelectorAll("#parts [data-f=label]")).map(function(i){return i.value}).join(" "))', 20000), 'edit: one part removed, one added');
   await go('/atelier/interventions', 'document.querySelectorAll("#list tbody tr").length >= 1');
   ok(await ev('/VIDANGE ET PLAQUETTES/.test(document.getElementById("list").textContent) && /86\\s?200/.test(document.getElementById("list").textContent)'), 'the list shows it with its mileage and work done');
 

@@ -89,6 +89,8 @@ async function main() {
 
   /* ===================================================================== */
   say('\n0. STRUCTURE — no token in the web UI, nothing in browser storage');
+  // IDA-V13b: Better Auth >= 1.7.3 no longer writes account."issuer" and refuses to start while it is NOT NULL.
+  ok((await db.query("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'idauto_auth_account' AND column_name = 'issuer'")).rows.every(function (r) { return r.is_nullable === 'YES'; }), 'idauto_auth_account has no required column that Better Auth does not write (ida-v13b applied)');
   var pages = ['reference/atelier.html', 'reference/atelier-ui.js', 'reference/admin.html', 'reference/admin-ui.js', 'reference/review.html', 'reference/review-ui.js', 'reference/login.html', 'reference/login-ui.js'].map(function (f) { return fs.readFileSync(path.join(BASE, f), 'utf8'); }).join('\n');
   ok(!/localStorage|sessionStorage/.test(pages), '10/11. no localStorage / sessionStorage in any authenticated page or its script');
   // The two consoles keep a one-line shim so a SCRIPT that holds a service

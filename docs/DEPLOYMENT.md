@@ -103,3 +103,19 @@ with this migration applied (2026-11-05, scratch: IDA-V12 125/0, IDA-V14 documen
 new table and columns are inert for it. The DOWN block deletes the owner contacts and the part-source columns — it is
 data loss, an owner decision, and only after a dump. Restoring the pre-deploy dump goes into a NEW database first,
 never over `idauto_production` without the owner.
+
+## 9. Rolling out Better Auth 1.7.7 (IDA-V13b) — migration FIRST
+
+`better-auth` goes from 1.7.2 to 1.7.7 for the advisories `npm audit --omit=dev` reported against 1.7.2. Better Auth
+1.7.3 and later refuse to start while `idauto_auth_account."issuer"` is `NOT NULL` (`Database schema mismatch`), so
+with the new code and the old table **nobody can sign in**. The order below is therefore not optional.
+
+1. **Backup** as in §4.
+2. **Migration first**, on `idauto_production`, while the current release is still running:
+   `database/migrations/ida-v13b-auth-account-issuer.sql` (idempotent; removes one `NOT NULL`, keeps the column and
+   its values). Better Auth 1.7.2 keeps working against the migrated table.
+3. `git pull --ff-only`, `npm ci --omit=dev`, `systemctl --user restart idauto-api`.
+4. Smoke: sign in at `/login` with an existing account, `GET /atelier` loads, sign out; create and remove a throwaway
+   user with `ops/auth-users.js` to prove an insert into the account table.
+
+**Rollback:** previous release + restart. The migration stays (the previous code is unaffected by it).
