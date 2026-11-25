@@ -1,0 +1,33 @@
+---
+title: "Chaîne de traitement de l'API — étapes 6 à 9 et aiguillage vers les modules"
+---
+flowchart LR
+    subgraph API["API layer — one Node.js http server (reference/api.js createServer)"]
+        direction TB
+        OWN["6 · Owner browser session /session<br/>(signed cookie, two read routes)"]
+        AUTHN["7 · authenticate(): Bearer service credential<br/>OR user session cookie + X-IDauto-Session header"]
+        AUTHZ["8 · Authorisation gate: organisation principals need<br/>the route's scope (ALL_ROUTE_SCOPES); absent = admin-only"]
+        ROUTES["9 · Route tables, first match wins<br/>workspace-routes · core ROUTES · v14-routes · v12-routes · admin-routes"]
+    end
+    BA["5 · Better Auth routes /api/auth/*<br/>(sign-in, sign-out, session, change-password)"]:::ext
+    WS["workspace/<br/>registration-service · intervention-service<br/>vehicle-details · owner-contacts · workspace-repository"]:::ext
+    DOCS["documents/<br/>document-service · image-meta<br/>(registration-parser: retired OCR, 410)"]:::ext
+    VEHM["vehicle/<br/>vehicle-resolver · plate-normalizer · vin"]:::ext
+    WSH["workshop/<br/>workshop-vehicle-service"]:::ext
+    PARTS["parts/<br/>parts-catalog · local-parts-catalog · tecdoc-adapter"]:::ext
+    CORE["ingestion · passport-assembly · ivid-issuance<br/>public-surface-policy · rate-limit"]:::ext
+    ADM["admin/admin-repository"]:::ext
+    AUTHMOD["auth/auth.js (Better Auth) · auth/principal.js · identity.js · session.js"]:::ext
+    BA --> OWN
+    OWN --> AUTHN
+    AUTHN --> AUTHZ
+    AUTHZ --> ROUTES
+    ROUTES --> WS
+    ROUTES --> DOCS
+    ROUTES --> VEHM
+    ROUTES --> WSH
+    ROUTES --> PARTS
+    ROUTES --> CORE
+    ROUTES --> ADM
+    AUTHN --> AUTHMOD
+    classDef ext stroke-dasharray: 5 4

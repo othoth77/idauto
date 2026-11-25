@@ -1,0 +1,152 @@
+@startuml idauto-class-diagram
+title IDauto — Class diagram (domain entities used by the application)
+left to right direction
+hide empty methods
+skinparam classAttributeIconSize 0
+
+class Organisation <<entity>> {
+  +SERIAL id PK
+  +VARCHAR name
+  +VARCHAR org_type
+  +VARCHAR status
+  +INTEGER governorate_id FK
+}
+class UserAccount <<entity>> {
+  +TEXT id PK
+  +TEXT name
+  +TEXT email
+  +TEXT role
+  +INTEGER org_id FK
+}
+class Credential <<entity>> {
+  +TEXT id PK
+  +TEXT userId FK
+  +TEXT providerId
+  +TEXT password (hash)
+}
+class Session <<entity>> {
+  +TEXT id PK
+  +TEXT userId FK
+  +TIMESTAMPTZ expiresAt
+}
+enum Role {
+  admin
+  manager
+  technician
+}
+class Vehicle <<entity>> {
+  +SERIAL id PK
+  +VARCHAR ivid
+  +VARCHAR make
+  +VARCHAR model
+  +INTEGER year
+  +INTEGER odometer_km
+  +DATE odometer_at
+  +VARCHAR fiche_status
+  +INTEGER merged_into_id FK
+}
+class Plate <<entity>> {
+  +SERIAL id PK
+  +VARCHAR plate_number
+  +VARCHAR status
+  +INTEGER vehicle_id FK
+  +VARCHAR format_code FK
+}
+class VehicleFact <<entity>> {
+  +BIGSERIAL id PK
+  +INTEGER vehicle_id FK
+  +VARCHAR fact_key
+  +TEXT fact_value
+  +BOOLEAN is_active
+}
+class IdentificationHistory <<entity>> {
+  +BIGSERIAL id PK
+  +INTEGER vehicle_id FK
+  +INTEGER org_id FK
+  +VARCHAR method
+}
+class RegistrationDocument <<entity>> {
+  +BIGSERIAL id PK
+  +INTEGER vehicle_id FK
+  +INTEGER org_id FK
+  +SMALLINT face
+  +TEXT storage_key
+  +VARCHAR sha256
+}
+class OwnerContact <<entity>> {
+  +BIGSERIAL id PK
+  +INTEGER vehicle_id FK
+  +INTEGER org_id FK
+  +VARCHAR full_name
+  +VARCHAR phone
+  +TIMESTAMPTZ superseded_at
+}
+class VehicleNote <<entity>> {
+  +BIGSERIAL id PK
+  +INTEGER vehicle_id FK
+  +INTEGER org_id FK
+  +VARCHAR notes
+}
+class Intervention <<entity>> {
+  +BIGSERIAL id PK
+  +INTEGER org_id FK
+  +INTEGER vehicle_id FK
+  +VARCHAR status
+  +VARCHAR reason
+  +DATE performed_on
+  +INTEGER odometer_km
+  +VARCHAR technician_ref
+}
+class Operation <<entity>> {
+  +BIGSERIAL id PK
+  +BIGINT visit_id FK
+  +VARCHAR operation_type
+  +BIGINT part_id FK
+  +VARCHAR part_label
+  +VARCHAR part_reference_text
+  +INTEGER quantity
+  +PartSource part_source
+  +VARCHAR status
+}
+enum PartSource {
+  our_shop
+  customer_supplied
+  external_supplier (legacy)
+}
+class CataloguePart <<entity>> {
+  +BIGSERIAL id PK
+  +VARCHAR reference
+  +VARCHAR brand
+  +VARCHAR name
+  +INTEGER org_id FK
+}
+class AuditEntry <<entity>> {
+  +BIGSERIAL id PK
+  +VARCHAR event_type
+  +VARCHAR actor_ref
+  +INTEGER org_id
+  +VARCHAR target_ref
+}
+
+Organisation "0..1" <-- "0..*" UserAccount : org_id
+UserAccount "1" *-- "0..*" Credential : userId
+UserAccount "1" *-- "0..*" Session : userId
+Vehicle "0..1" <-- "0..*" Plate : vehicle_id
+Vehicle "1" *-- "0..*" VehicleFact : vehicle_id
+Vehicle "1" *-- "0..*" IdentificationHistory : vehicle_id
+Vehicle "1" *-- "0..*" RegistrationDocument : vehicle_id
+Vehicle "1" *-- "0..*" OwnerContact : vehicle_id
+Vehicle "1" *-- "0..*" VehicleNote : vehicle_id
+Vehicle "0..1" <-- "0..*" Vehicle : merged_into_id
+Vehicle "0..1" <-- "0..*" Intervention : vehicle_id
+Organisation "1" <-- "0..*" Intervention : org_id
+Organisation "0..1" <-- "0..*" RegistrationDocument : org_id
+Organisation "0..1" <-- "0..*" OwnerContact : org_id
+Organisation "0..1" <-- "0..*" VehicleNote : org_id
+Organisation "0..1" <-- "0..*" IdentificationHistory : org_id
+Intervention "1" *-- "0..*" Operation : visit_id
+CataloguePart "0..1" <-- "0..*" Operation : part_id
+Organisation "0..1" <-- "0..*" CataloguePart : org_id
+UserAccount ..> Role : role
+Operation ..> PartSource : part_source
+@enduml

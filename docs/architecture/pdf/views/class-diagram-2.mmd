@@ -1,0 +1,54 @@
+---
+title: "Véhicule, plaques, faits et historique d'identification"
+---
+classDiagram
+    direction LR
+    class Vehicle {
+        <<entity>>
+        +SERIAL id PK
+        +VARCHAR ivid
+        +VARCHAR make
+        +VARCHAR model
+        +INTEGER year
+        +INTEGER odometer_km
+        +DATE odometer_at
+        +VARCHAR fiche_status
+        +INTEGER merged_into_id FK
+    }
+    class Plate {
+        <<entity>>
+        +SERIAL id PK
+        +VARCHAR plate_number
+        +VARCHAR status
+        +INTEGER vehicle_id FK
+        +VARCHAR format_code FK
+    }
+    class VehicleFact {
+        <<entity>>
+        +BIGSERIAL id PK
+        +INTEGER vehicle_id FK
+        +VARCHAR fact_key
+        +TEXT fact_value
+        +BOOLEAN is_active
+    }
+    class IdentificationHistory {
+        <<entity>>
+        +BIGSERIAL id PK
+        +INTEGER vehicle_id FK
+        +INTEGER org_id FK
+        +VARCHAR method
+    }
+    class RegistrationDocument
+    class OwnerContact
+    class VehicleNote
+    class Intervention
+    class Organisation
+    Vehicle "0..1" <-- "0..*" Plate : vehicle_id
+    Vehicle "1" *-- "0..*" VehicleFact : vehicle_id
+    Vehicle "1" *-- "0..*" IdentificationHistory : vehicle_id
+    Vehicle "1" *-- "0..*" RegistrationDocument : vehicle_id
+    Vehicle "1" *-- "0..*" OwnerContact : vehicle_id
+    Vehicle "1" *-- "0..*" VehicleNote : vehicle_id
+    Vehicle "0..1" <-- "0..*" Vehicle : merged_into_id
+    Vehicle "0..1" <-- "0..*" Intervention : vehicle_id
+    Organisation "0..1" <-- "0..*" IdentificationHistory : org_id

@@ -1,0 +1,47 @@
+---
+title: "Authentification, consultation, administration et API machine"
+---
+flowchart LR
+    VIS(["👤 Visitor (anonymous)"])
+    TEC(["👤 Technician"])
+    MGR(["👤 Manager"])
+    ADM(["👤 Administrator"])
+    OPS(["👤 Server operator (CLI)"])
+    SVC(["⚙️ Service client (Bearer token)"])
+    subgraph AUTH["Authentication and account"]
+        UC1(["Sign in"])
+        UC2(["Sign out"])
+        UC3(["Change own password"])
+        UC4(["Choose language FR / AR"])
+        UC5(["Request password reset (message)"])
+    end
+    subgraph DSH["Dashboard and consultation"]
+        UC50(["View dashboard counts"])
+        UC51(["Global search"])
+        UC52(["View public passport by IVID"])
+    end
+    subgraph ADMN["Users, roles and settings"]
+        UC60(["List user accounts"])
+        UC61(["View roles and permissions"])
+        UC62(["Create / delete account, reset password"])
+    end
+    subgraph APIU["Machine API"]
+        UC70(["Submit an observation"])
+        UC71(["Read / add vehicle facts"])
+    end
+    MGR -. "is a (scopes ⊇)" .-> TEC
+    ADM -. "is a (scope *)" .-> MGR
+    VIS --- UC52
+    VIS --- UC1
+    VIS --- UC5
+    VIS --- UC4
+    TEC --- UC2
+    TEC --- UC3
+    TEC --- UC50
+    TEC --- UC51
+    ADM --- UC60
+    ADM --- UC61
+    OPS --- UC62
+    SVC --- UC70
+    SVC --- UC71
+    classDef ext stroke-dasharray: 5 4

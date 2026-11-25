@@ -1,0 +1,29 @@
+---
+title: "Localisations, soumissions, file de revue et consentements"
+---
+erDiagram
+    observation_locations {
+        BIGSERIAL id PK
+        BIGINT observation_id FK
+        INTEGER governorate_id FK
+    }
+    submissions {
+        BIGSERIAL id PK
+        INTEGER capture_source_id FK
+        VARCHAR status
+        BIGINT observation_id FK
+    }
+    review_queue {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        VARCHAR reason
+        VARCHAR status
+    }
+    consent_records {
+        BIGSERIAL id PK
+    }
+    observations ||--o{ observation_locations : "observation_id"
+    governorates |o--o{ observation_locations : "governorate_id"
+    capture_sources |o--o{ submissions : "capture_source_id"
+    observations |o--o{ submissions : "observation_id"
+    vehicles |o--o{ review_queue : "vehicle_id"

@@ -1,0 +1,26 @@
+---
+title: "Vérifications et événements de service"
+---
+erDiagram
+    verifications {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER org_id FK
+        INTEGER user_role_id FK
+    }
+    service_events {
+        BIGSERIAL id PK
+        INTEGER vehicle_id FK
+        INTEGER plate_id FK
+        INTEGER org_id FK
+        INTEGER user_role_id FK
+        VARCHAR event_type
+        INTEGER odometer_km
+    }
+    vehicles |o--o{ verifications : "vehicle_id"
+    organizations |o--o{ verifications : "org_id"
+    user_roles |o--o{ verifications : "user_role_id"
+    vehicles ||--o{ service_events : "vehicle_id"
+    plates |o--o{ service_events : "plate_id"
+    organizations ||--o{ service_events : "org_id"
+    user_roles ||--o{ service_events : "user_role_id"

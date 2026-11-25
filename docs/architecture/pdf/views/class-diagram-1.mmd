@@ -1,0 +1,56 @@
+---
+title: "Organisations, comptes et sessions"
+---
+classDiagram
+    direction LR
+    class Organisation {
+        <<entity>>
+        +SERIAL id PK
+        +VARCHAR name
+        +VARCHAR org_type
+        +VARCHAR status
+        +INTEGER governorate_id FK
+    }
+    class UserAccount {
+        <<entity>>
+        +TEXT id PK
+        +TEXT name
+        +TEXT email
+        +TEXT role
+        +INTEGER org_id FK
+    }
+    class Credential {
+        <<entity>>
+        +TEXT id PK
+        +TEXT userId FK
+        +TEXT providerId
+        +TEXT password (hash)
+    }
+    class Session {
+        <<entity>>
+        +TEXT id PK
+        +TEXT userId FK
+        +TIMESTAMPTZ expiresAt
+    }
+    class Role {
+        <<enumeration>>
+        admin
+        manager
+        technician
+    }
+    class Intervention
+    class RegistrationDocument
+    class OwnerContact
+    class VehicleNote
+    class IdentificationHistory
+    class CataloguePart
+    Organisation "0..1" <-- "0..*" UserAccount : org_id
+    UserAccount "1" *-- "0..*" Credential : userId
+    UserAccount "1" *-- "0..*" Session : userId
+    UserAccount ..> Role : role
+    Organisation "1" <-- "0..*" Intervention : org_id
+    Organisation "0..1" <-- "0..*" RegistrationDocument : org_id
+    Organisation "0..1" <-- "0..*" OwnerContact : org_id
+    Organisation "0..1" <-- "0..*" VehicleNote : org_id
+    Organisation "0..1" <-- "0..*" IdentificationHistory : org_id
+    Organisation "0..1" <-- "0..*" CataloguePart : org_id

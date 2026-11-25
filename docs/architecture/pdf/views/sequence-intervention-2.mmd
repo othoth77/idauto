@@ -1,0 +1,27 @@
+---
+title: "Phase 2 — service métier et transaction (messages 7 à 21)"
+---
+sequenceDiagram
+    autonumber 7
+    actor T as Technician (browser)
+    participant A as api.js pipeline
+    participant R as workspace-routes
+    participant S as intervention-service
+    participant VR as vehicle-repository
+    participant W as writes.withAudit
+    participant P as PostgreSQL
+    A->>R: postIntervention(req)
+    R->>S: create(body, actor)
+    S->>S: validate(): date, odometer, description,<br/>parts with part_source in {our_shop, customer_supplied}
+    S->>VR: findByRef(vehicle_ref)
+    VR->>P: SELECT vehicle
+    S->>W: withAudit(event workshop.intervention.record)
+    W->>P: BEGIN
+    W->>P: INSERT idauto_workshop_visits (org_id of the actor)
+    W->>P: INSERT idauto_workshop_operations (one per part)
+    W->>P: UPDATE vehicle odometer (only if higher)
+    W->>P: INSERT idauto_audit_log
+    W->>P: COMMIT (ROLLBACK on any error)
+    W-->>S: id, vehicle IVID
+    S-->>R: { id, vehicle }
+    R-->>T: 201 JSON

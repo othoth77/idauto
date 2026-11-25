@@ -1,0 +1,75 @@
+---
+title: "Routes de l'espace de travail et services métier"
+---
+classDiagram
+    direction TB
+    class workspace_routes["workspace-routes.js"] {
+        <<module>>
+        routes
+        scopes
+    }
+    class registration_service["registration-service.js"] {
+        <<module>>
+        validate(body)
+        register(body, actor)
+    }
+    class intervention_service["intervention-service.js"] {
+        <<module>>
+        SOURCES
+        validate(body)
+        create(body, actor)
+        update(id, body, actor)
+        cancel(id, actor)
+    }
+    class vehicle_details["vehicle-details.js"] {
+        <<module>>
+        cleanNotes()
+        notesOf()
+        upsertNotesWith()
+        inScope()
+        update()
+        remove()
+    }
+    class owner_contacts["owner-contacts.js"] {
+        <<module>>
+        validate()
+        normalizePhone()
+        current()
+        upsertWith()
+        put()
+        remove()
+        search()
+        hasContact()
+    }
+    class workspace_repository["workspace-repository.js"] {
+        <<module>>
+        dossier()
+        listVehicles()
+        listDocuments()
+        listInterventions()
+        listPartsUsed()
+        listTechnicians()
+        overview()
+        notifications()
+        search()
+        vehicleOr404()
+    }
+    class vehicle_repository["vehicle-repository.js"]
+    class writes["writes.js"]
+    workspace_routes ..> registration_service
+    workspace_routes ..> intervention_service
+    workspace_routes ..> vehicle_details
+    workspace_routes ..> owner_contacts
+    workspace_routes ..> workspace_repository
+    registration_service ..> owner_contacts
+    registration_service ..> vehicle_details
+    registration_service ..> vehicle_repository
+    registration_service ..> writes
+    intervention_service ..> vehicle_repository
+    intervention_service ..> writes
+    vehicle_details ..> vehicle_repository
+    vehicle_details ..> writes
+    owner_contacts ..> writes
+    workspace_repository ..> owner_contacts
+    workspace_repository ..> vehicle_details
+    workspace_repository ..> vehicle_repository

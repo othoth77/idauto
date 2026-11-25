@@ -1,0 +1,43 @@
+---
+title: "Accès aux données, stockage, journaux et adaptateurs non configurés"
+---
+flowchart LR
+    subgraph DATA["Data access layer"]
+        direction LR
+        REPO["Repositories<br/>vehicle-repository · workshop-repository · document-repository"]
+        WRITES["writes.js<br/>withAudit(): write + audit row in one transaction"]
+        DB["db.js — pg Pool (node-postgres)"]
+        STO["storage.js · document-storage.js<br/>content-addressed media files"]
+    end
+    PGSQL[("PostgreSQL<br/>database idauto_production<br/>41 tables")]
+    MEDIA[("Private media directory<br/>IDAUTO_MEDIA_STORAGE_PATH")]
+    LOGS["observability.js<br/>JSON lines via console.log → stdout → journald"]
+    TECDOC["TecDoc catalogue adapter<br/>NOT CONFIGURED (returns 'not configured')"]
+    VPROV["Licensed vehicle-data provider adapter<br/>(plate / VIN lookup) NOT CONFIGURED"]
+    WS["workspace/<br/>registration-service · intervention-service<br/>vehicle-details · owner-contacts · workspace-repository"]:::ext
+    DOCS["documents/<br/>document-service · image-meta<br/>(registration-parser: retired OCR, 410)"]:::ext
+    VEHM["vehicle/<br/>vehicle-resolver · plate-normalizer · vin"]:::ext
+    PARTS["parts/<br/>parts-catalog · local-parts-catalog · tecdoc-adapter"]:::ext
+    WSH["workshop/<br/>workshop-vehicle-service"]:::ext
+    CORE["ingestion · passport-assembly · ivid-issuance<br/>public-surface-policy · rate-limit"]:::ext
+    ADM["admin/admin-repository"]:::ext
+    AUTHMOD["auth/auth.js (Better Auth) · auth/principal.js · identity.js · session.js"]:::ext
+    API["API layer — one Node.js http server (reference/api.js createServer)"]:::ext
+    WS --> REPO
+    WS --> WRITES
+    DOCS --> STO
+    DOCS --> REPO
+    VEHM --> REPO
+    PARTS -.-> TECDOC
+    PARTS --> DB
+    VEHM -.-> VPROV
+    WSH --> REPO
+    CORE --> WRITES
+    ADM --> DB
+    AUTHMOD --> DB
+    REPO --> DB
+    WRITES --> DB
+    DB --> PGSQL
+    STO --> MEDIA
+    API -.-> LOGS
+    classDef ext stroke-dasharray: 5 4

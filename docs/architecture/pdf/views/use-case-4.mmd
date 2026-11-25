@@ -1,0 +1,31 @@
+---
+title: "Interventions d'entretien et pièces"
+---
+flowchart LR
+    TEC(["👤 Technician"])
+    MGR(["👤 Manager"])
+    ADM(["👤 Administrator"])
+    subgraph INT["Maintenance interventions"]
+        UC30(["Record an intervention"])
+        UC31(["Choose the vehicle"])
+        UC32(["Declare each part's provenance"])
+        UC33(["Edit an intervention"])
+        UC34(["Cancel an intervention"])
+        UC35(["View maintenance history"])
+    end
+    subgraph PRT["Parts and provenance"]
+        UC40(["List parts used (filter, search)"])
+    end
+    UC11(["View vehicle file"]):::ext
+    MGR -. "is a (scopes ⊇)" .-> TEC
+    ADM -. "is a (scope *)" .-> MGR
+    TEC --- UC30
+    TEC --- UC33
+    TEC --- UC34
+    TEC --- UC35
+    TEC --- UC40
+    UC30 -. "«include»" .-> UC31
+    UC30 -. "«include»" .-> UC32
+    UC33 -. "«include»" .-> UC32
+    UC11 -. "«include»" .-> UC35
+    classDef ext stroke-dasharray: 5 4

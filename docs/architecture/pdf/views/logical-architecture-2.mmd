@@ -1,0 +1,27 @@
+---
+title: "Chaîne de traitement de l'API — étapes 1 à 5"
+---
+flowchart TB
+    subgraph API["API layer — one Node.js http server (reference/api.js createServer)"]
+        direction TB
+        ASSETS["1 · Console assets /admin/* (serveAdminAsset, own CSP)<br/>i18n-serve.js sets lang/dir from the ida_lang cookie"]
+        PGATE["2 · Page gate: /atelier/* pages need a session<br/>(else 302 /login)"]
+        ASSETS2["3 · Workshop and public page assets<br/>serveAtelierAsset · serveCitizenAsset"]
+        PUB["4 · /public/* — the only anonymous data route<br/>(passport by IVID, rate-limited)"]
+        BA["5 · Better Auth routes /api/auth/*<br/>(sign-in, sign-out, session, change-password)"]
+    end
+    OWN["6 · Owner browser session /session<br/>(signed cookie, two read routes)"]:::ext
+    APP["Workspace pages /atelier/*<br/>app-dashboard, app-vehicles, app-register,<br/>app-dossier, app-interventions, app-parts-used, app-account"]:::ext
+    ADMINUI["Operator console /admin/*<br/>(out of the simplified menu, still served)"]:::ext
+    CIT["Public pages / and /passport<br/>web/citizen"]:::ext
+    AUTHMOD["auth/auth.js (Better Auth) · auth/principal.js · identity.js · session.js"]:::ext
+    ASSETS --> PGATE
+    PGATE --> ASSETS2
+    ASSETS2 --> PUB
+    PUB --> BA
+    BA --> OWN
+    APP -- "fetch /api/* + X-IDauto-Session: 1" --> ASSETS
+    ADMINUI -- "fetch /api/*" --> ASSETS
+    CIT -- "GET /public/passport/:ivid" --> ASSETS
+    BA --> AUTHMOD
+    classDef ext stroke-dasharray: 5 4

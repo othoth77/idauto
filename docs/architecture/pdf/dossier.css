@@ -1,0 +1,79 @@
+/* IDauto — dossier technique (impression A4, noir et blanc). */
+@page {
+  size: A4 portrait;
+  margin: 16mm 12mm 18mm 12mm;
+  @top-left { content: "IDauto — Dossier technique et architecture du système"; font: 7.5pt "DejaVu Sans", sans-serif; color: #000; vertical-align: bottom; padding-bottom: 3mm; }
+  @top-right { content: "Version 1.0 — 11 novembre 2026"; font: 7.5pt "DejaVu Sans", sans-serif; color: #000; vertical-align: bottom; padding-bottom: 3mm; }
+  @bottom-center { content: "Page " counter(page) " / " counter(pages); font: 8pt "DejaVu Sans", sans-serif; color: #000; vertical-align: top; padding-top: 4mm; }
+}
+@page cover {
+  @top-left { content: none; } @top-right { content: none; } @bottom-center { content: none; }
+}
+@page landscape {
+  size: A4 landscape;
+  margin: 14mm 12mm 16mm 12mm;
+  @top-left { content: "IDauto — Dossier technique et architecture du système"; font: 7.5pt "DejaVu Sans", sans-serif; color: #000; vertical-align: bottom; padding-bottom: 3mm; }
+  @top-right { content: "Version 1.0 — 11 novembre 2026"; font: 7.5pt "DejaVu Sans", sans-serif; color: #000; vertical-align: bottom; padding-bottom: 3mm; }
+  @bottom-center { content: "Page " counter(page) " / " counter(pages); font: 8pt "DejaVu Sans", sans-serif; color: #000; vertical-align: top; padding-top: 3mm; }
+}
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font: 9.5pt/1.42 "DejaVu Sans", sans-serif; color: #000; background: #fff; margin: 0; hyphens: manual; }
+code { font-family: "DejaVu Sans Mono", monospace; font-size: 0.86em; overflow-wrap: anywhere; }
+p { margin: 0 0 2.2mm; text-align: justify; }
+ul, ol { margin: 0 0 2.5mm; padding-left: 6mm; }
+li { margin-bottom: 0.8mm; }
+strong { font-weight: bold; }
+
+/* ---------- couverture ---------- */
+.cover { page: cover; height: 263mm; display: flex; flex-direction: column; break-after: page; }
+.cover-project { margin-top: 38mm; font-size: 30pt; font-weight: bold; letter-spacing: 1.5pt; border-bottom: 1.2pt solid #000; padding-bottom: 4mm; }
+.cover-title { font-size: 21pt; font-weight: bold; line-height: 1.25; margin: 8mm 0 4mm; }
+.cover-sub { font-size: 11pt; margin-bottom: 18mm; }
+.cover-meta { border-collapse: collapse; width: 100%; font-size: 9pt; }
+.cover-meta th { text-align: left; width: 52mm; padding: 2mm 3mm 2mm 0; vertical-align: top; border-top: 0.4pt solid #000; }
+.cover-meta td { padding: 2mm 0; border-top: 0.4pt solid #000; }
+.cover-meta tr:last-child th, .cover-meta tr:last-child td { border-bottom: 0.4pt solid #000; }
+.cover-foot { margin-top: auto; font-size: 8pt; border-top: 0.4pt solid #000; padding-top: 2mm; }
+
+/* ---------- table des matières ---------- */
+.toc-page { break-after: page; }
+.toc-title { font-size: 16pt; margin: 0 0 6mm; border-bottom: 0.8pt solid #000; padding-bottom: 2mm; }
+#toc a { color: #000; text-decoration: none; display: flex; align-items: baseline; }
+#toc .toc-l2 { font-weight: bold; margin-top: 2.2mm; font-size: 9.5pt; }
+#toc .toc-l3 { padding-left: 8mm; font-size: 8.8pt; margin-top: 0.4mm; }
+#toc .toc-text { flex: 0 1 auto; }
+#toc .toc-num { display: inline-block; min-width: 9mm; }
+#toc .toc-dots { flex: 1 1 auto; border-bottom: 0.5pt dotted #000; margin: 0 1.5mm; transform: translateY(-1mm); }
+#toc .toc-page-no { flex: 0 0 auto; min-width: 7mm; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- titres ---------- */
+h2 { font-size: 14.5pt; margin: 0 0 4mm; padding-bottom: 1.5mm; border-bottom: 0.8pt solid #000; break-before: page; break-after: avoid; }
+h3 { font-size: 11pt; margin: 5mm 0 2mm; break-after: avoid; }
+h2 .num, h3 .num { margin-right: 2.5mm; }
+
+/* ---------- tableaux ---------- */
+table.grid { border-collapse: collapse; width: 100%; margin: 1mm 0 3.5mm; font-size: 8.4pt; line-height: 1.32; }
+table.grid.small { font-size: 7.9pt; }
+table.grid th, table.grid td { border: 0.4pt solid #000; padding: 1.1mm 1.5mm; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+table.grid thead th { background: #e6e6e6; font-weight: bold; }
+table.grid thead { display: table-header-group; }
+table.grid tr { break-inside: avoid; }
+.note { font-size: 8.6pt; }
+ul.note { font-size: 8.6pt; }
+
+/* ---------- figures ---------- */
+figure.dia { margin: 3mm 0 5mm; break-inside: avoid; }
+figure.dia .fig-box { margin-right: 0.3mm; display: flex; justify-content: center; align-items: center; border: 0.4pt solid #000; padding: 2mm; box-sizing: border-box; }
+figure.dia img { display: block; }
+figure.dia figcaption { font-size: 8.8pt; font-weight: bold; margin-top: 1.8mm; text-align: left; }
+figure.dia .fig-src { font-size: 7.4pt; margin-top: 0.6mm; }
+figure.dia .fig-note { font-size: 8.2pt; margin-top: 1.2mm; text-align: left; }
+figure.dia ul.fig-note { margin-top: 0.6mm; }
+/* Figure on its own page: portrait (flows with the text) or landscape (named page). */
+figure.dia.page { break-before: page; break-after: page; margin: 0; }
+figure.dia.landscape { page: landscape; }
+
+/* ---------- inventaire et annexe ---------- */
+.inv-group { font-size: 9pt; font-weight: bold; margin: 3mm 0 1mm; break-after: avoid; }
+.annex { }

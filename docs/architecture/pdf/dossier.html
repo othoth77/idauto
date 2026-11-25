@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>IDauto — Dossier Technique et Architecture du Système</title>
+<link rel="stylesheet" href="dossier.css">
+<!--
+  Source du dossier PDF. Contenu tiré uniquement de docs/architecture/ (README, 01 à 06) et des
+  fichiers de diagrammes. La numérotation des titres et des figures, la table des matières, la mise en
+  page des figures et l'inventaire des tables (lu dans 06-data-model.md) sont produits par build-pdf.mjs.
+-->
+</head>
+<body>
+
+<section class="cover">
+  <div class="cover-project">IDauto</div>
+  <div class="cover-title">Dossier Technique et Architecture du Système</div>
+  <div class="cover-sub">Audit du système implémenté — cas d'utilisation, classes, données, architecture logique et physique</div>
+  <table class="cover-meta">
+    <tr><th>Projet</th><td>IDauto — registre et carnet d'entretien de véhicules pour ateliers</td></tr>
+    <tr><th>Document</th><td>Dossier technique et architecture du système</td></tr>
+    <tr><th>Version du document</th><td>1.0 — 11 novembre 2026</td></tr>
+    <tr><th>Version du système décrite</th><td>branche <code>main</code>, commit <code>9a0f5b1</code> (en production sur idauto.tn depuis le 9 novembre 2026)</td></tr>
+    <tr><th>Sources</th><td>dossier <code>docs/architecture/</code> du dépôt <code>othoth77/idauto</code> (demande de fusion n° 48)</td></tr>
+    <tr><th>Vérifications sur les serveurs</th><td>lecture seule, 10 novembre 2026</td></tr>
+    <tr><th>Statut</th><td>document de revue — aucune modification de l'application</td></tr>
+  </table>
+  <div class="cover-foot">Document généré à partir des sources Markdown et Mermaid du dépôt. Les diagrammes sont des dessins vectoriels produits par Mermaid.</div>
+</section>
+
+<section class="toc-page">
+  <div class="toc-title">Table des matières</div>
+  <nav id="toc"></nav>
+</section>
+
+<!-- ===================================================================== -->
+<h2 id="s-presentation">Présentation générale du projet</h2>
+
+<h3>Objet du document</h3>
+<p>Ce dossier décrit IDauto <strong>tel qu'il est implémenté</strong>. Il porte sur le code de la branche
+<code>main</code> au commit <code>9a0f5b1</code>, qui est la version en service sur idauto.tn depuis le
+9 novembre 2026. Il s'appuie aussi sur des vérifications en lecture seule des serveurs de production et
+de pré-production, faites le 10 novembre 2026.</p>
+<p>Il rassemble en un seul document les fichiers du dossier <code>docs/architecture/</code> :</p>
+<ul>
+  <li>l'audit du projet ;</li>
+  <li>les diagrammes de cas d'utilisation, de classes, d'architecture logique et physique ;</li>
+  <li>le modèle de données.</li>
+</ul>
+<p>Il n'ajoute aucune information technique qui ne figure pas dans ces sources. Il est purement descriptif : sa
+rédaction n'a modifié ni l'application ni sa configuration.</p>
+
+<h3>IDauto en bref</h3>
+<p>IDauto est <strong>un seul processus Node.js 22, sans framework web</strong>. Il s'appuie sur
+Better Auth pour les comptes et sur PostgreSQL 15 pour les données. Il sert, derrière nginx et sur un
+seul serveur privé virtuel OVH :</p>
+<ul>
+  <li>des pages statiques en français et en arabe ;</li>
+  <li>une API JSON.</li>
+</ul>
+<ul>
+  <li><strong>Forme du système :</strong> un monolithe en couches. Il n'y a ni tâche de fond, ni file de
+  messages, ni cache, et aucun service externe n'est appelé pendant l'exécution.</li>
+  <li><strong>Écritures :</strong> chaque écriture est accompagnée d'une ligne du journal d'audit, dans la
+  même transaction.</li>
+  <li><strong>Rôles :</strong> l'application web a trois rôles, technicien ⊂ gestionnaire ⊂ administrateur.
+  Chacun est limité à sa propre organisation, et cette limite est appliquée jusque dans les requêtes SQL.</li>
+  <li><strong>Données :</strong> 41 tables dans le schéma <code>public</code> de la base
+  <code>idauto_production</code>.</li>
+</ul>
+
+<h3>Légende des statuts</h3>
+<p>Le même vocabulaire est employé dans tout le document :</p>
+<table class="grid">
+  <thead><tr><th>Statut</th><th>Signification</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Implémenté</strong></td><td>Le code existe, une route ou une page y mène, et il fonctionne en production.</td></tr>
+    <tr><td><strong>Partiel</strong></td><td>Une partie du code ou des tables existe, mais aucune page ne s'en sert, ou bien la fonction n'est pas configurée en production.</td></tr>
+    <tr><td><strong>Prévu</strong></td><td>Il n'existe que des documents, des fichiers README ou des tables vides ; aucun chemin de code.</td></tr>
+    <tr><td><strong>Abandonné</strong></td><td>Le code est encore présent mais désactivé (par exemple, la lecture automatique de la carte grise répond 410).</td></tr>
+  </tbody>
+</table>
+<p><strong>Ce que montrent les diagrammes.</strong></p>
+<ul>
+  <li>Une fonction prévue n'est jamais présentée comme implémentée.</li>
+  <li>Les diagrammes de cas d'utilisation, de classes et d'architecture logique ne montrent que des éléments implémentés.</li>
+  <li>Les quelques éléments partiels qui y figurent portent la mention « NOT CONFIGURED ».</li>
+</ul>
+
+<h3>Conventions de lecture des diagrammes</h3>
+<ul>
+  <li><strong>Libellés en anglais.</strong> Les libellés des diagrammes sont repris tels quels des fichiers
+  sources, qui sont en anglais. Ils restent ainsi identiques aux noms du code, ce qui permet de passer d'un
+  diagramme au code sans ambiguïté. Les légendes et les explications sont en français.</li>
+  <li><strong>Dessins vectoriels en noir et blanc.</strong> Chaque diagramme est dessiné en vecteurs, en noir et
+  blanc, à partir de son fichier Mermaid. Sa forme et ses proportions sont conservées, sans recadrage.</li>
+  <li><strong>Vues détaillées.</strong> Un diagramme trop grand pour être lisible sur une page A4 est d'abord
+  montré en <strong>vue d'ensemble</strong>, puis découpé en <strong>vues détaillées</strong>. Une vue
+  détaillée reprend à l'identique une partie des éléments du diagramme, avec toutes leurs relations.</li>
+  <li><strong>Pointillés et boîtes vides.</strong> Dans une vue détaillée, un élément dessiné en
+  <strong>pointillés</strong> (pour les schémas en blocs), ou une classe ou une table sans attributs, est
+  détaillé dans une autre vue.</li>
+  <li><strong>Complétude des vues.</strong> Un contrôle automatique vérifie que l'ensemble des vues
+  détaillées contient chaque élément et chaque relation du diagramme d'origine (voir l'annexe A).</li>
+  <li><strong>Tables et classes.</strong> Les tables de la base ne sont pas des classes de l'application.
+  Les 41 tables sont décrites au chapitre « Modèle de données ». Le diagramme de classes montre les
+  15 entités du domaine manipulées par l'application et indique, pour chacune, la table qui la porte.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s-audit">Audit technique et technologies</h2>
+
+<p>L'audit a été réalisé le 10 novembre 2026 sur <code>main</code> au commit <code>9a0f5b1</code>. Les
+sources sont :</p>
+<ul>
+  <li>la lecture du code source ;</li>
+  <li>l'extraction du schéma et des routes par script ;</li>
+  <li>des vérifications en lecture seule sur les serveurs.</li>
+</ul>
+<p>Rien n'est décrit à partir d'une intention. En cas de désaccord entre un document ancien et le code,
+c'est le code qui fait foi.</p>
+
+<h3>Structure du dépôt</h3>
+<table class="grid small">
+  <thead><tr><th>Chemin</th><th>Contenu</th><th>Exécuté en production</th></tr></thead>
+  <tbody>
+    <tr><td><code>reference/</code></td><td>L'application : un serveur HTTP Node.js (<code>api.js</code>), ses modules de routes, services et dépôts, les pages statiques (<code>*.html</code>) et leurs scripts (<code>app-*.js</code>, <code>admin-*.js</code>)</td><td><strong>oui</strong></td></tr>
+    <tr><td><code>reference/workspace/</code></td><td>Services de l'application simplifiée : enregistrement d'un véhicule, fiche véhicule, contacts propriétaires, interventions, listes et tableau de bord</td><td>oui</td></tr>
+    <tr><td><code>reference/auth/</code></td><td>Configuration de Better Auth (<code>auth.js</code>) et passage de la session au principal (<code>principal.js</code>)</td><td>oui</td></tr>
+    <tr><td><code>reference/documents/</code></td><td>Photos de carte grise : stockage, métadonnées, analyseur OCR retiré</td><td>oui (les routes OCR répondent 410)</td></tr>
+    <tr><td><code>reference/vehicle/</code></td><td>Normalisation des plaques, validation du VIN, dépôt et résolution des véhicules</td><td>oui</td></tr>
+    <tr><td><code>reference/workshop/</code></td><td>Dépôt des visites, opérations et commandes d'atelier ; service de lecture de plaque de l'atelier</td><td>oui</td></tr>
+    <tr><td><code>reference/parts/</code></td><td>Catalogue local de pièces, adaptateur TecDoc (non configuré), fournisseur fictif (tests uniquement)</td><td>oui, catalogue local seulement</td></tr>
+    <tr><td><code>reference/admin/</code></td><td>Modèles de lecture de la console d'exploitation</td><td>oui</td></tr>
+    <tr><td><code>web/citizen/</code>, <code>web/design-system/</code>, <code>web/vendor/</code></td><td>Pages publiques, système de design partagé (variables, CSS, petits scripts), bibliothèques navigateur embarquées (Tesseract, scanic, qrcodegen)</td><td>oui</td></tr>
+    <tr><td><code>database/</code></td><td><code>schema.sql</code>, migrations ordonnées, jeu de données de test fictif</td><td>oui (appliqué)</td></tr>
+    <tr><td><code>ops/</code></td><td>Outils d'exploitation : comptes (<code>auth-users.js</code>), sauvegarde hors serveur (<code>offhost-backup.js</code> et <code>adapters/s3-compatible.js</code>), médias, générateurs de pages et de catalogue, procédures</td><td>lancés par l'opérateur, ce ne sont pas des services</td></tr>
+    <tr><td><code>config/idauto.example.json</code></td><td>Formats de plaque, interrupteur de la résolution publique et limite de débit</td><td>lu à l'exécution par <code>plate-validator.js</code>. L'interrupteur public est lu dans le fichier désigné par <code>IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH</code> ; en production, c'est un fichier <code>idauto.json</code> local au serveur, avec <code>enabled</code> = true</td></tr>
+    <tr><td><code>tests/</code></td><td>44 suites : 16 sans base de données, les autres sur une base PostgreSQL jetable</td><td>intégration continue et poste local</td></tr>
+    <tr><td><code>protocol/</code></td><td>Schémas JSON et vocabulaires du protocole ouvert d'identité des véhicules</td><td>non (spécification)</td></tr>
+    <tr><td><code>src/</code></td><td>Fichiers README seulement (<code>api</code>, <code>blockchain</code>, <code>identity</code>, <code>provenance</code>, <code>verification</code>)</td><td>non (prévu)</td></tr>
+    <tr><td><code>docs/</code></td><td>Documents produit, confidentialité, sécurité, déploiement et historique</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3>Technologies et versions</h3>
+<table class="grid small">
+  <thead><tr><th>Couche</th><th>Technologie</th><th>Version</th><th>Où elle a été constatée</th></tr></thead>
+  <tbody>
+    <tr><td>Exécution</td><td>Node.js</td><td>22.22.1 (production et pré-production)</td><td><code>node --version</code> sur les serveurs ; l'intégration continue utilise Node 22</td></tr>
+    <tr><td>Serveur HTTP</td><td>module <code>http</code> de Node, sans framework web</td><td>—</td><td><code>reference/api.js</code>, <code>createServer()</code></td></tr>
+    <tr><td>Authentification</td><td>Better Auth (courriel et mot de passe, sessions par cookie)</td><td>1.7.2</td><td><code>package-lock.json</code>, <code>reference/auth/auth.js</code></td></tr>
+    <tr><td>Pilote de base de données</td><td>node-postgres (<code>pg</code>)</td><td>8.23.0</td><td><code>package-lock.json</code>, <code>reference/db.js</code></td></tr>
+    <tr><td>Base de données</td><td>PostgreSQL</td><td><strong>15.18</strong> en production (conteneur Docker) ; 16.9 en pré-production</td><td><code>SELECT version()</code> ; binaire de pré-production</td></tr>
+    <tr><td>Interface</td><td>HTML statique et JavaScript sans framework, variables CSS de design</td><td>—</td><td><code>reference/*.html</code>, <code>web/design-system/</code></td></tr>
+    <tr><td>Bibliothèques navigateur</td><td>Tesseract (OCR du lecteur de plaque de l'ancienne page atelier), scanic, qrcodegen</td><td>embarquées</td><td><code>web/vendor/</code></td></tr>
+    <tr><td>Proxy inverse et TLS</td><td>nginx, certificats Let's Encrypt (Certbot)</td><td>nginx 1.28.3</td><td><code>nginx -v</code> ; émetteur du certificat</td></tr>
+    <tr><td>Conteneurs</td><td>Docker (pour PostgreSQL seulement)</td><td>29.6.1</td><td><code>docker --version</code></td></tr>
+    <tr><td>Système (production)</td><td>Ubuntu</td><td>26.04 LTS</td><td><code>lsb_release</code></td></tr>
+    <tr><td>Intégration continue</td><td>GitHub Actions, <code>ubuntu-latest</code></td><td>—</td><td><code>.github/workflows/ci.yml</code></td></tr>
+    <tr><td>Dépendances d'exécution</td><td>deux exactement : <code>better-auth</code> et <code>pg</code></td><td>—</td><td><code>package.json</code></td></tr>
+  </tbody>
+</table>
+
+<h3>Inventaire des composants</h3>
+<table class="grid small">
+  <thead><tr><th>Composant</th><th>Nature</th><th>Responsabilité</th><th>Source</th></tr></thead>
+  <tbody>
+    <tr><td>Serveur HTTP et chaîne de traitement</td><td>module</td><td>Fichiers statiques avec CSP, contrôle d'accès aux pages, route publique, routes d'authentification, authentification, contrôle des droits, aiguillage</td><td><code>reference/api.js</code></td></tr>
+    <tr><td>Routes de l'espace de travail</td><td>module de routes</td><td>API de l'application simplifiée : enregistrement, fiche, propriétaire, détails, suppression, interventions, pièces, tableau de bord, recherche, notifications</td><td><code>workspace-routes.js</code></td></tr>
+    <tr><td>Routes V12</td><td>module de routes</td><td>Pages atelier, identification par plaque, visites, opérations, commandes, catalogue</td><td><code>v12-routes.js</code></td></tr>
+    <tr><td>Routes V14</td><td>module de routes</td><td>Photos de carte grise ; routes OCR retirées (410 sauf si <code>IDAUTO_CG_OCR_ENABLED=1</code>)</td><td><code>v14-routes.js</code></td></tr>
+    <tr><td>Routes de la console</td><td>module de routes</td><td>Modèles de lecture d'administration : tableau de bord, véhicules, entretien, organisations, sources, qualité, audit, comptes</td><td><code>admin-routes.js</code></td></tr>
+    <tr><td>Service d'enregistrement</td><td>service</td><td>Valider et enregistrer un véhicule (plaque obligatoire), contrôle des doublons, contact propriétaire, note</td><td><code>workspace/registration-service.js</code></td></tr>
+    <tr><td>Service des interventions</td><td>service</td><td>Saisir, modifier ou annuler une intervention avec ses pièces et leur provenance déclarée (deux valeurs)</td><td><code>workspace/intervention-service.js</code></td></tr>
+    <tr><td>Détails du véhicule</td><td>service</td><td>Modifier marque, modèle, année, kilométrage et note propre à l'atelier ; supprimer = archiver</td><td><code>workspace/vehicle-details.js</code></td></tr>
+    <tr><td>Contacts propriétaires</td><td>service</td><td>Contact du propriétaire, privé et propre à chaque atelier ; chaque lecture est auditée</td><td><code>workspace/owner-contacts.js</code></td></tr>
+    <tr><td>Dépôt de l'espace de travail</td><td>modèle de lecture</td><td>Fiche, listes, compteurs du tableau de bord, recherche globale, cloisonnement par organisation</td><td><code>workspace/workspace-repository.js</code></td></tr>
+    <tr><td>Service des documents</td><td>service</td><td>Enregistrer, lister et supprimer les photos de carte grise (adressage par contenu), vignettes</td><td><code>documents/document-service.js</code></td></tr>
+    <tr><td>Dépôt et résolution des véhicules</td><td>dépôt / service</td><td>Plaques, faits VIN, historique d'identification, résolution</td><td><code>vehicle/*.js</code></td></tr>
+    <tr><td>Dépôt de l'atelier</td><td>dépôt</td><td>Visites, opérations, commandes (V12)</td><td><code>workshop/workshop-repository.js</code></td></tr>
+    <tr><td>Écritures et audit</td><td>accès aux données</td><td>Chaque écriture est jumelée à une ligne <code>idauto_audit_log</code> dans une même transaction (<code>withAudit</code>)</td><td><code>reference/writes.js</code></td></tr>
+    <tr><td>Réserve de connexions</td><td>accès aux données</td><td>Une réserve <code>pg</code> unique, configurée par <code>IDAUTO_DB_*</code></td><td><code>reference/db.js</code></td></tr>
+    <tr><td>Stockage des médias</td><td>accès aux données</td><td>Fichiers adressés par contenu sous <code>IDAUTO_MEDIA_STORAGE_PATH</code></td><td><code>reference/storage.js</code>, <code>documents/document-storage.js</code></td></tr>
+    <tr><td>Authentification</td><td>sécurité</td><td>Better Auth (connexion limitée à 5 par minute et par client), passage au principal, identités de service par jeton, session navigateur du propriétaire</td><td><code>auth/auth.js</code>, <code>auth/principal.js</code>, <code>identity.js</code>, <code>session.js</code></td></tr>
+    <tr><td>Limitation de débit</td><td>sécurité</td><td>Fenêtres par identité pour la résolution publique, la recherche et l'enregistrement</td><td><code>reference/rate-limit.js</code></td></tr>
+    <tr><td>Observabilité</td><td>transverse</td><td>Une ligne JSON par décision d'authentification ou par événement, sur la sortie standard</td><td><code>reference/observability.js</code></td></tr>
+    <tr><td>Internationalisation</td><td>présentation</td><td>Source en français, catalogue arabe, <code>lang</code> et <code>dir</code> fixés côté serveur</td><td><code>i18n.js</code>, <code>i18n-serve.js</code>, <code>i18n-catalog-ar.js</code></td></tr>
+    <tr><td>Outil de gestion des comptes</td><td>outil d'exploitation</td><td>Créer, supprimer, changer le rôle, définir le mot de passe, révoquer les sessions</td><td><code>ops/auth-users.js</code></td></tr>
+    <tr><td>Outil de sauvegarde hors serveur</td><td>outil d'exploitation</td><td>Préparer, inventorier, vérifier, envoyer vers un stockage compatible S3, vérifier une restauration</td><td><code>ops/offhost-backup.js</code>, <code>ops/adapters/s3-compatible.js</code></td></tr>
+  </tbody>
+</table>
+<p class="note"><strong>Tâches de fond.</strong> L'application ne démarre <strong>aucun planificateur, processus de fond
+ni minuterie</strong>. La sauvegarde planifiée tourne sur le serveur de production sous forme de minuteries systemd. Ces
+minuteries sont installées depuis un autre dépôt (<code>othoth77/mythos-prod</code>) ; voir le chapitre
+« Infrastructure, sauvegardes et environnements ».</p>
+
+<h3>État fonctionnel</h3>
+<table class="grid small">
+  <thead><tr><th>Fonction</th><th>Statut</th><th>Élément de preuve</th></tr></thead>
+  <tbody>
+    <tr><td>Connexion, déconnexion, changement de son mot de passe, sessions (Better Auth)</td><td><strong>Implémenté</strong></td><td><code>auth/auth.js</code>, <code>/api/auth/*</code>, tests <code>ida-v13-*</code></td></tr>
+    <tr><td>Réinitialisation du mot de passe</td><td><strong>Implémenté comme une étape d'exploitation</strong> : le bouton « Mot de passe oublié » affiche un message, puis l'opérateur lance <code>ops/auth-users.js set-password</code> ; aucun courriel</td><td><code>login-ui.js</code>, <code>ops/auth-users.js</code></td></tr>
+    <tr><td>Création et suppression de compte</td><td><strong>Outil d'exploitation seulement</strong> ; la page web « Gestion des utilisateurs » affiche les comptes en lecture seule</td><td><code>ops/auth-users.js</code>, <code>/api/admin/accounts</code></td></tr>
+    <tr><td>Page des rôles et des droits</td><td><strong>Implémenté</strong> (matrice en lecture seule issue de <code>principal.js</code>)</td><td><code>/api/admin/roles</code></td></tr>
+    <tr><td>Français et arabe, écriture de droite à gauche</td><td><strong>Implémenté</strong></td><td><code>i18n*.js</code>, tests <code>ida-ui-browser</code></td></tr>
+    <tr><td>Liste, recherche, enregistrement (seule la plaque est obligatoire), consultation et modification des véhicules</td><td><strong>Implémenté</strong></td><td><code>workspace-routes.js</code>, <code>registration-service.js</code>, <code>vehicle-details.js</code></td></tr>
+    <tr><td>Suppression d'un véhicule</td><td><strong>Implémenté comme un archivage</strong> : <code>fiche_status = 'archived'</code>, plaques annulées, fait VIN désactivé. La suppression est refusée s'il existe une intervention.</td><td><code>vehicle-details.js remove()</code></td></tr>
+    <tr><td>Contact du propriétaire (privé, propre à l'atelier, audité)</td><td><strong>Implémenté</strong></td><td><code>owner-contacts.js</code></td></tr>
+    <tr><td>Photos du recto et du verso de la carte grise</td><td><strong>Implémenté</strong> (stockage privé, route authentifiée, contrôle de l'organisation)</td><td><code>v14-routes.js</code>, <code>document-service.js</code></td></tr>
+    <tr><td>Lecture automatique (OCR) de la carte grise</td><td><strong>Abandonné</strong> : les routes répondent 410 sauf si <code>IDAUTO_CG_OCR_ENABLED=1</code> ; l'interface a été retirée</td><td><code>v14-routes.js ocrRetired()</code></td></tr>
+    <tr><td>Interventions avec plusieurs pièces et provenance à deux valeurs</td><td><strong>Implémenté</strong></td><td><code>intervention-service.js</code></td></tr>
+    <tr><td>Liste des pièces (filtre par provenance, recherche)</td><td><strong>Implémenté</strong></td><td><code>listPartsUsed()</code></td></tr>
+    <tr><td>Tableau de bord (5 compteurs réels)</td><td><strong>Implémenté</strong></td><td><code>overview()</code></td></tr>
+    <tr><td>Recherche globale</td><td><strong>Implémenté</strong></td><td><code>/api/search</code></td></tr>
+    <tr><td>Passeport public par IVID</td><td><strong>Implémenté</strong> et activé en production (configuration du serveur <code>idauto.json</code> : <code>enabled</code> = true ; par IVID uniquement, débit limité). La recherche publique par plaque est fermée (404).</td><td><code>api.js handlePublicPassportRoute</code></td></tr>
+    <tr><td>Réception d'observations, faits, décisions de la file de revue, fusion et séparation de véhicules</td><td><strong>Implémenté</strong> (API et console d'exploitation, hors du menu simplifié)</td><td>table <code>ROUTES</code> de <code>api.js</code>, <code>admin-routes.js</code></td></tr>
+    <tr><td>Ancienne page atelier avec lecture de plaque dans le navigateur (<code>/atelier</code>)</td><td><strong>Implémenté</strong>, hors du menu simplifié</td><td><code>atelier.html</code>, <code>v12-routes.js</code></td></tr>
+    <tr><td>Commandes et stock d'atelier (<code>idauto_workshop_orders</code>, <code>idauto_org_stock</code>)</td><td><strong>Partiel</strong> : les tables et les fonctions de dépôt existent, mais aucune page de l'application simplifiée ne les utilise</td><td><code>workshop-repository.js</code>, <code>local-parts-catalog.js</code></td></tr>
+    <tr><td>Catalogue de pièces TecDoc</td><td><strong>Partiel, non configuré</strong> : l'adaptateur est présent, mais aucune variable <code>IDAUTO_TECDOC_*</code> n'existe sur le serveur de production</td><td><code>parts/tecdoc-adapter.js</code></td></tr>
+    <tr><td>Fournisseur sous licence de données véhicule (plaque ou VIN → véhicule)</td><td><strong>Partiel, non configuré</strong> : adaptateur HTTPS générique, désactivé tant que <code>IDAUTO_VEHICLE_PROVIDER_URL</code> n'est pas défini. Aucune variable <code>IDAUTO_VEHICLE_PROVIDER_*</code> en production : la résolution utilise uniquement la base locale.</td><td><code>vehicle/providers/http-vehicle-provider.js</code>, <code>vehicle/vehicle-resolver.js</code></td></tr>
+    <tr><td>Caméras et lecture automatique de plaques, mouvements de véhicules, consentements, vérifications, scans de documents, table des rôles, localisations d'observation, table de la file de revue</td><td><strong>Prévu</strong> : les tables existent dans le schéma (en production aussi), mais aucun chemin de code ne les lit ni ne les écrit</td><td>chapitre « Modèle de données », statut « schéma seulement »</td></tr>
+    <tr><td>Ancrage blockchain, service de provenance, schémas de la plateforme Mythos (<code>mythos_core</code>, <code>atelier_network</code>, <code>fixpert</code>)</td><td><strong>Prévu</strong> (documents et README seulement)</td><td><code>src/*/README.md</code>, <code>docs/BLOCKCHAIN_ARCHITECTURE.md</code>, <code>docs/ARCHITECTURE.md</code> §2</td></tr>
+    <tr><td>Intégration Piece.Autos ou Casse.Autos, facturation, gestion de stock</td><td><strong>Non implémenté</strong> (exclu par le propriétaire du projet)</td><td><code>docs/SIMPLIFICATION_2026-11.md</code> §6</td></tr>
+  </tbody>
+</table>
+
+<h3>Intégrations externes</h3>
+<table class="grid small">
+  <thead><tr><th>Intégration</th><th>Statut</th><th>Sens</th></tr></thead>
+  <tbody>
+    <tr><td>Better Auth</td><td>bibliothèque intégrée au processus (aucun appel externe)</td><td>—</td></tr>
+    <tr><td>Stockage hors serveur compatible S3</td><td>utilisé par l'outil de sauvegarde (opérateur ou minuterie), pas par l'API</td><td>HTTPS sortant depuis le serveur</td></tr>
+    <tr><td>TecDoc</td><td>adaptateur seulement, non configuré</td><td>(serait du HTTPS sortant)</td></tr>
+    <tr><td>Fournisseur sous licence de données véhicule (recherche par plaque ou VIN)</td><td>adaptateur seulement, non configuré ; aucun fournisseur choisi</td><td>(serait du HTTPS sortant, jeton porteur lu dans l'environnement)</td></tr>
+    <tr><td>Let's Encrypt</td><td>émission des certificats par Certbot sur le serveur</td><td>sortant</td></tr>
+    <tr><td>Courriel, SMS, paiement, mesure d'audience</td><td><strong>aucune</strong></td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h3>Écarts avec les documents antérieurs</h3>
+<table class="grid small">
+  <thead><tr><th>Document</th><th>Affirmation</th><th>Réalité au 10 novembre 2026</th></tr></thead>
+  <tbody>
+    <tr><td><code>docs/ARCHITECTURE.md</code> (11 août 2026)</td><td>aucun service d'API ni d'interface IDauto n'est déployé</td><td>l'API fonctionne sur idauto.tn derrière nginx depuis novembre 2026</td></tr>
+    <tr><td><code>docs/ARCHITECTURE.md</code> §2</td><td>schémas cibles <code>mythos_core</code>, <code>idauto</code>, <code>atelier_network</code>, <code>fixpert</code></td><td>une seule base, 41 tables dans <code>public</code></td></tr>
+    <tr><td><code>docs/ARCHITECTURE.md</code> §1</td><td>Mythos OS fournit l'authentification, la facturation…</td><td>l'authentification est locale (Better Auth) ; il n'y a pas de facturation</td></tr>
+    <tr><td><code>config/idauto.example.json</code>, champ <code>database.target_dbms_status</code></td><td>« sélectionné — pas encore installé ni déployé »</td><td>PostgreSQL est déployé : ce champ est périmé. Les formats de plaque de ce fichier sont toujours lus.</td></tr>
+  </tbody>
+</table>
+<p>Ces documents sont conservés sans modification. Le présent dossier décrit l'implémentation telle qu'elle est.</p>
+
+<!-- ===================================================================== -->
+<h2 id="s-usecase">Diagramme de cas d'utilisation</h2>
+
+<p>Le diagramme ne montre que les fonctions <strong>implémentées</strong>. Les fonctions partielles, prévues ou
+abandonnées sont listées à la fin du chapitre et n'y figurent pas. Les sources sont
+<code>diagrams/use-case.mmd</code> (Mermaid) et <code>diagrams/use-case.puml</code> (PlantUML, notation UML
+standard).</p>
+
+<h3>Acteurs</h3>
+<table class="grid small">
+  <thead><tr><th>Acteur</th><th>Nature</th><th>Comment le système le reconnaît</th><th>Source</th></tr></thead>
+  <tbody>
+    <tr><td>Visiteur</td><td>humain, anonyme</td><td>aucun identifiant</td><td><code>api.js</code> (<code>/public/*</code>, <code>/login</code>, pages publiques)</td></tr>
+    <tr><td>Technicien</td><td>humain</td><td>session Better Auth, <code>role = 'technician'</code>, <code>org_id</code> renseigné</td><td><code>auth/principal.js</code>, <code>TECHNICIAN_SCOPES</code></td></tr>
+    <tr><td>Gestionnaire</td><td>humain</td><td>session Better Auth, <code>role = 'manager'</code>, <code>org_id</code> renseigné</td><td><code>auth/principal.js</code>, <code>MANAGER_SCOPES</code></td></tr>
+    <tr><td>Administrateur</td><td>humain</td><td>session Better Auth, <code>role = 'admin'</code> (sans organisation)</td><td><code>auth/principal.js</code> (<code>scopes: ['*']</code>)</td></tr>
+    <tr><td>Opérateur serveur</td><td>humain, sur le terminal du serveur</td><td>lance <code>node ops/auth-users.js</code> avec un accès à la base</td><td><code>ops/auth-users.js</code></td></tr>
+    <tr><td>Client de service</td><td>système externe</td><td>en-tête <code>Authorization: Bearer</code> avec un jeton listé dans <code>IDAUTO_ADMIN_IDENTITIES</code></td><td><code>reference/identity.js</code></td></tr>
+  </tbody>
+</table>
+<p class="note">Deux éléments ne sont pas représentés comme acteurs :</p>
+<ul class="note">
+  <li><strong>Le propriétaire du véhicule.</strong> Un atelier enregistre ses coordonnées, mais il ne se connecte jamais.</li>
+  <li><strong>La session navigateur du propriétaire</strong> (<code>/session</code>). C'est une aide de la console,
+  installée par un administrateur et limitée à deux routes de lecture : c'est un mécanisme d'accès, pas un rôle.</li>
+</ul>
+
+<h3>Vue d'ensemble</h3>
+<figure class="dia" data-svg="use-case" data-caption="Cas d'utilisation implémentés — vue d'ensemble">
+  <p class="fig-note">Chaque acteur n'est relié qu'aux cas d'utilisation que <em>son propre rôle</em> ajoute. Les
+  flèches « is a » en pointillés sont des généralisations d'acteurs :</p>
+  <ul class="fig-note">
+    <li>le gestionnaire peut faire tout ce que fait le technicien ;</li>
+    <li>l'administrateur peut faire tout ce que fait le gestionnaire.</li>
+  </ul>
+  <p class="fig-note">Les relations «include» et «extend» sont tracées en pointillés. Mermaid n'a pas de notation
+  native pour les cas d'utilisation, qui sont donc dessinés comme des ovales.</p>
+</figure>
+
+<h3>Vues détaillées</h3>
+<figure class="dia" data-svg="use-case-1" data-caption="Cas d'utilisation — authentification, consultation, administration et API machine">
+  <p class="fig-note">Paquetages « Authentication and account », « Dashboard and consultation », « Users, roles and settings » et
+  « Machine API », avec leurs acteurs.</p>
+</figure>
+<figure class="dia" data-svg="use-case-2" data-caption="Cas d'utilisation — gestion des véhicules">
+  <p class="fig-note">Paquetage « Vehicle management ». Les cas en pointillés sont détaillés dans d'autres vues : « View maintenance
+  history », inclus par « View vehicle file », et « Attach face 1 / face 2 photo », qui étend « Register a vehicle ».</p>
+</figure>
+<figure class="dia" data-svg="use-case-3" data-caption="Cas d'utilisation — carte grise">
+  <p class="fig-note">Paquetage « Registration document ». Le cas en pointillés « Register a vehicle » appartient à la vue précédente.</p>
+</figure>
+<figure class="dia" data-svg="use-case-4" data-caption="Cas d'utilisation — interventions d'entretien et pièces">
+  <p class="fig-note">Paquetages « Maintenance interventions » et « Parts and provenance ». Le cas en pointillés « View vehicle file »
+  appartient à la vue « gestion des véhicules ».</p>
+</figure>
+
+<h3>Traçabilité : cas d'utilisation → route → droit</h3>
+<p>Le droit exigé vient de <code>ALL_ROUTE_SCOPES</code> (fichiers <code>api.js</code>, <code>workspace-routes.js</code>,
+<code>v14-routes.js</code> et <code>v12-routes.js</code>). Une route qui n'y figure pas est réservée à l'administrateur.</p>
+<table class="grid small">
+  <thead><tr><th>CU</th><th>Cas d'utilisation</th><th>Route(s)</th><th>Droit</th><th>Rôle minimal</th></tr></thead>
+  <tbody>
+    <tr><td>UC1</td><td>Se connecter</td><td><code>POST /api/auth/sign-in/email</code> (Better Auth, 5 par minute et par client)</td><td>aucun</td><td>Visiteur</td></tr>
+    <tr><td>UC2</td><td>Se déconnecter</td><td><code>POST /api/auth/sign-out</code></td><td>session</td><td>Technicien</td></tr>
+    <tr><td>UC3</td><td>Changer son mot de passe</td><td><code>POST /api/auth/change-password</code> (les autres sessions sont révoquées)</td><td>session</td><td>Technicien</td></tr>
+    <tr><td>UC4</td><td>Choisir la langue</td><td>cookie <code>ida_lang</code>, lu par <code>i18n-serve.js</code></td><td>aucun</td><td>Visiteur</td></tr>
+    <tr><td>UC5</td><td>Demander une réinitialisation du mot de passe</td><td>bouton « Mot de passe oublié » → message seulement (<code>login-ui.js</code>) ; ni route, ni courriel</td><td>aucun</td><td>Visiteur</td></tr>
+    <tr><td>UC10</td><td>Rechercher des véhicules</td><td><code>GET /api/workspace/vehicles</code></td><td><code>vehicle:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC11</td><td>Consulter la fiche d'un véhicule</td><td><code>GET /api/vehicles/:ref/dossier</code></td><td><code>vehicle:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC12</td><td>Enregistrer un véhicule</td><td><code>POST /api/vehicles/register</code></td><td><code>vehicle:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC13</td><td>Modifier la fiche d'un véhicule</td><td><code>PUT /api/vehicles/:ref/details</code></td><td><code>vehicle:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC14</td><td>Supprimer un véhicule (archivage)</td><td><code>DELETE /api/vehicles/:ref</code></td><td><code>vehicle:delete</code></td><td>Gestionnaire</td></tr>
+    <tr><td>UC15</td><td>Consulter le contact du propriétaire</td><td><code>GET /api/vehicles/:ref/owner</code> (chaque lecture est auditée)</td><td><code>owner:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC16</td><td>Enregistrer le contact du propriétaire</td><td><code>PUT</code> et <code>DELETE /api/vehicles/:ref/owner</code></td><td><code>owner:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC17</td><td>Voir le VIN</td><td>renvoyé dans la fiche seulement avec <code>vin:search</code> ; chaque divulgation est auditée (<code>recordVinDisclosureAudit</code>)</td><td><code>vin:search</code></td><td>Gestionnaire</td></tr>
+    <tr><td>UC20</td><td>Joindre la photo du recto ou du verso</td><td><code>PUT /api/vehicles/:ref/registration-document/:face</code> (et <code>/thumbnail</code>)</td><td><code>document:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC21</td><td>Consulter les photos du document</td><td><code>GET …/registration-document</code>, <code>GET …/:face/image</code>, <code>GET /api/workspace/documents</code></td><td><code>document:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC22</td><td>Supprimer une photo du document</td><td><code>DELETE /api/vehicles/:ref/registration-document/:face</code></td><td><code>document:delete</code></td><td>Gestionnaire</td></tr>
+    <tr><td>UC30–32</td><td>Saisir une intervention (véhicule, pièces, provenance)</td><td><code>POST /api/workspace/interventions</code></td><td><code>workshop:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC33</td><td>Modifier une intervention</td><td><code>PUT /api/workspace/interventions/:id</code></td><td><code>workshop:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC34</td><td>Annuler une intervention</td><td><code>DELETE /api/workspace/interventions/:id</code> (statut → <code>cancelled</code>)</td><td><code>workshop:write</code></td><td>Technicien</td></tr>
+    <tr><td>UC35</td><td>Consulter l'historique d'entretien</td><td>inclus dans la fiche ; <code>GET /api/workspace/interventions</code></td><td><code>vehicle:read</code>, <code>workshop:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC40</td><td>Lister les pièces utilisées</td><td><code>GET /api/workspace/parts-used</code></td><td><code>workshop:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC50</td><td>Consulter les compteurs du tableau de bord</td><td><code>GET /api/workspace/overview</code>, <code>GET /api/notifications</code></td><td><code>vehicle:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC51</td><td>Recherche globale</td><td><code>GET /api/search</code></td><td><code>vehicle:read</code></td><td>Technicien</td></tr>
+    <tr><td>UC52</td><td>Consulter le passeport public</td><td><code>GET /public/passport/:ivid</code> (débit limité ; la recherche par plaque est fermée)</td><td>aucun</td><td>Visiteur</td></tr>
+    <tr><td>UC60</td><td>Lister les comptes utilisateurs</td><td><code>GET /api/admin/accounts</code></td><td>administrateur seulement</td><td>Administrateur</td></tr>
+    <tr><td>UC61</td><td>Consulter les rôles et les droits</td><td><code>GET /api/admin/roles</code></td><td>administrateur seulement (absente de la table des droits)</td><td>Administrateur</td></tr>
+    <tr><td>UC62</td><td>Créer ou supprimer un compte, réinitialiser un mot de passe</td><td><code>ops/auth-users.js create</code>, <code>delete</code>, <code>set-password</code>, <code>set-role</code>, <code>revoke-sessions</code></td><td>accès au terminal</td><td>Opérateur serveur</td></tr>
+    <tr><td>UC70</td><td>Soumettre une observation</td><td><code>POST /api/observations</code>, <code>POST /api/ingest/observations</code></td><td><code>observation:write</code></td><td>Client de service</td></tr>
+    <tr><td>UC71</td><td>Lire ou ajouter des faits sur un véhicule</td><td><code>GET</code> et <code>POST /api/vehicles/:ref/facts</code></td><td><code>fact:read</code> / <code>fact:write</code></td><td>Client de service</td></tr>
+  </tbody>
+</table>
+<p class="note"><strong>Cloisonnement par organisation.</strong> Chaque principal d'organisation ne voit que les lignes de
+sa propre organisation, et ce contrôle est refait dans les requêtes SQL. Deux cas sont particuliers :</p>
+<ul class="note">
+  <li>les contacts propriétaires et les notes sont privés à l'atelier qui les a saisis ;</li>
+  <li>un véhicule est partagé entre organisations, mais son historique d'interventions est filtré par organisation.</li>
+</ul>
+
+<h3>Fonctions absentes du diagramme</h3>
+<table class="grid small">
+  <thead><tr><th>Fonction</th><th>Statut</th><th>Raison</th></tr></thead>
+  <tbody>
+    <tr><td>Lecture automatique de la carte grise (<code>…/registration-document/ocr</code>, <code>…/confirm</code>)</td><td>Abandonné</td><td>répond 410 sauf si <code>IDAUTO_CG_OCR_ENABLED=1</code></td></tr>
+    <tr><td>Pages de la console d'exploitation (<code>/admin/*</code> : file de revue, fusion et séparation, qualité, sources)</td><td>Implémenté, hors du menu simplifié</td><td>réservées à la console. Leurs routes sont réservées à l'administrateur (<code>POST /api/review/*</code>, <code>POST /api/vehicles/:ref/merge</code>, <code>/split</code>). Elles doubleraient la taille du diagramme ; elles sont décrites dans l'architecture logique.</td></tr>
+    <tr><td>Ancienne page atelier <code>/atelier</code> (photo de plaque, OCR dans le navigateur, visites V12)</td><td>Implémenté, hors du menu simplifié</td><td>remplacée par les cas d'utilisation des interventions</td></tr>
+    <tr><td>Commandes et stock d'atelier</td><td>Partiel</td><td>tables et fonctions de dépôt seulement</td></tr>
+    <tr><td>Consultation du catalogue TecDoc</td><td>Partiel, non configuré</td><td>aucune configuration sur le serveur de production</td></tr>
+    <tr><td>Caméras, mouvements, consentements, vérifications</td><td>Prévu</td><td>tables seulement, aucun chemin de code</td></tr>
+    <tr><td>Réinitialisation du mot de passe en libre-service par courriel</td><td>Non implémenté</td><td>pas d'intégration de courriel</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="s-classes">Diagramme de classes</h2>
+
+<h3>Nature des classes</h3>
+<p>IDauto est écrit sous forme de modules CommonJS qui exportent des fonctions. Le code <strong>ne définit
+aucune classe JavaScript, aucun modèle d'ORM et aucun type TypeScript</strong> pour le domaine : les lignes
+circulent sous forme d'objets simples construits à partir des résultats SQL. Le chapitre présente donc deux vues
+distinctes, sans les confondre avec les tables :</p>
+<ul>
+  <li><strong>Vue A — entités du domaine.</strong> Ce sont les classes conceptuelles que l'application lit et
+  écrit. Chacune repose sur exactement une table. Les noms et les types des attributs sont copiés de
+  <code>database/schema.sql</code> et des migrations. Seuls les attributs utilisés par le code sont montrés ;
+  les listes complètes de colonnes sont dans <code>06-data-model.md</code>.</li>
+  <li><strong>Vue B — modules de service.</strong> Ce sont les unités de code et les fonctions qu'elles exportent
+  réellement (<code>Object.keys(require(module))</code>).</li>
+</ul>
+
+<h3>Vue A — entités du domaine</h3>
+<figure class="dia" data-svg="class-diagram" data-caption="Entités du domaine utilisées par l'application — vue d'ensemble">
+  <p class="fig-note">La notation se lit ainsi :</p>
+  <ul class="fig-note">
+    <li><strong>Composition</strong> (losange plein) : la ligne enfant porte une clé étrangère <strong>NOT NULL</strong> vers
+    le parent et n'a pas de sens sans lui.</li>
+    <li><strong>Association</strong> (flèche) : la clé étrangère est facultative. La multiplicité côté parent vaut
+    <code>0..1</code> si la clé peut être nulle, <code>1</code> si elle est NOT NULL.</li>
+    <li><strong>Dépendance vers une «enumeration»</strong> : colonne contrainte par un CHECK en base.</li>
+  </ul>
+</figure>
+<figure class="dia" data-svg="class-diagram-1" data-caption="Entités — organisations, comptes et sessions">
+  <p class="fig-note"><code>Role</code> est contraint par le CHECK <code>chk_auth_user_role</code> (migration
+  <code>ida-v13-auth-session.sql</code>). Better Auth gère les colonnes des trois tables d'authentification ; IDauto y
+  ajoute <code>role</code> et <code>org_id</code>.</p>
+</figure>
+<figure class="dia" data-svg="class-diagram-2" data-caption="Entités — véhicule, plaques, faits et historique d'identification">
+  <p class="fig-note">Le VIN est un fait (<code>VehicleFact</code>). Une plaque peut ne pas être rattachée à un
+  véhicule (<code>0..1</code>). La relation de <code>Vehicle</code> vers lui-même (<code>merged_into_id</code>)
+  représente la fusion de deux fiches.</p>
+</figure>
+<figure class="dia" data-svg="class-diagram-3" data-caption="Entités — carte grise, contact propriétaire et note d'atelier">
+  <p class="fig-note">Ces trois entités sont des compositions du véhicule. Elles sont rattachées facultativement à
+  l'organisation qui les a saisies.</p>
+</figure>
+<figure class="dia" data-svg="class-diagram-4" data-caption="Entités — interventions, opérations, pièces et audit">
+  <p class="fig-note">Une intervention appartient obligatoirement à une organisation et se compose d'opérations. La
+  provenance <code>PartSource</code> a deux valeurs dans l'application ; <code>external_supplier</code> n'est plus
+  accepté que pour les lignes anciennes. <code>AuditEntry</code> n'a volontairement aucune clé étrangère.</p>
+</figure>
+
+<h3>Règles métier invisibles sur le diagramme</h3>
+<ul>
+  <li><strong>Suppression d'un véhicule = archivage.</strong> <code>fiche_status = 'archived'</code>, les plaques sont
+  annulées et le fait VIN est désactivé. Rien n'est effacé physiquement (<code>vehicle-details.js remove()</code>).</li>
+  <li><strong>Une seule plaque active par numéro.</strong> C'est un index unique partiel,
+  <code>uidx_idauto_plates_number_active</code>.</li>
+  <li><strong>Un seul contact propriétaire courant par véhicule et par atelier.</strong> L'index
+  <code>uq_owner_contact_current</code> porte sur les lignes où <code>superseded_at IS NULL</code>. Un nouveau contact
+  remplace l'ancien, qui est conservé.</li>
+  <li><strong>Une note par véhicule et par atelier</strong> (<code>uq_vehicle_notes_org</code>).</li>
+  <li><strong>Annuler une intervention</strong> fixe <code>status = 'cancelled'</code> ; ce n'est jamais un effacement.</li>
+  <li><strong>Chaque écriture est auditée.</strong> <code>AuditEntry</code> n'a volontairement aucune clé étrangère :
+  il enregistre des références (<code>actor_ref</code>, <code>target_ref</code>, <code>org_id</code>) sous forme de
+  texte et de nombres, pour survivre aux suppressions. Chaque ligne est écrite dans la même transaction que la
+  modification qu'elle décrit (<code>writes.withAudit</code>).</li>
+</ul>
+
+<h3>Correspondance entité → table → code</h3>
+<table class="grid small">
+  <thead><tr><th>Entité</th><th>Table</th><th>Code principal qui la lit ou l'écrit</th></tr></thead>
+  <tbody>
+    <tr><td>Organisation</td><td><code>idauto_organizations</code></td><td><code>intervention-service.orgOf</code>, <code>admin-repository</code>, <code>principal.js</code> (par <code>org_id</code>)</td></tr>
+    <tr><td>UserAccount</td><td><code>idauto_auth_user</code></td><td>Better Auth (<code>auth/auth.js</code>), <code>ops/auth-users.js</code>, <code>workspace-repository.listTechnicians</code></td></tr>
+    <tr><td>Credential</td><td><code>idauto_auth_account</code></td><td>Better Auth (empreinte du mot de passe, scrypt)</td></tr>
+    <tr><td>Session</td><td><code>idauto_auth_session</code></td><td>Better Auth</td></tr>
+    <tr><td>Vehicle</td><td><code>idauto_vehicles</code></td><td><code>vehicle-repository</code>, <code>registration-service</code>, <code>vehicle-details</code>, <code>writes.createVehicle</code>, <code>mergeVehicle</code>, <code>splitVehicle</code></td></tr>
+    <tr><td>Plate</td><td><code>idauto_plates</code></td><td><code>vehicle-repository.attachPlate</code>, <code>findByPlate</code>, <code>writes.createPlate</code></td></tr>
+    <tr><td>VehicleFact</td><td><code>idauto_vehicle_facts</code></td><td><code>vehicle-repository.vinOf</code> (le VIN est un fait), <code>writes.createFact</code>, <code>reviewFact</code></td></tr>
+    <tr><td>IdentificationHistory</td><td><code>idauto_vehicle_identification_history</code></td><td><code>vehicle-repository.insertHistory</code>, <code>history</code></td></tr>
+    <tr><td>RegistrationDocument</td><td><code>idauto_vehicle_documents</code></td><td><code>documents/document-repository</code>, <code>document-service.store</code>, <code>list</code>, <code>remove</code></td></tr>
+    <tr><td>OwnerContact</td><td><code>idauto_vehicle_owner_contacts</code></td><td><code>owner-contacts.put</code>, <code>current</code>, <code>remove</code>, <code>search</code></td></tr>
+    <tr><td>VehicleNote</td><td><code>idauto_vehicle_notes</code></td><td><code>vehicle-details.upsertNotesWith</code>, <code>notesOf</code></td></tr>
+    <tr><td>Intervention</td><td><code>idauto_workshop_visits</code></td><td><code>intervention-service.create</code>, <code>update</code>, <code>cancel</code> ; <code>workshop-repository.createVisit</code></td></tr>
+    <tr><td>Operation</td><td><code>idauto_workshop_operations</code></td><td><code>intervention-service.insertParts</code>, <code>workshop-repository.addOperation</code></td></tr>
+    <tr><td>CataloguePart</td><td><code>idauto_parts</code></td><td><code>parts/local-parts-catalog.js</code>, <code>workshop-repository</code></td></tr>
+    <tr><td>AuditEntry</td><td><code>idauto_audit_log</code></td><td><code>writes.withAudit</code> et chaque fonction <code>record*Audit</code></td></tr>
+  </tbody>
+</table>
+<p class="note"><strong>Contrôle automatique.</strong> Un script a confronté le diagramme au schéma analysé :</p>
+<ul class="note">
+  <li>chaque attribut (nom et type SQL de base) ;</li>
+  <li>chaque relation, avec une clé étrangère réellement appliquée ;</li>
+  <li>chaque multiplicité côté parent, avec la nullabilité de cette clé.</li>
+</ul>
+<p class="note">Résultat : <strong>102 éléments vérifiés, 0 écart</strong>.</p>
+<p class="note"><strong>Hors de la vue A, volontairement :</strong></p>
+<ul class="note">
+  <li>les 9 tables qu'aucun code n'utilise (prévues) ;</li>
+  <li>les tables d'observations, de preuves et de revue, utilisées par l'API machine et la console ;</li>
+  <li>les tables de référence (gouvernorats, formats de plaque).</li>
+</ul>
+<p class="note">Toutes figurent au chapitre « Modèle de données ».</p>
+
+<h3>Vue B — modules de service</h3>
+<figure class="dia" data-svg="class-modules" data-caption="Modules de service et fonctions exportées — vue d'ensemble">
+  <ul class="fig-note">
+    <li>Chaque boîte est un fichier, pas une classe instanciable. Ses membres sont les noms que le fichier exporte.</li>
+    <li>Les flèches en pointillés sont des dépendances <code>require()</code>, toutes lues dans le code source.</li>
+    <li>Chaque module qui accède à la base requiert aussi <code>db.js</code> directement. Seule la flèche
+    <code>writes → db</code> est tracée, par souci de lisibilité.</li>
+  </ul>
+</figure>
+<figure class="dia" data-svg="class-modules-1" data-caption="Modules — routes de l'espace de travail et services métier"></figure>
+<figure class="dia" data-svg="class-modules-2" data-caption="Modules — service des documents et dépôt des véhicules"></figure>
+<figure class="dia" data-svg="class-modules-3" data-caption="Modules — dépôt de l'atelier, écritures auditées et accès à la base">
+  <ul class="fig-note">
+    <li><code>document-service</code> enregistre les fichiers par <code>document-storage.js</code> et les métadonnées par
+    <code>document-repository.js</code>.</li>
+    <li><code>intervention-service</code> écrit les tables des visites et des opérations avec son propre SQL, à l'intérieur de
+    <code>writes.withAudit</code>. Il n'appelle pas <code>workshop-repository</code>, qui sert l'ancienne page atelier
+    (V12).</li>
+  </ul>
+</figure>
+
+<!-- ===================================================================== -->
+<h2 id="s-data">Modèle de données</h2>
+
+<h3>Principes</h3>
+<ul>
+  <li><strong>Source.</strong> <code>database/schema.sql</code> et les migrations de <code>database/migrations/</code>,
+  appliquées dans l'ordre de <code>docs/DATABASE.md</code>. Le modèle est <strong>généré à partir du SQL</strong> ;
+  rien n'y est dessiné à la main.</li>
+  <li><strong>Nombre de tables.</strong> 41 tables, toutes dans le schéma <code>public</code> de la base
+  <code>idauto_production</code>. La liste des tables en production est identique à celle du dépôt (41 = 41).
+  Les schémas cibles décrits dans <code>docs/ARCHITECTURE.md</code> §2 ne sont pas implémentés.</li>
+  <li><strong>Utilisation.</strong> Une table marquée « schéma seulement » est créée par le schéma, mais aucun
+  chemin de code de <code>reference/</code> ou d'<code>ops/</code> ne la lit ni ne l'écrit.</li>
+  <li><strong>Clés étrangères.</strong> Seules les contraintes appliquées par PostgreSQL (<code>REFERENCES</code>) sont
+  tracées. Une relation décrite seulement par un commentaire est listée à part.</li>
+  <li><strong>Multiplicités.</strong> <code>||</code> marque une clé étrangère obligatoire (NOT NULL), <code>|o</code>
+  une clé facultative.</li>
+  <li><strong>Colonnes affichées.</strong> Chaque diagramme ER montre les clés et les principales colonnes métier ; la
+  liste complète des colonnes est dans <code>06-data-model.md</code>.</li>
+</ul>
+<p>Répartition : <strong>32 tables utilisées par le code</strong>, <strong>9 tables « schéma seulement »</strong>.</p>
+
+<h3>Inventaire des tables</h3>
+<div id="tables-inventory"></div>
+
+<h3>Diagrammes entité-association</h3>
+<figure class="dia" data-svg="er-identity" data-caption="Modèle de données — identité, comptes et organisations"></figure>
+<figure class="dia" data-svg="er-vehicle" data-caption="Modèle de données — registre des véhicules, documents et données privées d'atelier (vue d'ensemble)"></figure>
+<figure class="dia" data-svg="er-vehicle-1" data-caption="Modèle de données — véhicules et plaques">
+  <p class="fig-note">Une table dessinée sans colonnes (ici les gouvernorats) est détaillée dans un autre diagramme.</p>
+</figure>
+<figure class="dia" data-svg="er-vehicle-2" data-caption="Modèle de données — faits et preuves">
+  <p class="fig-note">Les sources de capture et les observations sont détaillées dans le diagramme « capture, réception et revue ».</p>
+</figure>
+<figure class="dia" data-svg="er-vehicle-3" data-caption="Modèle de données — historique, carte grise, contacts et notes par organisation"></figure>
+<figure class="dia" data-svg="er-vehicle-4" data-caption="Modèle de données — vérifications et événements de service">
+  <p class="fig-note"><code>idauto_verifications</code> fait partie des tables « schéma seulement » (prévues) ; voir l'inventaire.</p>
+</figure>
+<figure class="dia" data-svg="er-workshop" data-caption="Modèle de données — entretien en atelier, pièces et provenance"></figure>
+<figure class="dia" data-svg="er-capture" data-caption="Modèle de données — capture, réception et revue (vue d'ensemble)"></figure>
+<figure class="dia" data-svg="er-capture-1" data-caption="Modèle de données — observations, médias et scans de documents"></figure>
+<figure class="dia" data-svg="er-capture-2" data-caption="Modèle de données — localisations, soumissions, file de revue et consentements"></figure>
+<figure class="dia" data-svg="er-capture-3" data-caption="Modèle de données — sources de capture, sessions, contributeurs, caméras et mouvements"></figure>
+<figure class="dia" data-svg="er-crosscut" data-caption="Modèle de données — éléments transverses : audit et limitation de débit"></figure>
+
+<h3>Relation décrite seulement par un commentaire</h3>
+<table class="grid small">
+  <thead><tr><th>Table.colonne</th><th>Cible documentée</th><th>Remarque</th></tr></thead>
+  <tbody>
+    <tr><td><code>idauto_camera_sources.org_id</code></td><td><code>idauto_organizations</code></td><td>commentaire <code>-- FK → idauto_organizations</code> dans <code>schema.sql</code> ; aucune contrainte</td></tr>
+  </tbody>
+</table>
+
+<h3>Index uniques partiels porteurs de règles métier</h3>
+<table class="grid small">
+  <thead><tr><th>Index</th><th>Règle</th></tr></thead>
+  <tbody>
+    <tr><td><code>uidx_idauto_plates_number_active</code></td><td>une seule plaque <strong>active</strong> par numéro</td></tr>
+    <tr><td><code>uq_owner_contact_current</code></td><td>un seul contact propriétaire courant par véhicule et par atelier (<code>COALESCE(org_id, 0)</code>, <code>superseded_at IS NULL</code>)</td></tr>
+    <tr><td><code>uq_vehicle_notes_org</code></td><td>une note par véhicule et par atelier</td></tr>
+    <tr><td><code>uidx_idauto_parts_ref_brand_org</code></td><td>une référence de catalogue par marque et par atelier (ou partagée)</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="s-logical">Architecture logique</h2>
+
+<p>IDauto est un <strong>monolithe en couches</strong> : un seul processus Node.js sert les pages, les fichiers
+statiques et l'API JSON. Il n'y a ni framework web, ni gestionnaire de messages, ni serveur de cache, ni processus
+de fond. La source du diagramme est <code>diagrams/logical-architecture.mmd</code>.</p>
+
+<figure class="dia" data-svg="logical-architecture" data-caption="Architecture logique — couches et chaîne de traitement des requêtes (vue d'ensemble)">
+  <ul class="fig-note">
+    <li>La couche API est dessinée <strong>dans l'ordre où une requête la traverse</strong> : les numéros 1 à 9 suivent
+    l'ordre des contrôles de <code>createServer()</code> (<code>reference/api.js</code>). La première étape qui répond
+    termine la requête.</li>
+    <li>Les flèches en pointillés sont des chemins facultatifs ou secondaires : adaptateurs non configurés, journaux,
+    script commun chargé par chaque page.</li>
+  </ul>
+</figure>
+<figure class="dia" data-svg="logical-architecture-1" data-caption="Architecture logique — couche présentation">
+  <p class="fig-note">Les pages ne portent aucune règle métier. Elles appellent l'API avec <code>fetch</code> et l'en-tête
+  <code>X-IDauto-Session: 1</code>.</p>
+</figure>
+<figure class="dia" data-svg="logical-architecture-2" data-caption="Architecture logique — chaîne de traitement de l'API, étapes 1 à 5"></figure>
+<figure class="dia" data-svg="logical-architecture-3" data-caption="Architecture logique — étapes 6 à 9 et aiguillage vers les modules métier">
+  <p class="fig-note">L'ordre des tables de routes est <code>workspace</code>, <code>ROUTES</code> (cœur), <code>v14</code>,
+  <code>v12</code>, <code>admin</code>. La première route qui correspond l'emporte.</p>
+</figure>
+<figure class="dia" data-svg="logical-architecture-4" data-caption="Architecture logique — couche métier"></figure>
+<figure class="dia" data-svg="logical-architecture-5" data-caption="Architecture logique — accès aux données, stockage, journaux et adaptateurs non configurés">
+  <p class="fig-note">Toute écriture passe par <code>writes.withAudit()</code>, qui regroupe la modification et sa ligne d'audit
+  dans une même transaction.</p>
+</figure>
+
+<h3>Couches</h3>
+<table class="grid small">
+  <thead><tr><th>Couche</th><th>Contenu</th><th>Règles qu'elle porte</th></tr></thead>
+  <tbody>
+    <tr><td>Présentation</td><td>Pages HTML statiques produites par <code>ops/ui/build-pages.py</code> ; un script par page (<code>app-*.js</code>), l'enveloppe commune (<code>admin-shell.js</code>), les aides de la console, le catalogue français et arabe, le CSS du système de design</td><td>Aucune règle métier. Appels à l'API avec <code>fetch</code> et l'en-tête <code>X-IDauto-Session: 1</code>.</td></tr>
+    <tr><td>API</td><td>Chaîne de traitement de <code>api.js</code> et tables de routes (<code>workspace-routes</code>, <code>ROUTES</code> du cœur, <code>v14-routes</code>, <code>v12-routes</code>, <code>admin-routes</code>)</td><td>Taille des corps de requête, CSP et en-têtes de sécurité, authentification, contrôle des droits, limites de débit, erreurs JSON</td></tr>
+    <tr><td>Métier</td><td><code>workspace/*</code>, <code>documents/*</code>, <code>vehicle/*</code>, <code>workshop/*</code>, <code>parts/*</code>, modules de réception, de passeport et d'IVID, <code>admin/admin-repository</code></td><td>Validation, cloisonnement par organisation, suppression par archivage seulement, audit des lectures sensibles (contact propriétaire, VIN)</td></tr>
+    <tr><td>Accès aux données</td><td>Dépôts, <code>writes.js</code>, <code>db.js</code> (une seule réserve <code>pg</code>), <code>storage.js</code> et <code>document-storage.js</code></td><td>Transactions, lignes d'audit, noms de fichiers adressés par contenu</td></tr>
+    <tr><td>Données</td><td>PostgreSQL (41 tables), répertoire privé des médias</td><td>Clés étrangères, CHECK, index uniques partiels</td></tr>
+  </tbody>
+</table>
+
+<h3>Préoccupations transverses</h3>
+<ul>
+  <li><strong>Audit.</strong> <code>idauto_audit_log</code> reçoit une ligne par écriture, dans la même transaction. Les
+  lectures sensibles sont aussi auditées.</li>
+  <li><strong>Journalisation.</strong> <code>observability.js</code> écrit une ligne JSON par événement (décisions
+  d'authentification, erreurs) sur la sortie standard, que le journal systemd conserve. Il n'y a pas de service
+  externe de journaux ni de métriques.</li>
+  <li><strong>Internationalisation.</strong> Les pages sont écrites en français. <code>i18n-serve.js</code> fixe
+  <code>lang</code> et <code>dir</code> côté serveur d'après le cookie <code>ida_lang</code> ; <code>i18n.js</code>
+  traduit dans le navigateur à partir de <code>i18n-catalog-ar.js</code>.</li>
+  <li><strong>Configuration.</strong> Voir le chapitre « Infrastructure, sauvegardes et environnements ». Seuls les
+  <em>noms</em> des variables sont documentés.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s-sequence">Diagramme de séquence</h2>
+
+<p>Ce diagramme suit l'enregistrement d'une intervention d'entretien (<code>POST /api/workspace/interventions</code>). C'est
+le chemin d'écriture le plus complet de l'application simplifiée, et chacune de ses étapes est dans le code
+(<code>workspace-routes.js postIntervention</code>, <code>intervention-service.js create</code>,
+<code>writes.js withAudit</code>). La source est <code>diagrams/sequence-intervention.mmd</code>, une copie à
+l'identique du diagramme de <code>04-logical-architecture.md</code>.</p>
+
+<figure class="dia" data-svg="sequence-intervention" data-caption="Séquence — enregistrement d'une intervention d'entretien (vue d'ensemble)"></figure>
+<figure class="dia" data-svg="sequence-intervention-1" data-caption="Séquence — phase 1 : authentification et contrôle des droits (messages 1 à 7)">
+  <p class="fig-note">Si le droit <code>workshop:write</code> manque, la requête s'arrête ici avec une réponse 403.</p>
+</figure>
+<figure class="dia" data-svg="sequence-intervention-2" data-caption="Séquence — phase 2 : service métier et transaction (messages 7 à 21)">
+  <p class="fig-note">Le message 7 est repris en tête de la phase 2 pour montrer l'enchaînement ; la numérotation continue
+  celle de la phase 1.</p>
+</figure>
+
+<h3>Lecture</h3>
+<ul>
+  <li>Une erreur de validation (400), un véhicule inconnu (404) ou une organisation manquante (403) arrêtent le
+  traitement avant le début de la transaction.</li>
+  <li>Une erreur pendant la transaction annule ensemble la visite, ses opérations et la ligne d'audit.</li>
+  <li><code>withAudit</code> refuse de s'exécuter sans identité authentifiée (401) : une écriture non attribuée est donc
+  impossible.</li>
+  <li>Le kilométrage du véhicule n'est mis à jour que si la nouvelle valeur est plus élevée.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s-physical">Architecture physique et déploiement</h2>
+
+<p><strong>Méthode.</strong> Les valeurs de production viennent de vérifications en lecture seule faites le 10 novembre
+2026 sur le serveur de production :</p>
+<ul>
+  <li>état des services et versions des programmes ;</li>
+  <li>ports en écoute et site nginx ;</li>
+  <li>liste des conteneurs ;</li>
+  <li>comptage des tables de la base.</li>
+</ul>
+<p>La configuration a été lue sous forme de <strong>noms et de nombres de variables</strong> seulement, jamais de
+valeurs.</p>
+<p><strong>Volontairement omis :</strong></p>
+<ul>
+  <li>adresses IP, noms d'hôtes privés, chemins du système de fichiers ;</li>
+  <li>noms de comptes, jetons et clés ;</li>
+  <li>le compartiment de sauvegarde et les identifiants de son fournisseur.</li>
+</ul>
+
+<figure class="dia" data-svg="physical-architecture" data-caption="Architecture physique — nœuds de production, de pré-production, de développement local et d'intégration continue">
+  <ul class="fig-note">
+    <li>Les flèches pleines sont les chemins réseau ou fichiers utilisés en fonctionnement normal.</li>
+    <li>La flèche en pointillés est l'accès privé à la pré-production, réservé aux membres de l'équipe présents sur le
+    réseau privé.</li>
+    <li>Seul nginx est joignable depuis Internet. Le processus Node et PostgreSQL n'écoutent que sur l'interface locale.</li>
+  </ul>
+</figure>
+
+<h3>Production</h3>
+<table class="grid small">
+  <thead><tr><th>Nœud</th><th>Ce qui y tourne</th><th>Faits constatés</th></tr></thead>
+  <tbody>
+    <tr><td>DNS</td><td>serveurs de noms OVH pour <code>idauto.tn</code></td><td><code>idauto.tn</code> et <code>www.idauto.tn</code> pointent vers le serveur de production</td></tr>
+    <tr><td>Serveur de production</td><td>serveur privé virtuel OVH, Ubuntu 26.04 LTS. Il est partagé avec d'autres services du propriétaire (Mythos), qui se partagent donc son disque et sa mémoire.</td><td><code>lsb_release</code>, <code>systemctl</code></td></tr>
+    <tr><td>nginx 1.28.3</td><td>TLS sur le port 443 (Let's Encrypt par Certbot), HTTP sur le port 80, <code>client_max_body_size 20M</code>, proxy inverse vers l'API sur l'interface locale</td><td><code>nginx -v</code>, configuration du site</td></tr>
+    <tr><td>idauto-api</td><td>service systemd <strong>utilisateur</strong>, Node.js 22.22.1, exécute <code>reference/api.js</code> depuis une copie Git de <code>main</code> ; redémarré par systemd</td><td><code>systemctl --user status</code>, <code>node --version</code>, <code>ss -ltn</code></td></tr>
+    <tr><td>PostgreSQL 15.18</td><td>conteneur Docker 29.6.1 <code>idauto-postgres</code>, publié sur l'interface locale uniquement ; base <strong><code>idauto_production</code></strong> avec les 41 tables du dépôt et aucune autre</td><td><code>SELECT version()</code>, <code>docker ps</code>, comparaison des listes de tables</td></tr>
+    <tr><td>Répertoire des médias</td><td>système de fichiers du serveur ; photos de carte grise et médias d'observation, adressés par contenu</td><td><code>IDAUTO_MEDIA_STORAGE_PATH</code> est défini (valeur non affichée)</td></tr>
+    <tr><td>Minuteries de sauvegarde</td><td>minuteries systemd du dépôt <code>othoth77/mythos-prod</code> pour la chaîne IDauto (voir le chapitre suivant)</td><td><code>systemctl list-timers</code>, <code>systemctl show … ExecStart</code></td></tr>
+    <tr><td>Stockage hors serveur</td><td>stockage objet compatible S3 en HTTPS, alimenté par <code>ops/offhost-backup.js</code></td><td>adaptateur <code>ops/adapters/s3-compatible.js</code></td></tr>
+  </tbody>
+</table>
+<p><strong>Chemin d'une requête.</strong> Navigateur → DNS → nginx sur le port 443 (TLS) → port local de l'API →
+réserve <code>pg</code> → PostgreSQL dans Docker. Les fichiers médias sont lus et écrits sur le système de fichiers du
+serveur.</p>
+<p><strong>Ce qui n'existe pas en production :</strong></p>
+<ul>
+  <li>ni répartiteur de charge, ni seconde instance de l'application ;</li>
+  <li>ni réseau de diffusion de contenu (CDN), ni serveur de cache, ni file de messages ;</li>
+  <li>aucun service externe de journaux ou de métriques : les journaux vont au journal systemd ;</li>
+  <li>aucune configuration TecDoc ni de fournisseur de données véhicule ;</li>
+  <li>aucun service de courriel.</li>
+</ul>
+
+<h3>Procédure de déploiement pratiquée</h3>
+<ol>
+  <li>Mettre à jour la copie Git du serveur de production sur le commit fusionné de <code>main</code>.</li>
+  <li>Appliquer explicitement toute nouvelle migration avec <code>psql -d idauto_production</code>.</li>
+  <li>Redémarrer le service utilisateur.</li>
+  <li>Exécuter un contrôle d'acceptation sur <code>https://idauto.tn</code>.</li>
+</ol>
+<p>Le retour arrière consiste à revenir au commit précédent puis à redémarrer le service. L'application n'a ni
+étape de construction ni image de conteneur.</p>
+
+<!-- ===================================================================== -->
+<h2 id="s-security">Sécurité, authentification et permissions</h2>
+
+<h3>Authentification</h3>
+<table class="grid small">
+  <thead><tr><th>Principal</th><th>Comment il est obtenu</th><th>Droits</th><th>Portée des données</th></tr></thead>
+  <tbody>
+    <tr><td>Administrateur</td><td>compte web avec <code>role = 'admin'</code>, ou identité de service par jeton associée à l'administration</td><td><code>*</code> (tous)</td><td>toutes les organisations</td></tr>
+    <tr><td>Gestionnaire</td><td>compte web avec <code>role = 'manager'</code> et un <code>org_id</code></td><td>24 droits : les 17 du technicien plus 7</td><td>sa propre organisation</td></tr>
+    <tr><td>Technicien</td><td>compte web avec <code>role = 'technician'</code> et un <code>org_id</code></td><td>17 droits</td><td>sa propre organisation</td></tr>
+    <tr><td>Client de service d'une organisation</td><td>jeton porteur listé dans <code>IDAUTO_ADMIN_IDENTITIES</code>, avec un <code>org_id</code> et des droits explicites</td><td>selon la configuration</td><td>sa propre organisation</td></tr>
+    <tr><td>Session navigateur du propriétaire</td><td>cookie signé installé depuis la console (<code>/session/enroll</code>) quand <code>IDAUTO_SESSION_SECRET</code> est défini</td><td>deux routes de lecture seulement</td><td>—</td></tr>
+    <tr><td>Anonyme</td><td>aucun</td><td><code>/public/*</code> seulement (passeport par IVID), connexion, pages publiques</td><td>—</td></tr>
+  </tbody>
+</table>
+<p>Better Auth gère les comptes par courriel et mot de passe (empreinte scrypt) et les sessions par cookie. La connexion
+et le changement de mot de passe sont limités à 5 tentatives par minute et par client.</p>
+
+<h3>Rôles et droits</h3>
+<p>Les droits sont définis dans <code>reference/auth/principal.js</code>. Ceux du technicien forment un sous-ensemble
+strict de ceux du gestionnaire.</p>
+<table class="grid small">
+  <thead><tr><th>Rôle</th><th>Droits</th></tr></thead>
+  <tbody>
+    <tr><td>Technicien (17)</td><td><code>vehicle:read</code>, <code>vehicle:write</code>, <code>vehicle:search</code>, <code>vehicle:resolve</code>, <code>plate:read</code>, <code>fact:read</code>, <code>observation:read</code>, <code>observation:write</code>, <code>passport:read</code>, <code>identity:resolve</code>, <code>parts:read</code>, <code>workshop:read</code>, <code>workshop:write</code>, <code>document:read</code>, <code>document:write</code>, <code>owner:read</code>, <code>owner:write</code></td></tr>
+    <tr><td>Gestionnaire (24)</td><td>les 17 droits du technicien, plus <code>vin:search</code>, <code>fact:write</code>, <code>parts:write</code>, <code>stock:write</code>, <code>document:delete</code>, <code>team:read</code>, <code>vehicle:delete</code></td></tr>
+    <tr><td>Administrateur</td><td><code>*</code> — toutes les routes, toutes les organisations</td></tr>
+  </tbody>
+</table>
+<p><strong>Règle d'autorisation</strong> (<code>api.js</code>, après <code>authenticate()</code>) :</p>
+<ul>
+  <li>un principal d'organisation doit détenir le droit que <code>ALL_ROUTE_SCOPES</code> associe à la route ;</li>
+  <li>une route absente de cette table est <strong>réservée à l'administrateur</strong> ;</li>
+  <li>le cloisonnement par organisation est appliqué une seconde fois <strong>en SQL</strong> par chaque requête de
+  l'espace de travail (<code>org_id = $n</code>).</li>
+</ul>
+
+<h3>Frontières de sécurité</h3>
+<table class="grid small">
+  <thead><tr><th>Frontière</th><th>Mécanisme</th><th>Source</th></tr></thead>
+  <tbody>
+    <tr><td>Internet → serveur</td><td>nginx termine le TLS. Le processus Node n'écoute que sur <code>127.0.0.1</code>.</td><td><code>api.js</code>, <code>listen(port, '127.0.0.1')</code> ; site nginx</td></tr>
+    <tr><td>Anonyme → données</td><td>Seul <code>/public/passport/:ivid</code> est ouvert (IVID uniquement, débit limité, désactivable par configuration). La recherche par plaque est fermée.</td><td><code>api.js</code>, <code>public-surface-policy.js</code></td></tr>
+    <tr><td>Pages</td><td>Les pages <code>/atelier/*</code> redirigent vers <code>/login</code> sans session.</td><td>contrôle des pages dans <code>api.js</code></td></tr>
+    <tr><td>API</td><td>Sans session (ou sans jeton porteur) : 401. Les requêtes par cookie exigent en plus l'en-tête <code>X-IDauto-Session: 1</code>, qui protège contre les requêtes intersites (CSRF).</td><td><code>api.js authenticate()</code></td></tr>
+    <tr><td>Rôle</td><td>Droit de la route lu dans <code>ALL_ROUTE_SCOPES</code> ; une route absente est réservée à l'administrateur</td><td><code>api.js</code>, <code>principal.js</code></td></tr>
+    <tr><td>Organisation</td><td><code>org_id = $n</code> dans chaque requête de l'espace de travail ; contacts propriétaires et notes privés à chaque atelier</td><td><code>workspace/*.js</code></td></tr>
+    <tr><td>Lectures sensibles</td><td>Chaque lecture d'un contact propriétaire et chaque divulgation d'un VIN écrivent une ligne d'audit</td><td><code>owner-contacts.js</code>, <code>writes.recordVinDisclosureAudit</code></td></tr>
+    <tr><td>Médias</td><td>Photos servies uniquement par des routes authentifiées, après contrôle de l'organisation ; aucune URL publique</td><td><code>v14-routes.js</code>, <code>document-service.image</code></td></tr>
+    <tr><td>Navigateur</td><td>Politique de sécurité du contenu (CSP) par famille de pages, <code>X-Content-Type-Options</code>, interdiction de l'affichage en cadre</td><td>serveurs de fichiers de <code>api.js</code></td></tr>
+    <tr><td>Force brute</td><td>Connexion et changement de mot de passe : 5 par minute et par client</td><td>règles de débit de <code>auth/auth.js</code></td></tr>
+  </tbody>
+</table>
+
+<h3>Audit et données sensibles</h3>
+<ul>
+  <li>Chaque écriture est jumelée à une ligne de <code>idauto_audit_log</code> dans la même transaction.
+  <code>withAudit</code> refuse toute écriture sans identité authentifiée.</li>
+  <li>Le VIN n'est renvoyé qu'avec le droit <code>vin:search</code>, et chaque divulgation est auditée.</li>
+  <li>Le contact du propriétaire est privé à l'atelier qui l'a saisi, et chaque lecture est auditée.</li>
+  <li>Le dépôt est public : il ne contient ni identifiant, ni clé, ni jeton. Ce dossier ne cite que des noms de
+  variables, jamais leurs valeurs.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s-infra">Infrastructure, sauvegardes et environnements</h2>
+
+<h3>Environnements</h3>
+<table class="grid small">
+  <thead><tr><th>Environnement</th><th>Faits</th></tr></thead>
+  <tbody>
+    <tr><td>Production</td><td>serveur privé virtuel OVH partagé ; nginx, service utilisateur <code>idauto-api</code>, PostgreSQL 15.18 dans Docker, médias sur le disque du serveur (voir le chapitre précédent)</td></tr>
+    <tr><td>Pré-production</td><td>serveur privé, joignable uniquement par un réseau privé Tailscale (<code>tailscale serve</code>, HTTPS), non exposé à Internet. Service utilisateur <code>idauto-preview-api</code>, Node.js 22.22.1, qui exécute la branche en revue. PostgreSQL 16.9 dans sa propre instance locale, <strong>données fictives uniquement</strong>. C'est là que le propriétaire valide une modification avant son déploiement.</td></tr>
+    <tr><td>Développement local</td><td><code>node tests/*.js</code> sur une base PostgreSQL jetable ; Chrome sans interface pour les suites navigateur (<code>ida-ui-browser</code>)</td></tr>
+    <tr><td>Intégration continue</td><td>GitHub Actions sur <code>ubuntu-latest</code>, Node 22 (<code>.github/workflows/ci.yml</code>), avec deux tâches : les suites sans base de données (<code>npm run test:offline</code>, 16 fichiers) et la tâche « secret and estate hygiene » (<code>.github/scripts/secret_scan.sh</code>)</td></tr>
+  </tbody>
+</table>
+
+<h3>Sauvegardes</h3>
+<p>La sauvegarde n'est pas faite par l'application. Des minuteries systemd, installées depuis le dépôt
+<code>othoth77/mythos-prod</code> (<code>ops/backup/mythos-backup-run.sh</code>), s'en chargent pour la seule chaîne
+IDauto :</p>
+<table class="grid small">
+  <thead><tr><th>Minuterie</th><th>Fréquence</th><th>Rôle</th></tr></thead>
+  <tbody>
+    <tr><td><code>mythos-backup</code></td><td>chaque jour, 03 h 30 UTC</td><td>capture de <code>idauto_production</code> (<code>pg_dump</code> exécuté dans le conteneur) et des médias, puis envoi hors du serveur</td></tr>
+    <tr><td><code>mythos-backup-verify</code></td><td>chaque jour, 15 h 00 UTC</td><td>vérification de l'envoi</td></tr>
+    <tr><td><code>mythos-restore-test</code></td><td>le 1<sup>er</sup> de chaque mois, 05 h 00 UTC</td><td>test de restauration</td></tr>
+  </tbody>
+</table>
+<p>Les autres minuteries de sauvegarde du serveur appartiennent à d'autres services. Les copies partent vers un stockage
+objet compatible S3, en HTTPS, par <code>ops/offhost-backup.js</code>.</p>
+
+<h3>Observabilité</h3>
+<p>Chaque événement produit une ligne JSON sur la sortie standard (<code>observability.js</code>), que le journal systemd
+conserve. Il n'y a pas de service externe de journaux ni de métriques.</p>
+
+<h3>Configuration</h3>
+<ul>
+  <li><strong>Variables d'environnement utilisées :</strong> <code>IDAUTO_DB_*</code>,
+  <code>IDAUTO_MEDIA_STORAGE_PATH</code>, <code>IDAUTO_ADMIN_IDENTITIES</code>, <code>IDAUTO_AUTH_SECRET</code>,
+  <code>IDAUTO_AUTH_BASE_URL</code>, <code>IDAUTO_SESSION_SECRET</code>,
+  <code>IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH</code>.</li>
+  <li><strong>Variables facultatives, absentes en production</strong> (vérifié par comptage des noms) :
+  <code>IDAUTO_TECDOC_*</code>, <code>IDAUTO_VEHICLE_PROVIDER_*</code>, <code>IDAUTO_CG_OCR_ENABLED</code>,
+  <code>IDAUTO_ALLOW_MOCK_PROVIDERS</code>.</li>
+  <li><strong>Fichiers lus :</strong> <code>config/idauto.example.json</code> pour les formats de plaque.
+  L'interrupteur de la résolution publique vient du fichier désigné par
+  <code>IDAUTO_PUBLIC_RESOLUTION_CONFIG_PATH</code>.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s-trace">Traçabilité entre diagrammes et code source</h2>
+
+<h3>Diagrammes → fichiers sources → code</h3>
+<div id="figures-trace"></div>
+
+<h3>Traçabilité consolidée</h3>
+<table class="grid small">
+  <thead><tr><th>Élément</th><th>Où il a été vérifié</th></tr></thead>
+  <tbody>
+    <tr><td>Rôles et droits (technicien 17, gestionnaire 24, administrateur <code>*</code>)</td><td><code>reference/auth/principal.js</code></td></tr>
+    <tr><td>Authentification : Better Auth, identités par jeton, session propriétaire</td><td><code>reference/auth/auth.js</code>, <code>reference/identity.js</code>, <code>reference/session.js</code></td></tr>
+    <tr><td>Ordre de la chaîne de traitement</td><td><code>reference/api.js</code>, <code>createServer()</code></td></tr>
+    <tr><td>Route → droit (141 entrées extraites)</td><td><code>ALL_ROUTE_SCOPES</code> dans <code>api.js</code>, <code>workspace-routes.js</code>, <code>v14-routes.js</code>, <code>v12-routes.js</code> ; <code>admin-routes.js</code> (administrateur seulement)</td></tr>
+    <tr><td>Entités, attributs, relations</td><td><code>database/schema.sql</code>, <code>database/migrations/*.sql</code> et le code cité au chapitre « Diagramme de classes »</td></tr>
+    <tr><td>Modules de service et leurs fonctions</td><td><code>Object.keys(require(module))</code> pour chaque module</td></tr>
+    <tr><td>Statut des tables (utilisée ou schéma seulement)</td><td>recherche de chaque nom de table dans <code>reference/</code> et <code>ops/</code></td></tr>
+    <tr><td>Versions, ports, services et base en production</td><td>commandes en lecture seule sur le serveur de production</td></tr>
+    <tr><td>Tables de production = tables du dépôt</td><td><code>information_schema.tables</code> de <code>idauto_production</code> comparé au schéma : 41 = 41, aucune différence</td></tr>
+    <tr><td>Intégrations facultatives non configurées</td><td>noms de variables comptés dans l'environnement de production : <code>IDAUTO_TECDOC_*</code> 0, <code>IDAUTO_VEHICLE_PROVIDER_*</code> 0, <code>IDAUTO_CG_OCR_ENABLED</code> 0 (valeurs jamais lues)</td></tr>
+  </tbody>
+</table>
+
+<h3>Validation des sources</h3>
+<table class="grid small">
+  <thead><tr><th>Contrôle</th><th>Résultat</th></tr></thead>
+  <tbody>
+    <tr><td>Diagramme de classes confronté au SQL : noms et types des attributs, relations contre les clés étrangères appliquées, multiplicités contre la nullabilité</td><td><strong>102 éléments, 0 écart</strong></td></tr>
+    <tr><td>Contrôle de structure de toutes les sources Mermaid et PlantUML, et égalité des versions PlantUML et Mermaid pour les cas d'utilisation et les classes</td><td><strong>22 sources, 0 problème</strong></td></tr>
+    <tr><td>Modèle de données généré à partir du SQL ; chaque table placée dans exactement un groupe</td><td>41 / 41</td></tr>
+    <tr><td>Rendu Mermaid par GitHub (contrôlé dans un navigateur après publication)</td><td>les 11 diagrammes intégrés s'affichent</td></tr>
+    <tr><td>Recherche de données sensibles dans le dossier (adresses IP, noms d'hôtes privés, chemins personnels, chaînes de connexion, motifs de clés et de jetons)</td><td>aucune trouvée</td></tr>
+  </tbody>
+</table>
+
+<!-- ===================================================================== -->
+<h2 id="s-limits">Limites, éléments partiels et fonctionnalités prévues</h2>
+
+<h3>Éléments partiels</h3>
+<ul>
+  <li><strong>Commandes et stock d'atelier.</strong> Les tables (<code>idauto_workshop_orders</code>,
+  <code>idauto_workshop_order_lines</code>, <code>idauto_org_stock</code>) et les fonctions de dépôt existent, mais
+  aucune page de l'application simplifiée ne s'en sert.</li>
+  <li><strong>Catalogue TecDoc.</strong> L'adaptateur est présent mais non configuré en production.</li>
+  <li><strong>Fournisseur de données véhicule (plaque ou VIN).</strong> L'adaptateur est présent mais non configuré,
+  et aucun fournisseur n'est choisi ; la résolution utilise la base locale seulement.</li>
+</ul>
+
+<h3>Fonctionnalités prévues</h3>
+<ul>
+  <li><strong>Neuf tables « schéma seulement ».</strong> Elles existent en production mais aucun code ne les utilise :
+  <code>idauto_camera_sources</code>, <code>idauto_capture_sessions</code>, <code>idauto_consent_records</code>,
+  <code>idauto_document_scans</code>, <code>idauto_observation_locations</code>, <code>idauto_review_queue</code>,
+  <code>idauto_user_roles</code>, <code>idauto_vehicle_movements</code>, <code>idauto_verifications</code>.</li>
+  <li><strong>Ancrage blockchain et service de provenance.</strong> Il n'existe que des documents et des fichiers
+  README (<code>src/*</code>).</li>
+  <li><strong>Protocole ouvert d'identité des véhicules.</strong> Le répertoire <code>protocol/</code> contient des
+  schémas et des vocabulaires (une spécification), pas de code exécuté.</li>
+  <li><strong>Schémas de la plateforme Mythos.</strong> <code>mythos_core</code>, <code>atelier_network</code> et
+  <code>fixpert</code> sont décrits comme cibles dans <code>docs/ARCHITECTURE.md</code>, mais ne sont pas
+  implémentés.</li>
+</ul>
+
+<h3>Fonctionnalités abandonnées</h3>
+<ul>
+  <li><strong>Lecture automatique (OCR) de la carte grise.</strong> Les routes répondent 410 sauf si
+  <code>IDAUTO_CG_OCR_ENABLED=1</code>, et l'interface a été retirée. Le stockage des photos est inchangé.</li>
+</ul>
+
+<h3>Non implémenté</h3>
+<ul>
+  <li>Réinitialisation du mot de passe en libre-service par courriel : il n'y a pas d'intégration de courriel.</li>
+  <li>Intégration Piece.Autos ou Casse.Autos, facturation, gestion de stock : exclues par le propriétaire du projet.</li>
+</ul>
+
+<h3>Informations manquantes et hypothèses</h3>
+<ul>
+  <li><strong>Fournisseur du stockage hors serveur.</strong> Il est configuré sur le serveur et n'a pas été lu. Le
+  dossier parle seulement de stockage « compatible S3 ».</li>
+  <li><strong>Calendrier des sauvegardes.</strong> Il appartient à un autre dépôt (<code>othoth77/mythos-prod</code>) et
+  peut changer indépendamment de celui-ci.</li>
+  <li><strong>Console d'exploitation (<code>/admin/*</code>).</strong> Elle est toujours servie, bien qu'elle soit sortie
+  du menu simplifié ; elle est traitée comme implémentée. Son maintien relève d'une décision produit.</li>
+  <li><strong>Versions de PostgreSQL.</strong> La pré-production (16.9) et la production (15.18) diffèrent d'une version
+  majeure. L'audit n'a pas vérifié si une migration dépend d'une fonction de la version 16.</li>
+  <li><strong>Serveur partagé.</strong> Le serveur de production fait tourner d'autres services, qui consomment aussi son
+  disque et sa mémoire. Ils ne sont pas décrits ici.</li>
+  <li><strong>Rendu PlantUML.</strong> Les fichiers PlantUML (<code>use-case.puml</code>,
+  <code>class-diagram.puml</code>) n'ont pas pu être rendus : aucun moteur PlantUML n'était disponible (voir
+  l'annexe A). Leur contenu est identique à celui des diagrammes Mermaid inclus dans ce dossier, ce qu'un contrôle
+  automatique a vérifié.</li>
+</ul>
+
+<!-- ===================================================================== -->
+<h2 id="s-conclusion">Conclusion technique</h2>
+<p>IDauto, dans sa version en production, est une application volontairement simple. Un seul processus Node.js
+sans framework web porte les pages, l'API et les règles métier. Il ne dépend que de deux bibliothèques
+d'exécution, <code>better-auth</code> et <code>pg</code>, et s'appuie sur une seule base PostgreSQL de 41 tables.</p>
+<p>Trois choix structurent l'ensemble :</p>
+<ul>
+  <li><strong>Contrôle d'accès en couches.</strong> Une chaîne de contrôles ordonnée se termine par un contrôle des
+  droits, sur le principe « une route sans droit déclaré est réservée à l'administrateur ». Le cloisonnement par
+  organisation est appliqué une seconde fois dans les requêtes SQL.</li>
+  <li><strong>Traçabilité systématique.</strong> Toute écriture est jumelée à une ligne d'audit dans la même
+  transaction, et les lectures sensibles (contact du propriétaire, VIN) sont elles aussi auditées.</li>
+  <li><strong>Prudence sur les données.</strong> Supprimer revient à archiver, et une intervention annulée est
+  conservée. Les contacts et les notes sont privés à chaque atelier. Les photos ne sont jamais accessibles par
+  une adresse publique.</li>
+</ul>
+<p>Sur le plan physique, l'application tourne en une seule instance sur un serveur privé virtuel partagé. Elle
+n'est exposée que par nginx et sauvegardée chaque jour hors du serveur, avec une vérification quotidienne et un
+test de restauration mensuel.</p>
+<p>Plusieurs parties du dépôt restent hors de cette réalité : des fonctions partielles (commandes, stock,
+adaptateurs TecDoc et fournisseur de données véhicule non configurés), neuf tables prévues que rien n'utilise,
+et des documents de plateforme cible antérieurs à la mise en service. Ce dossier les signale comme tels pour
+qu'aucune ne soit prise pour une fonction en service. Les quatre points ouverts listés au chapitre précédent
+sont à trancher par le propriétaire du projet : fournisseur de sauvegarde, avenir de la console, alignement des
+versions de PostgreSQL et rendu PlantUML.</p>
+
+<!-- ===================================================================== -->
+<h2 id="s-annex" class="annex">Annexe A — Rendu des diagrammes et validation du document</h2>
+<div id="render-annex"></div>
+
+</body>
+</html>

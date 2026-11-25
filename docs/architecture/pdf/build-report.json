@@ -1,0 +1,610 @@
+{
+  "pdf": "docs/architecture/IDauto_Dossier_Technique_Architecture.pdf",
+  "bytes": 3150107,
+  "pages": 69,
+  "landscapePages": 16,
+  "figures": [
+    {
+      "n": 1,
+      "key": "use-case",
+      "mode": "page portrait",
+      "scale": 0.374,
+      "pt": 3.9,
+      "page": 12
+    },
+    {
+      "n": 2,
+      "key": "use-case-1",
+      "mode": "texte",
+      "scale": 0.584,
+      "pt": 6.1,
+      "page": 13
+    },
+    {
+      "n": 3,
+      "key": "use-case-2",
+      "mode": "page paysage",
+      "scale": 0.707,
+      "pt": 7.4,
+      "page": 14
+    },
+    {
+      "n": 4,
+      "key": "use-case-3",
+      "mode": "texte",
+      "scale": 0.609,
+      "pt": 6.4,
+      "page": 15
+    },
+    {
+      "n": 5,
+      "key": "use-case-4",
+      "mode": "page paysage",
+      "scale": 0.805,
+      "pt": 8.5,
+      "page": 16
+    },
+    {
+      "n": 6,
+      "key": "class-diagram",
+      "mode": "page portrait",
+      "scale": 0.322,
+      "pt": 2.7,
+      "page": 20
+    },
+    {
+      "n": 7,
+      "key": "class-diagram-1",
+      "mode": "page portrait",
+      "scale": 0.726,
+      "pt": 6,
+      "page": 21
+    },
+    {
+      "n": 8,
+      "key": "class-diagram-2",
+      "mode": "page portrait",
+      "scale": 0.69,
+      "pt": 5.7,
+      "page": 22
+    },
+    {
+      "n": 9,
+      "key": "class-diagram-3",
+      "mode": "page portrait",
+      "scale": 1,
+      "pt": 8.3,
+      "page": 23
+    },
+    {
+      "n": 10,
+      "key": "class-diagram-4",
+      "mode": "page paysage",
+      "scale": 0.724,
+      "pt": 6,
+      "page": 24
+    },
+    {
+      "n": 11,
+      "key": "class-modules",
+      "mode": "page portrait",
+      "scale": 0.48,
+      "pt": 5,
+      "page": 26
+    },
+    {
+      "n": 12,
+      "key": "class-modules-1",
+      "mode": "page paysage",
+      "scale": 0.641,
+      "pt": 6.7,
+      "page": 27
+    },
+    {
+      "n": 13,
+      "key": "class-modules-2",
+      "mode": "page paysage",
+      "scale": 0.773,
+      "pt": 8.1,
+      "page": 28
+    },
+    {
+      "n": 14,
+      "key": "class-modules-3",
+      "mode": "page paysage",
+      "scale": 0.726,
+      "pt": 7.6,
+      "page": 29
+    },
+    {
+      "n": 15,
+      "key": "er-identity",
+      "mode": "texte",
+      "scale": 0.68,
+      "pt": 7.1,
+      "page": 33
+    },
+    {
+      "n": 16,
+      "key": "er-vehicle",
+      "mode": "page paysage",
+      "scale": 0.392,
+      "pt": 4.1,
+      "page": 34
+    },
+    {
+      "n": 17,
+      "key": "er-vehicle-1",
+      "mode": "page paysage",
+      "scale": 0.612,
+      "pt": 6.4,
+      "page": 35
+    },
+    {
+      "n": 18,
+      "key": "er-vehicle-2",
+      "mode": "texte",
+      "scale": 1,
+      "pt": 10.5,
+      "page": 36
+    },
+    {
+      "n": 19,
+      "key": "er-vehicle-3",
+      "mode": "texte",
+      "scale": 0.603,
+      "pt": 6.3,
+      "page": 36
+    },
+    {
+      "n": 20,
+      "key": "er-vehicle-4",
+      "mode": "texte",
+      "scale": 0.924,
+      "pt": 9.7,
+      "page": 37
+    },
+    {
+      "n": 21,
+      "key": "er-workshop",
+      "mode": "page portrait",
+      "scale": 0.594,
+      "pt": 6.2,
+      "page": 38
+    },
+    {
+      "n": 22,
+      "key": "er-capture",
+      "mode": "page paysage",
+      "scale": 0.428,
+      "pt": 4.5,
+      "page": 39
+    },
+    {
+      "n": 23,
+      "key": "er-capture-1",
+      "mode": "page paysage",
+      "scale": 0.599,
+      "pt": 6.3,
+      "page": 40
+    },
+    {
+      "n": 24,
+      "key": "er-capture-2",
+      "mode": "texte",
+      "scale": 0.608,
+      "pt": 6.4,
+      "page": 41
+    },
+    {
+      "n": 25,
+      "key": "er-capture-3",
+      "mode": "page paysage",
+      "scale": 0.834,
+      "pt": 8.8,
+      "page": 42
+    },
+    {
+      "n": 26,
+      "key": "er-crosscut",
+      "mode": "texte",
+      "scale": 1,
+      "pt": 10.5,
+      "page": 43
+    },
+    {
+      "n": 27,
+      "key": "logical-architecture",
+      "mode": "page portrait",
+      "scale": 0.291,
+      "pt": 3.1,
+      "page": 45
+    },
+    {
+      "n": 28,
+      "key": "logical-architecture-1",
+      "mode": "texte",
+      "scale": 0.829,
+      "pt": 8.7,
+      "page": 46
+    },
+    {
+      "n": 29,
+      "key": "logical-architecture-2",
+      "mode": "page portrait",
+      "scale": 0.885,
+      "pt": 9.3,
+      "page": 47
+    },
+    {
+      "n": 30,
+      "key": "logical-architecture-3",
+      "mode": "page paysage",
+      "scale": 0.623,
+      "pt": 6.5,
+      "page": 48
+    },
+    {
+      "n": 31,
+      "key": "logical-architecture-4",
+      "mode": "page portrait",
+      "scale": 0.823,
+      "pt": 8.6,
+      "page": 49
+    },
+    {
+      "n": 32,
+      "key": "logical-architecture-5",
+      "mode": "page portrait",
+      "scale": 0.632,
+      "pt": 6.6,
+      "page": 50
+    },
+    {
+      "n": 33,
+      "key": "sequence-intervention",
+      "mode": "page paysage",
+      "scale": 0.438,
+      "pt": 3.9,
+      "page": 53
+    },
+    {
+      "n": 34,
+      "key": "sequence-intervention-1",
+      "mode": "page paysage",
+      "scale": 0.845,
+      "pt": 7.6,
+      "page": 54
+    },
+    {
+      "n": 35,
+      "key": "sequence-intervention-2",
+      "mode": "page paysage",
+      "scale": 0.633,
+      "pt": 5.7,
+      "page": 55
+    },
+    {
+      "n": 36,
+      "key": "physical-architecture",
+      "mode": "page paysage",
+      "scale": 0.551,
+      "pt": 5.8,
+      "page": 58
+    }
+  ],
+  "toc": [
+    {
+      "text": "1. Présentation générale du projet",
+      "page": 4
+    },
+    {
+      "text": "1.1 Objet du document",
+      "page": 4
+    },
+    {
+      "text": "1.2 IDauto en bref",
+      "page": 4
+    },
+    {
+      "text": "1.3 Légende des statuts",
+      "page": 4
+    },
+    {
+      "text": "1.4 Conventions de lecture des diagrammes",
+      "page": 4
+    },
+    {
+      "text": "2. Audit technique et technologies",
+      "page": 6
+    },
+    {
+      "text": "2.1 Structure du dépôt",
+      "page": 6
+    },
+    {
+      "text": "2.2 Technologies et versions",
+      "page": 7
+    },
+    {
+      "text": "2.3 Inventaire des composants",
+      "page": 7
+    },
+    {
+      "text": "2.4 État fonctionnel",
+      "page": 8
+    },
+    {
+      "text": "2.5 Intégrations externes",
+      "page": 10
+    },
+    {
+      "text": "2.6 Écarts avec les documents antérieurs",
+      "page": 10
+    },
+    {
+      "text": "3. Diagramme de cas d'utilisation",
+      "page": 11
+    },
+    {
+      "text": "3.1 Acteurs",
+      "page": 11
+    },
+    {
+      "text": "3.2 Vue d'ensemble",
+      "page": 12
+    },
+    {
+      "text": "3.3 Vues détaillées",
+      "page": 13
+    },
+    {
+      "text": "3.4 Traçabilité : cas d'utilisation → route → droit",
+      "page": 17
+    },
+    {
+      "text": "3.5 Fonctions absentes du diagramme",
+      "page": 18
+    },
+    {
+      "text": "4. Diagramme de classes",
+      "page": 19
+    },
+    {
+      "text": "4.1 Nature des classes",
+      "page": 19
+    },
+    {
+      "text": "4.2 Vue A — entités du domaine",
+      "page": 20
+    },
+    {
+      "text": "4.3 Règles métier invisibles sur le diagramme",
+      "page": 25
+    },
+    {
+      "text": "4.4 Correspondance entité → table → code",
+      "page": 25
+    },
+    {
+      "text": "4.5 Vue B — modules de service",
+      "page": 26
+    },
+    {
+      "text": "5. Modèle de données",
+      "page": 30
+    },
+    {
+      "text": "5.1 Principes",
+      "page": 30
+    },
+    {
+      "text": "5.2 Inventaire des tables",
+      "page": 30
+    },
+    {
+      "text": "5.3 Diagrammes entité-association",
+      "page": 33
+    },
+    {
+      "text": "5.4 Relation décrite seulement par un commentaire",
+      "page": 43
+    },
+    {
+      "text": "5.5 Index uniques partiels porteurs de règles métier",
+      "page": 43
+    },
+    {
+      "text": "6. Architecture logique",
+      "page": 44
+    },
+    {
+      "text": "6.1 Couches",
+      "page": 51
+    },
+    {
+      "text": "6.2 Préoccupations transverses",
+      "page": 51
+    },
+    {
+      "text": "7. Diagramme de séquence",
+      "page": 52
+    },
+    {
+      "text": "7.1 Lecture",
+      "page": 56
+    },
+    {
+      "text": "8. Architecture physique et déploiement",
+      "page": 57
+    },
+    {
+      "text": "8.1 Production",
+      "page": 59
+    },
+    {
+      "text": "8.2 Procédure de déploiement pratiquée",
+      "page": 59
+    },
+    {
+      "text": "9. Sécurité, authentification et permissions",
+      "page": 60
+    },
+    {
+      "text": "9.1 Authentification",
+      "page": 60
+    },
+    {
+      "text": "9.2 Rôles et droits",
+      "page": 60
+    },
+    {
+      "text": "9.3 Frontières de sécurité",
+      "page": 60
+    },
+    {
+      "text": "9.4 Audit et données sensibles",
+      "page": 61
+    },
+    {
+      "text": "10. Infrastructure, sauvegardes et environnements",
+      "page": 62
+    },
+    {
+      "text": "10.1 Environnements",
+      "page": 62
+    },
+    {
+      "text": "10.2 Sauvegardes",
+      "page": 62
+    },
+    {
+      "text": "10.3 Observabilité",
+      "page": 62
+    },
+    {
+      "text": "10.4 Configuration",
+      "page": 62
+    },
+    {
+      "text": "11. Traçabilité entre diagrammes et code source",
+      "page": 63
+    },
+    {
+      "text": "11.1 Diagrammes → fichiers sources → code",
+      "page": 63
+    },
+    {
+      "text": "11.2 Traçabilité consolidée",
+      "page": 65
+    },
+    {
+      "text": "11.3 Validation des sources",
+      "page": 65
+    },
+    {
+      "text": "12. Limites, éléments partiels et fonctionnalités prévues",
+      "page": 66
+    },
+    {
+      "text": "12.1 Éléments partiels",
+      "page": 66
+    },
+    {
+      "text": "12.2 Fonctionnalités prévues",
+      "page": 66
+    },
+    {
+      "text": "12.3 Fonctionnalités abandonnées",
+      "page": 66
+    },
+    {
+      "text": "12.4 Non implémenté",
+      "page": 66
+    },
+    {
+      "text": "12.5 Informations manquantes et hypothèses",
+      "page": 66
+    },
+    {
+      "text": "13. Conclusion technique",
+      "page": 67
+    },
+    {
+      "text": "Annexe A — Rendu des diagrammes et validation du document",
+      "page": 68
+    }
+  ],
+  "checks": [
+    {
+      "name": "page count stable between the two prints",
+      "ok": true,
+      "detail": "69 → 69"
+    },
+    {
+      "name": "every page after the cover prints \"Page n / N\" with its own number",
+      "ok": true,
+      "detail": "68 pages"
+    },
+    {
+      "name": "no blank page (each page has its own content)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "TOC page numbers equal the real page of every heading",
+      "ok": true,
+      "detail": "60 entries"
+    },
+    {
+      "name": "each heading text is on the page the TOC gives",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every figure caption is present",
+      "ok": true,
+      "detail": "36 figures"
+    },
+    {
+      "name": "figures appear in order",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "landscape figures are on landscape pages",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every detail view prints its smallest label at >= 5.5 pt",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no horizontal overflow in the laid-out document",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "PDF outline (bookmarks) present",
+      "ok": true,
+      "detail": "14 top-level entries"
+    },
+    {
+      "name": "no IP address (other than 127.0.0.1), home path, private host, connection string or key in the text",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "final print: same page count and same TOC targets after the annex results were written",
+      "ok": true,
+      "detail": "69 pages"
+    },
+    {
+      "name": "final print: page numbers still correct",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
