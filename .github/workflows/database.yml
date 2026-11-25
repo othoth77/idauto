@@ -43,7 +43,7 @@ concurrency:
 jobs:
   database:
     name: database and browser suites
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, mythos-local-linux, docker]  # was: ubuntu-latest
     timeout-minutes: 45
     services:
       postgres:
