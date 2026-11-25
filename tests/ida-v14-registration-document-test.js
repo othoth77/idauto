@@ -134,9 +134,13 @@ async function main() {
   var r1 = await request('PUT', DOC + '/1', { cookie: TECH_A, raw: IMG1b, headers: { 'Content-Type': 'image/png' } });
   ok(r1.status === 200 && r1.body.replaced === true && r1.body.face.width === 1300, 'rescanning face 1 replaces it (200, replaced:true)');
   ok((await request('GET', DOC + '/1/image', { cookie: TECH_A })).raw.equals(IMG1b), 'the new bytes are served');
-  ok((await db.query("SELECT count(*)::int n FROM idauto_vehicle_documents WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND face = 1", [IVID])).rows[0].n === 1, 'exactly one face-1 row (unique per vehicle/type/face)');
+  // Update 4 (ida-u4-archive-vin.sql, PR #57): a rescan is a NEW VERSION. The previous row is kept, marked superseded,
+  // and keeps its file; only the CURRENT version is unique per vehicle/type/face (uq_vdoc_current_face).
+  var face1Rows = (await db.query("SELECT id, version, superseded_at, superseded_by FROM idauto_vehicle_documents WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND face = 1 ORDER BY version", [IVID])).rows;
+  ok(face1Rows.filter(function (r) { return r.superseded_at === null; }).length === 1, 'exactly one CURRENT face-1 row (unique per vehicle/type/face among current versions)');
+  ok(face1Rows.length === 2 && face1Rows[0].version === 1 && face1Rows[0].superseded_at !== null && String(face1Rows[0].superseded_by) === String(face1Rows[1].id) && face1Rows[1].version === 2, 'the previous version is kept, superseded by version 2');
   var storageMod = require(path.join(BASE, 'reference', 'documents', 'document-storage.js')).getStorage();
-  ok((await storageMod.exists(crypto.createHash('sha256').update(IMG).digest('hex'))) === false, 'the replaced bytes are removed from the store (no other reference)');
+  ok((await storageMod.exists(crypto.createHash('sha256').update(IMG).digest('hex'))) === true, 'the replaced bytes stay in the store (the superseded version keeps its file)');
   var r2 = await request('PUT', DOC + '/2', { cookie: MGR_A, raw: png(1000, 700, (shade + 200) & 0xFF), headers: { 'Content-Type': 'image/png' } });
   ok(r2.status === 200 && r2.body.replaced === true, 'the manager replaces face 2');
   var audits = (await db.query("SELECT event_type, actor_type, org_id FROM idauto_audit_log WHERE event_type LIKE 'vehicle_document.%' AND org_id = $1 ORDER BY id", [orgA])).rows;
@@ -158,7 +162,7 @@ async function main() {
   ok(ocr.body.comparison.conflicts === 2, 'two conflicts counted');
   var rawOut = ocr.raw.toString();
   ok(rawOut.indexOf('SALAH') === -1 && rawOut.indexOf('LIBERTE') === -1 && rawOut.indexOf('01234567') === -1 && rawOut.indexOf('فلان') === -1, 'no holder data (name, address, CIN) in the OCR answer');
-  var storedOcr = (await db.query("SELECT ocr_status, ocr_confidence, ocr_fields::text f FROM idauto_vehicle_documents WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) ORDER BY face", [IVID])).rows;
+  var storedOcr = (await db.query("SELECT ocr_status, ocr_confidence, ocr_fields::text f FROM idauto_vehicle_documents WHERE vehicle_id = (SELECT id FROM idauto_vehicles WHERE ivid = $1) AND superseded_at IS NULL ORDER BY face", [IVID])).rows;
   ok(storedOcr.length === 2 && storedOcr[0].ocr_status === 'extracted' && storedOcr[0].f.indexOf('SALAH') === -1 && storedOcr[0].f.indexOf('MARQUE') !== -1 && storedOcr[1].f.indexOf('POIDS') !== -1, 'each face row stores its technical fields, never the raw text or the holder');
   var vehicleBefore = await request('GET', '/api/vehicles/' + encodeURIComponent(IVID) + '/fiche', { cookie: TECH_A });
   ok(vehicleBefore.body.model === '208' && vehicleBefore.body.year === 2019 && vehicleBefore.body.vin_present === false, 'NOTHING was written to the vehicle by the OCR step');

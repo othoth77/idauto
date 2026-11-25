@@ -94,7 +94,11 @@ async function main() {
   // IDA-UI-3 (owner decision 2026-11-05): the carte grise scanner is retired from the homepage;
   // the API behind it answers 410 unless IDAUTO_CG_OCR_ENABLED=1 (this suite sets it to keep testing it).
   ok(home.status === 200 && home.raw.indexOf('Rechercher par carte grise') === -1 && home.raw.indexOf('data-cg-home-open') === -1, '1. the homepage no longer offers « Rechercher par carte grise » (retired)');
-  ok(home.raw.indexOf('data-cg-root') === -1 && home.raw.indexOf('registration-scanner.js') === -1 && home.raw.indexOf('home-registration.js') === -1, 'the scanner module and its page script are no longer loaded');
+  // Update 5 (PR #59, kept by #63/#64): the homepage loads registration-scanner.js again, in CAPTURE mode only
+  // (carte-grise-capture.js / home-carte-grise.js — no OCR, no extraction; covered by ida-u5-carte-grise-test.js).
+  // What stays retired is the OCR identify page script and the Tesseract engine behind it.
+  ok(home.raw.indexOf('home-registration.js') === -1 && !/tesseract/i.test(home.raw), 'the OCR identify page script and the OCR engine are no longer loaded');
+  ok(home.raw.indexOf('registration-scanner.js') !== -1 && home.raw.indexOf('home-carte-grise.js') !== -1, 'the scanner module is loaded for capture only (Update 5), through home-carte-grise.js');
   delete process.env.IDAUTO_CG_OCR_ENABLED;
   var retired = await request('POST', ID, { cookie: MGR, body: { faces: [{ face: 1, text: 'x' }] } });
   ok(retired.status === 410 && retired.body.error === 'RETIRED', 'without the flag the OCR identify route answers 410 RETIRED');
