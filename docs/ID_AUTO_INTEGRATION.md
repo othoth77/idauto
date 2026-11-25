@@ -94,6 +94,10 @@ The QR encodes **only** the IVID — never a plate, never a token.
 
 ## 5. Endpoints
 
+The search, resolution and passport routes below (and the IDA-V12 `POST /api/resolve/*` resolver) are also
+described machine-readably in [`contracts/idauto-resolution.openapi.json`](contracts/idauto-resolution.openapi.json)
+(OpenAPI 3.1), checked against the running server by `tests/ida-openapi-contract-test.js`.
+
 ### Search for a vehicle — `vehicle:search`
 
 The general vehicle search. One or more criteria; **at least one is

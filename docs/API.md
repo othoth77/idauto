@@ -17,6 +17,11 @@
 
 Roles: **admin** (everything, may act for an organisation by naming `org_id`), **manager** (its organisation, incl. `vin:search`), **technician** (its organisation, no VIN). A manager/technician without organisation is refused with 403 `role_without_organisation`. Errors from the V12 routes are `{ error: <CODE>, message_fr, details? }` — never a technical string. Full organisation contract: `ID_AUTO_INTEGRATION.md`.
 
+**Machine-readable contract (IDA-G8).** The public plate and passport routes, `GET /api/passport/:ivid`,
+`GET /api/search/vehicles`, `GET /api/vehicles/:ref/resolve` and `POST /api/resolve/*` are described in
+[`contracts/idauto-resolution.openapi.json`](contracts/idauto-resolution.openapi.json) (OpenAPI 3.1, schemas from
+`protocol/schemas`), kept true by `tests/ida-openapi-contract-test.js`.
+
 ## Public (no token)
 
 | Route | Answer |
