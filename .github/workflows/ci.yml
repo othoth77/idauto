@@ -21,8 +21,9 @@
 #
 # The database suites (`npm run test:db`, `test:v12`, `test:v13`, `test:v14`) are
 # deliberately NOT here. They run against a scratch database per
-# ops/runbooks/TEST_RUNBOOK.md, and standing one up in CI is a separate decision
-# with its own fixtures, not something to smuggle in with a workflow file.
+# ops/runbooks/TEST_RUNBOOK.md. Since 2026-11-25 they have their own workflow,
+# .github/workflows/database.yml, with its own PostgreSQL service and fixtures,
+# so that this file keeps proving the database-free claim.
 
 name: CI
 
