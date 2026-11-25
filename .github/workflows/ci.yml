@@ -44,7 +44,7 @@ concurrency:
 jobs:
   offline:
     name: database-free suites
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, mythos-local-linux]  # was: ubuntu-latest
     timeout-minutes: 15
     steps:
       # Both actions pinned to commits (checkout v4.3.1, setup-node v4.4.0). `npm ci` runs
@@ -100,7 +100,7 @@ jobs:
   # ---------------------------------------------------------------------------
   secret-scan:
     name: secret and estate hygiene
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, mythos-local-linux]  # was: ubuntu-latest
     timeout-minutes: 5
     steps:
       # Pinned to a commit (v4.3.1); the job needs no token after checkout.
