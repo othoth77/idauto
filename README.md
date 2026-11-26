@@ -145,25 +145,33 @@ future anchoring integration that requires one is disqualified on that basis alo
 npm install
 cp .env.example .env          # then fill it in — never commit .env
 createdb idauto
-psql -d idauto -f database/schema.sql
+npm run migrate        # schema + every migration, in database/migrations/MANIFEST order (IDAUTO_DB_* env)
 psql -d idauto -f database/seed-synthetic-test-data.sql   # synthetic data only
 node tests/ida-2a-schema-and-plate-validation-test.js
 ```
 
-`npm test` → `npm run test:offline` runs the database-free suites: **20 suites, 1930 assertions,
+`npm test` → `npm run test:offline` runs the database-free suites: **21 suites, 2039 assertions,
 0 failures** on a clean checkout with no PostgreSQL and no `IDAUTO_DB_*` in the environment
-(measured 2026-11-25, and re-proved on every push by
+(measured 2026-11-26, and re-proved on every push by
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which starts no database). The AUTO contract
 suite runs there against its recorded fixture (replay, 32 assertions); with checkouts of
 `othoth77/auto` and `othoth77/agents` it runs live instead and checks the fixture for drift
-(27 assertions, 1925 in total) — [`docs/AUTO_CLIENT.md`](docs/AUTO_CLIENT.md) §5.
+(27 assertions, 2034 in total) — [`docs/AUTO_CLIENT.md`](docs/AUTO_CLIENT.md) §5.
 
 `npm run test:db` runs the suites that need a live scratch database; `npm run test:v12`,
 `test:v13` and `test:v14` run the identification / auth / registration suites against one. Test
 execution, including which suites need a live database, is documented in
 [`ops/runbooks/TEST_RUNBOOK.md`](ops/runbooks/TEST_RUNBOOK.md). These four scripts run on every
 push in [`.github/workflows/database.yml`](.github/workflows/database.yml), against a throwaway
-PostgreSQL 16 built from `database/schema.sql`, the migrations and the synthetic seed.
+PostgreSQL 16 built by `npm run migrate` from `database/migrations/MANIFEST` (the one ordering of
+`database/schema.sql` and the migrations; a database migrated by hand is adopted with
+`npm run migrate -- --baseline`, [`docs/DATABASE.md`](docs/DATABASE.md) §1a) and the synthetic seed.
+
+The routes other systems use to find a vehicle and read its passport (public plate and passport,
+`/api/passport`, vehicle search, reference resolution, the `/api/resolve/*` resolver) have a
+machine-readable contract, [`docs/contracts/idauto-resolution.openapi.json`](docs/contracts/idauto-resolution.openapi.json)
+(OpenAPI 3.1), which `tests/ida-openapi-contract-test.js` checks against the running server in both
+directions.
 
 > **Corrected 2026-09-22.** This paragraph said `test:offline` "runs the database-free suites",
 > and it did not: `ida-v8`, `ida-v9` and `ida-v10` had been added to it and each opens a

@@ -119,3 +119,12 @@ with the new code and the old table **nobody can sign in**. The order below is t
    user with `ops/auth-users.js` to prove an insert into the account table.
 
 **Rollback:** previous release + restart. The migration stays (the previous code is unaffected by it).
+
+## 10. Migration runner (IDA-G9, 2026-11-25) — not yet used on production
+
+`npm run migrate` (`scripts/migrate.js`) applies `database/migrations/MANIFEST` in order and records each file in
+`idauto_schema_migrations`; `docs/DATABASE.md` §1–1a is the procedure. `idauto_production` was migrated by hand,
+so its first use is `npm run migrate -- --dry-run`, then `--baseline` (records what is present, runs nothing),
+both with `--confirm-database=idauto_production` for the write — an owner action, after the backup of §4. From then
+on a release that ships a migration runs `npm run migrate -- --confirm-database=idauto_production` **before** the
+restart, which is the order §9 requires for `ida-v13b`. The runner never restarts the service.
