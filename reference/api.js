@@ -2391,6 +2391,11 @@ module.exports = {
   // done through v12-routes.createV12 in tests; these expose the live ones).
   _v12: v12,
   _v14: v14,
+  // IDA-G8: exported for tests/ida-openapi-contract-test.js, which checks the
+  // documented contract (docs/contracts/) against the real dispatch and scope
+  // tables in both directions. Not a public API.
+  _allRoutes: ALL_ROUTES,
+  _routeScopes: ALL_ROUTE_SCOPES,
   // IDA-V13: exported for tests/ida-v13-auth-session-test.js.
   _authenticate: authenticate,
   _loginAssets: ['/login', '/login/', '/login/login-ui.js', '/login/login.css']

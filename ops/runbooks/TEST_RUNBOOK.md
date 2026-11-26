@@ -35,14 +35,16 @@ The ID Auto runtime reads `IDAUTO_DB_USER` / `IDAUTO_DB_PASSWORD` / `IDAUTO_DB_N
 
 ### 1.2 The synthetic seed is a prerequisite
 
-On a **freshly created** database (a scratch `idauto_scratch_*` database, or the CI one), apply
-`database/schema.sql`, every file of `database/migrations/`, and then
-`database/seed-synthetic-test-data.sql`. The seed is not optional: `ida-2c-readonly-api` and
+On a **freshly created** database (a scratch `idauto_scratch_*` database, or the CI one), run
+`npm run migrate` (`database/schema.sql` and every migration, in `database/migrations/MANIFEST` order) and then
+apply `database/seed-synthetic-test-data.sql`. The seed is not optional: `ida-2c-readonly-api` and
 `ida-v13-auth-session` read its synthetic vehicles and abort on an unseeded database with
 `FATAL: Cannot read properties of undefined` and no summary line (measured 2026-11-25; 26/0 and 61/0 once
 the seed is applied) — the same signature §5 lists for a missing database environment. The seed holds
-synthetic data only. `.github/workflows/database.yml` applies exactly this sequence and is the reference
-for the migration order, since the repository has no migration runner.
+synthetic data only. `.github/workflows/database.yml` applies exactly this sequence; the migration order is
+`database/migrations/MANIFEST` (`docs/DATABASE.md` §1). `tests/ida-migrate-runner-test.js` (in `test:db`)
+creates and drops its own throwaway `idauto_scratch_mig_*` databases, so the role needs CREATEDB (the
+container's `POSTGRES_USER` and the CI service user have it).
 
 ## 2. Run as `deploy`
 

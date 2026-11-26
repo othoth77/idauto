@@ -4,8 +4,40 @@
 
 ## 1. Applying
 
-Fresh database: `schema.sql`, then every file in `database/migrations/` in this order:
-`ida-3a-ingestion-schema.sql` → `ida4-option-c-ivid.sql` → `ida-v4-verification-scope-separation.sql` → `ida-v8-identity-resolution.sql` → `ida-v9-organisation-scoped-access.sql` → `ida-v10-vehicle-search.sql` → `ida-v12-vehicle-identification.sql` → `ida-v13-auth-session.sql` → `ida-v14-registration-document.sql` → `ida-ui3-registration-maintenance.sql` → `ida-ui4-simplification.sql`.
+**Since 2026-11-25 (IDA-G9) the order is `database/migrations/MANIFEST`** — `schema.sql`, then every file of
+`database/migrations/`, one line each, with a read-only probe per line. It is the only list: `npm run migrate`
+(`scripts/migrate.js`) applies it, `.github/workflows/database.yml` builds the CI database with it, and
+`tests/ida-migration-manifest-test.js` fails when a file on disk is missing from it. The list that used to stand
+here stopped at `ida-ui4` and was already incomplete. A new migration is APPENDED to the manifest (with a probe);
+a line a database has applied is never edited or moved.
+
+Fresh database: `npm run migrate` (reads `IDAUTO_DB_*`, like the application). Each pending file runs in its own
+transaction together with its row in `idauto_schema_migrations` (`file`, `sha256`, `method`, `applied_at`,
+`applied_by`). The runner refuses to run when an applied file was edited since (sha256 differs), when the record
+names a file the manifest no longer lists, or when a pending line sits before an applied one. It writes to a
+database not named `idauto_scratch_*` only with `--confirm-database=<that name>` (the wrong-database incident of
+`docs/DEPLOYMENT.md` §8). `npm run migrate -- --dry-run` lists each file as `applied` / `baseline` / `pending` /
+`CHANGED` and writes nothing; add `--check` to exit 1 unless the database is at the head.
+
+### 1a. A database migrated by hand (every database built before the runner)
+
+Its schema is there but nothing records it. A plain `npm run migrate` sees that (the `schema.sql` probe holds,
+the record is empty), **refuses and writes nothing** — it never re-runs `schema.sql` or a migration over existing
+data. To adopt it:
+
+1. `npm run migrate -- --dry-run` — every line `pending`, each with `probe: present|absent`.
+2. `npm run migrate -- --baseline --dry-run` — what would be recorded.
+3. `npm run migrate -- --baseline [--confirm-database=<name>]` — records, with method `baseline` and today's
+   sha256, every manifest line whose probe holds, **without running any of them**. Refused when the database
+   already records migrations, when even `schema.sql` is absent (that is a fresh database: plain run), and when an
+   absent line precedes a present one (the database was built in another order — a person must look at it).
+4. Lines after the adopted prefix stay `pending`; `npm run migrate` applies them.
+
+A probe is a fixed catalogue check (`table`, `column`, `index`, `constraint [has …]`, `nullable`), never SQL taken
+from the manifest. It checks what its file creates last, so a half-applied file reads as absent. The runner itself
+issues no DROP, TRUNCATE or DELETE; it never restarts the application. Running it against `idauto_production` is
+the owner's action — take the backup of `docs/DEPLOYMENT.md` first, and mind the deploy-order hazard of §9 there
+(`ida-v13b` before the new code starts: run the runner before the restart).
 
 **IDA-UI-3 (2026-11-05)** — `idauto_vehicle_owner_contacts` (the owner's private contact, per organisation, superseded not edited — `docs/PRIVACY_ARCHITECTURE.md` §1a); `idauto_workshop_operations` gains `part_source` (our_shop / customer_supplied / external_supplier), `part_condition` (new / used), `part_label`, `part_reference_text`, `performed_on`, `notes`; `identification_method` accepts `manual_registration`. Additive, idempotent, DOWN block inside.
 Every migration is additive and idempotent (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`); each ends with a commented DOWN block. `ida-v12` was applied twice in a row on the scratch database as proof (second run: NOTICEs only). Result: 33 `idauto_` tables.
