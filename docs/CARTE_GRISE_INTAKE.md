@@ -47,6 +47,9 @@ A database constraint refuses a row without a vehicle unless it is an unresolved
 
 ## Known limits
 
+- The receiver calls LENS directly, not through MYTHOS AUTO (AUTO gap IDA-G2): the v1 contracts have no service
+  document hand-off and no way to read extracted fields back. See [AUTO_CLIENT.md](AUTO_CLIENT.md) §4.
+
 - LENS `/v1/files` accepts PNG, JPEG, WebP and PDF, not text: a pasted **text** goes to `extraction_failed` and is
   reviewed by hand (the text is shown on the review screen).
 - The fields depend on what LENS returns for `tn-vehicle-registration` (receiver `LENS_FIELDS`); the document's own

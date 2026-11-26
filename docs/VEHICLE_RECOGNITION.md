@@ -69,6 +69,9 @@ as before.
 
 ## 4. Vehicle analysis: configuration, privacy, cost
 
+> This direct provider call is one of the two paths that do not go through MYTHOS AUTO yet (AUTO gap IDA-G1): no AUTO
+> or AGENTS capability performs vehicle-photo recognition. See [AUTO_CLIENT.md](AUTO_CLIENT.md) §4.
+
 **Off by default.** With nothing configured, make, model and body type are « Non reconnu » and no image leaves the
 device. To enable it, the operator sets in the server's environment (never in the repository, never in the browser):
 
