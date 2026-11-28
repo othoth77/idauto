@@ -45,7 +45,7 @@ repository.vehiclesWithVin = function () { return Promise.resolve([]); };
 repository.insertIdentifiedVehicle = function (client) { return client.query('INSERT INTO idauto_vehicles (stub) VALUES ($1)', ['stub']).then(function () { return { id: 4242, ivid: 'IVID-TEST-0001' }; }); };
 
 // ---- fake CONTACT transport ----
-var CALLS = [], BEHAVIOUR = 'ok', NEXT_CNT = 'CNT000125';
+var CALLS = [], BEHAVIOUR = 'ok', NEXT_CNT = 'CNT125';
 function fakeFetch(url, init) {
   CALLS.push({ url: url, method: init.method, body: init.body ? JSON.parse(init.body) : null, headers: init.headers });
   var orderIdx = SQL.length;
@@ -113,7 +113,7 @@ async function main() {
   ok(idx(/^COMMIT$/) !== -1 && CALLS[0].sqlIndex > idx(/^COMMIT$/), 'CONTACT is called only AFTER the local transaction committed');
   ok(ownerInsert() && ownerInsert().params.indexOf('Propriétaire Fictif') !== -1, 'the local owner row is still written (legacy store authoritative)');
   var link = stmts(/SET contact_id = \$6, contact_sync_pending = FALSE/)[0];
-  ok(link && link.params[5] === 'CNT000125' && link.params[0] === 4242 && link.params[1] === 7, 'the returned CNT is stored on that vehicle/organisation row');
+  ok(link && link.params[5] === 'CNT125' && link.params[0] === 4242 && link.params[1] === 7, 'the returned CNT is stored on that vehicle/organisation row');
   ok(auditClean(), 'audit rows carry no owner PII and no CNT');
   ok(logsClean() && LOGS.some(function (l) { return /shadow vehicle=4242 linked/.test(l); }), 'log line: vehicle id and outcome only');
 
@@ -156,10 +156,10 @@ async function main() {
   ok(r.owner_recorded === true, 'registration succeeds when CONTACT answers');
   ok(CALLS.length >= 1 && /\/contacts\/resolve$/.test(CALLS[0].url) && CALLS[0].sqlIndex === 0, 'the resolve happens BEFORE the transaction (no SQL yet)');
   var ins = ownerInsert();
-  ok(ins && /\(vehicle_id, org_id, contact_id, created_by\)/.test(ins.text) && ins.params[2] === 'CNT000125', 'the owner row stores only vehicle, organisation, CNT and author');
+  ok(ins && /\(vehicle_id, org_id, contact_id, created_by\)/.test(ins.text) && ins.params[2] === 'CNT125', 'the owner row stores only vehicle, organisation, CNT and author');
   ok(SQL.every(function (s) { return !containsPII(JSON.stringify(s.params)); }), 'no local statement carries owner PII');
   ok(auditClean() && logsClean(), 'audit rows and log lines carry no PII and no CNT');
-  ok(CALLS.length === 2 && /\/contacts\/CNT000125\/associations$/.test(CALLS[1].url) && CALLS[1].body.source_record_ref === '4242@7', 'after the commit the vehicle reference is attached in CONTACT');
+  ok(CALLS.length === 2 && /\/contacts\/CNT125\/associations$/.test(CALLS[1].url) && CALLS[1].body.source_record_ref === '4242@7', 'after the commit the vehicle reference is attached in CONTACT');
 
   for (var b2 of ['down', '500']) {
     useMode('authoritative'); BEHAVIOUR = b2;
@@ -180,10 +180,10 @@ async function main() {
   ok(e4 && e4.code === 'CONTACT_UNAVAILABLE' && SQL.length === 0, 'owner save (dossier) in authoritative mode refuses on outage too');
   useMode('authoritative');
   var res = await owners.put({ id: 4242, ivid: 'IVID-TEST-0001' }, OWNER, ACTOR); await oi.settle();
-  ok(CALLS[0].body.source.record_id === '4242@7' && ownerInsert().params[2] === 'CNT000125' && res.fields_present.indexOf('notes') === -1, 'owner save (dossier) authoritative: CNT only, reference known up front, notes not carried');
+  ok(CALLS[0].body.source.record_id === '4242@7' && ownerInsert().params[2] === 'CNT125' && res.fields_present.indexOf('notes') === -1, 'owner save (dossier) authoritative: CNT only, reference known up front, notes not carried');
 
   say('7. GUARANTEES OF THE VENDORED SDK');
-  ok(sdk.isContactId('CNT000125') && !sdk.isContactId('CNT12') && !sdk.isContactId('local-1'), 'CNT format is checked');
+  ok(sdk.isContactId('CNT125') && !sdk.isContactId('CNT012') && !sdk.isContactId('CNT0') && !sdk.isContactId('local-1'), 'CNT format is checked');
   var cfgErr = null; try { sdk.createClient({ baseUrl: 'http://contact.invalid', token: ENV_BASE.CONTACT_TOKEN }); } catch (e) { cfgErr = e; }
   ok(cfgErr && cfgErr.name === 'ContactConfigError', 'plain http to a non-loopback host is refused');
 

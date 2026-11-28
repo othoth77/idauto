@@ -6,7 +6,7 @@
 -- contact_id NULL, contact_sync_pending FALSE.
 --
 -- CONTACT (https://github.com/othoth77/contact) is the Mythos master contact registry and
--- the single owner of person identity (CNT000001 ids). IDauto integrates in modes
+-- the single owner of person identity (CNT1 ids). IDauto integrates in modes
 -- (IDAUTO_CONTACT_MODE, reference/contact/owner-identity.js):
 --   * shadow        — the local owner row stays authoritative; after the commit the owner is
 --                     resolved in CONTACT and its CNT is stored in contact_id. CONTACT
@@ -24,7 +24,7 @@ ALTER TABLE idauto_vehicle_owner_contacts ADD COLUMN IF NOT EXISTS contact_sync_
 
 ALTER TABLE idauto_vehicle_owner_contacts DROP CONSTRAINT IF EXISTS chk_owner_contact_cnt;
 ALTER TABLE idauto_vehicle_owner_contacts ADD CONSTRAINT chk_owner_contact_cnt
-    CHECK (contact_id IS NULL OR contact_id ~ '^CNT[0-9]{6,}$');
+    CHECK (contact_id IS NULL OR contact_id ~ '^CNT[1-9][0-9]*$');
 
 -- authoritative rows: CNT only, no local personal data
 ALTER TABLE idauto_vehicle_owner_contacts ALTER COLUMN full_name DROP NOT NULL;

@@ -16,7 +16,7 @@ Citizen → Vehicle Identity → Digital Vehicle Passport → Evidence
 ## CONTACT OWNERSHIP NOTICE
 
 **Person and organisation identity in Mythos is owned by [CONTACT](https://github.com/othoth77/contact)**,
-the master contact registry (ids `CNT000001`). IDauto is a *Contact Consumer*: in the target
+the master contact registry (ids `CNT1`). IDauto is a *Contact Consumer*: in the target
 state it stores only the owner's `contact_id`, plus its own vehicle, dossier, workshop and audit data.
 
 **Integration in progress — shadow mode available, local owner store still authoritative until

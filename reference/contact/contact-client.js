@@ -1,4 +1,4 @@
-/* VENDORED from othoth77/contact integrations/sdk/contact-client.js @ 2fc5599.
+/* VENDORED from othoth77/contact integrations/sdk/contact-client.js @ f17e49b (othoth77/contact#6, CNT1 ids).
  * Do not edit locally: change it upstream in CONTACT and re-vendor. */
 'use strict';
 
@@ -19,7 +19,7 @@
 
 var crypto = require('crypto');
 
-var CNT_RE = /^CNT[0-9]{6,}$/;
+var CNT_RE = /^CNT[1-9][0-9]*$/;
 
 function ContactError(name, message, extra) {
   var e = new Error(message);
@@ -30,7 +30,7 @@ function ContactError(name, message, extra) {
 
 function isContactId(v) { return typeof v === 'string' && CNT_RE.test(v); }
 function assertContactId(v) {
-  if (!isContactId(v)) throw ContactError('ContactReferenceError', 'not a CONTACT id (expected CNT000001 format)');
+  if (!isContactId(v)) throw ContactError('ContactReferenceError', 'not a CONTACT id (expected CNT1 format)');
   return v;
 }
 

@@ -4,7 +4,7 @@
 // reference/contact/owner-identity.js
 //
 // CONTACT (https://github.com/othoth77/contact) is the Mythos master contact
-// registry: the single owner of person / organisation identity (CNT000001
+// registry: the single owner of person / organisation identity (CNT1
 // ids). This module is IDauto's one seam towards it for VEHICLE OWNERS. It
 // talks to CONTACT only through the vendored SDK (./contact-client.js).
 //
