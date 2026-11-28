@@ -78,10 +78,22 @@ completely.
 
 ## Security properties currently relied on
 
-Stated so you know what to test against — and what is honestly not there yet.
+Stated so you know what to test against — and what is honestly not there yet. The
+per-area implementation reference (authentication, authorisation, CSRF, CSP, logs, …) is
+[`docs/SECURITY.md`](docs/SECURITY.md); where this summary and that file differ, that file
+is the more detailed and more recent source.
 
 **Implemented and test-enforced:**
 
+- **Web-user authentication (IDA-V13):** email + password at `/login` → Better Auth (scrypt
+  hash) → server-side session row → cookie `idauto.session_token` (HttpOnly, SameSite=Lax,
+  Path=/, Secure in production), validated in the database on every request; 12 h sliding
+  expiry; sign-out and server-side revocation; password change; sign-in rate limit 5/min per
+  client IP. See `reference/auth/`, `tests/ida-v13-auth-session-test.js` and
+  [`docs/SECURITY.md`](docs/SECURITY.md) → *Authentication — web users*.
+- **Server-to-server authentication:** bearer service credentials (`IDAUTO_ADMIN_IDENTITIES`)
+  for organisation integrations, never used by a browser. See
+  [`docs/SECURITY.md`](docs/SECURITY.md) → *Authentication — server-to-server*.
 - No owner-PII column exists on any table
 - Parameterised SQL only; no raw-SQL escape hatch in the database module
 - Every mutation writes an audit row in the same transaction, or both roll back
@@ -101,8 +113,10 @@ Stated so you know what to test against — and what is honestly not there yet.
 
 **Not present — do not assume otherwise:**
 
-- **No real authentication.** The only mechanism is an operator-provisioned map of admin
-  bearer tokens to identity strings. It is not an auth service and is not described as one.
+- **The old manual admin token is not fully retired.** It has been removed from every web
+  surface (`/atelier`, `/admin`, `/admin/review`), but the environment map still accepts admin
+  entries for scripts; dropping them is the follow-up step after production validation
+  ([`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §4, per [`docs/SECURITY.md`](docs/SECURITY.md)).
 - **No backup *schedule*.** One verified off-host batch exists; a single batch is not a
   backup regime. Recurring scheduling and retention automation do not exist, so treat the
   backup gate as stale once the newest verified batch ages beyond tolerance.
