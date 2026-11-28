@@ -45,9 +45,10 @@ jobs:
   offline:
     name: database-free suites
     # Haddad local fleet; owner switch vars.IDAUTO_CI_RUNNER=hosted sends this job back to GitHub-hosted.
-    runs-on: ${{ vars.IDAUTO_CI_RUNNER == 'hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","mythos-haddad"]') }}
-    # Public repository: never run a fork's pull request on the self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.IDAUTO_CI_RUNNER == 'hosted' && 'ubuntu-latest' || 'mythos-haddad' }}
+    # Public repository: on the self-hosted runner only the owner's own pushes/PRs run (no fork code).
+    # Written without event/fromJSON expressions on purpose: secret_scan_selftest.sh forbids them.
+    if: vars.IDAUTO_CI_RUNNER == 'hosted' || github.actor == github.repository_owner
     timeout-minutes: 15
     steps:
       # Both actions pinned to commits (checkout v4.3.1, setup-node v4.4.0). `npm ci` runs
@@ -104,9 +105,10 @@ jobs:
   secret-scan:
     name: secret and estate hygiene
     # Haddad local fleet; owner switch vars.IDAUTO_CI_RUNNER=hosted sends this job back to GitHub-hosted.
-    runs-on: ${{ vars.IDAUTO_CI_RUNNER == 'hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","mythos-haddad"]') }}
-    # Public repository: never run a fork's pull request on the self-hosted runner.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ vars.IDAUTO_CI_RUNNER == 'hosted' && 'ubuntu-latest' || 'mythos-haddad' }}
+    # Public repository: on the self-hosted runner only the owner's own pushes/PRs run (no fork code).
+    # Written without event/fromJSON expressions on purpose: secret_scan_selftest.sh forbids them.
+    if: vars.IDAUTO_CI_RUNNER == 'hosted' || github.actor == github.repository_owner
     timeout-minutes: 5
     steps:
       # Pinned to a commit (v4.3.1); the job needs no token after checkout.
