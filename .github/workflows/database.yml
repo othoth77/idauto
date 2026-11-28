@@ -16,11 +16,13 @@
 # deployment. The database is named `idauto_scratch_ci` because most suites
 # refuse to run against a database not named `idauto_scratch_*`.
 #
-# There is no migration runner in this repository; the list in the "Schema,
-# migrations, seed" step is the order in which the migrations were written
-# (base schema, then each stage). A new migration must be appended there.
-# `database/seed-synthetic-test-data.sql` is required: ida-2c and ida-v13 read
-# its synthetic vehicles.
+# The database is built by the migration runner (scripts/migrate.js, IDA-G9)
+# from database/migrations/MANIFEST, the one ordering of the schema and its
+# migrations. A new migration is appended to the MANIFEST, never listed here;
+# tests/ida-migration-manifest-test.js (test:offline) fails when a file on disk
+# is missing from it. `database/seed-synthetic-test-data.sql` is not a
+# migration and is applied after it: ida-2c and ida-v13 read its synthetic
+# vehicles.
 #
 # The job name below is what branch protection should require, next to the two
 # jobs of ci.yml.
@@ -43,7 +45,7 @@ concurrency:
 jobs:
   database:
     name: database and browser suites
-    runs-on: [self-hosted, linux, x64, mythos-local-linux, docker]  # was: ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
       postgres:
@@ -94,45 +96,21 @@ jobs:
           echo "::add-mask::$secret"
           echo "IDAUTO_AUTH_SECRET=$secret" >> "$GITHUB_ENV"
 
-      - name: Schema, migrations, seed
-        run: |
-          set -eu
-          for f in \
-            schema.sql \
-            migrations/ida-3a-ingestion-schema.sql \
-            migrations/ida4-option-c-ivid.sql \
-            migrations/ida-v4-verification-scope-separation.sql \
-            migrations/ida-v8-identity-resolution.sql \
-            migrations/ida-v9-organisation-scoped-access.sql \
-            migrations/ida-v10-vehicle-search.sql \
-            migrations/ida-v12-vehicle-identification.sql \
-            migrations/ida-v13-auth-session.sql \
-            migrations/ida-v13b-auth-account-issuer.sql \
-            migrations/ida-v14-registration-document.sql \
-            migrations/ida-ui3-registration-maintenance.sql \
-            migrations/ida-ui4-simplification.sql \
-            migrations/ida-u2-visual-recognition.sql \
-            migrations/ida-u3-vehicle-photos.sql \
-            migrations/ida-u31-scan-photos.sql \
-            migrations/ida-u4-archive-vin.sql \
-            migrations/ida-u4b-vin-lookup-index.sql \
-            migrations/ida-u5-carte-grise-sources.sql \
-            migrations/ida-u6-carte-grise-intake.sql \
-            seed-synthetic-test-data.sql
-          do
-            echo "applying database/$f"
-            psql -q -v ON_ERROR_STOP=1 -h "$IDAUTO_DB_HOST" -p "$IDAUTO_DB_PORT" -U "$IDAUTO_DB_USER" -d "$IDAUTO_DB_NAME" -f "database/$f" >/dev/null
-          done
+      - name: Schema and migrations, through the runner and the MANIFEST
+        run: node scripts/migrate.js
 
-      - name: Every migration file is in the list above
+      # The guarantee the hand-kept list used to give: every MANIFEST entry is
+      # applied (the MANIFEST == files on disk half is tests/ida-migration-manifest-test.js).
+      # A second run must apply nothing.
+      - name: Every migration is applied, and a second run applies nothing
         run: |
           set -eu
-          missing=0
-          for f in database/migrations/*.sql; do
-            grep -q "migrations/$(basename "$f") " .github/workflows/database.yml \
-              || { echo "::error::$f is not applied by this workflow"; missing=1; }
-          done
-          exit "$missing"
+          node scripts/migrate.js --dry-run --check
+          node scripts/migrate.js | tee "$RUNNER_TEMP/migrate-again.log"
+          grep -q "nothing to apply" "$RUNNER_TEMP/migrate-again.log"
+
+      - name: Synthetic seed
+        run: psql -q -v ON_ERROR_STOP=1 -h "$IDAUTO_DB_HOST" -p "$IDAUTO_DB_PORT" -U "$IDAUTO_DB_USER" -d "$IDAUTO_DB_NAME" -f database/seed-synthetic-test-data.sql >/dev/null
 
       - name: A browser is present (the browser suites must not silently skip)
         run: |

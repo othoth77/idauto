@@ -44,7 +44,10 @@ concurrency:
 jobs:
   offline:
     name: database-free suites
-    runs-on: [self-hosted, linux, x64, mythos-local-linux]  # was: ubuntu-latest
+    # Haddad local fleet; owner switch vars.IDAUTO_CI_RUNNER=hosted sends this job back to GitHub-hosted.
+    runs-on: ${{ vars.IDAUTO_CI_RUNNER == 'hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","mythos-haddad"]') }}
+    # Public repository: never run a fork's pull request on the self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 15
     steps:
       # Both actions pinned to commits (checkout v4.3.1, setup-node v4.4.0). `npm ci` runs
@@ -100,7 +103,10 @@ jobs:
   # ---------------------------------------------------------------------------
   secret-scan:
     name: secret and estate hygiene
-    runs-on: [self-hosted, linux, x64, mythos-local-linux]  # was: ubuntu-latest
+    # Haddad local fleet; owner switch vars.IDAUTO_CI_RUNNER=hosted sends this job back to GitHub-hosted.
+    runs-on: ${{ vars.IDAUTO_CI_RUNNER == 'hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","mythos-haddad"]') }}
+    # Public repository: never run a fork's pull request on the self-hosted runner.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     timeout-minutes: 5
     steps:
       # Pinned to a commit (v4.3.1); the job needs no token after checkout.
