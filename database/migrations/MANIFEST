@@ -1,0 +1,57 @@
+# IDauto migration manifest — THE order in which the database is built.
+#
+# Single source of truth (IDA-G9, 2026-11-25). Read by scripts/migrate.js
+# (`npm run migrate`) and, through it, by .github/workflows/database.yml.
+# tests/ida-migration-manifest-test.js fails when a file in this directory is
+# missing from this list, listed twice, or listed but absent on disk.
+#
+# Format, one entry per line:
+#
+#   <path relative to database/>   <probe>[, <probe> ...]
+#
+# A probe is a read-only catalogue check that is true once the file has been
+# applied. They let `npm run migrate -- --baseline` adopt a database that was
+# migrated by hand (docs/DATABASE.md §1a) without running anything again:
+#
+#   table <name>                 the table exists
+#   column <table>.<column>      the column exists
+#   index <name>                 the index exists
+#   constraint <name>            the constraint exists
+#   constraint <name> has <txt>  ... and its definition contains <txt>
+#   nullable <table>.<column>    the column exists and accepts NULL
+#
+# Probe what the file creates LAST (or the change only it makes), so that a
+# partially applied file is not mistaken for an applied one.
+#
+# Adding a migration: append ONE line at the end, with a probe. Never edit or
+# reorder a line that a database has already applied — the runner records a
+# sha256 of every applied file and refuses to run when one changed.
+#
+# DEPLOY-ORDER HAZARD (docs/DEPLOYMENT.md §9): migrations/ida-v13b-auth-account-issuer.sql
+# must be applied BEFORE the code that ships Better Auth >= 1.7.3 is started.
+# Running `npm run migrate` before the restart satisfies that; the runner never
+# restarts anything.
+#
+# database/seed-synthetic-test-data.sql is NOT a migration and is not listed:
+# it is synthetic test data for scratch databases only.
+
+schema.sql                                         table idauto_plate_formats, table idauto_audit_log
+migrations/ida-3a-ingestion-schema.sql             table idauto_rate_limit_counters, column idauto_observation_media.derived_from_media_id
+migrations/ida4-option-c-ivid.sql                  column idauto_vehicles.ivid
+migrations/ida-v4-verification-scope-separation.sql constraint chk_evidence_type has document_scan_official
+migrations/ida-v8-identity-resolution.sql          column idauto_vehicles.merged_into_id, index idx_idauto_vehicles_merged_into
+migrations/ida-v9-organisation-scoped-access.sql   column idauto_observations.source_reference, constraint chk_obs_org_provenance
+migrations/ida-v10-vehicle-search.sql              index idx_idauto_audit_vin_search
+migrations/ida-v12-vehicle-identification.sql      column idauto_vehicles.tecdoc_car_id, table idauto_workshop_order_lines
+migrations/ida-v13-auth-session.sql                table idauto_auth_verification, table idauto_auth_rate_limit
+migrations/ida-v13b-auth-account-issuer.sql        nullable idauto_auth_account.issuer
+migrations/ida-v14-registration-document.sql       table idauto_vehicle_documents, constraint chk_vehicle_ident_method
+migrations/ida-ui3-registration-maintenance.sql    table idauto_vehicle_owner_contacts, index idx_workshop_op_part_source
+migrations/ida-ui4-simplification.sql              table idauto_vehicle_notes, constraint chk_visit_odometer
+migrations/ida-u2-visual-recognition.sql           column idauto_vehicles.visual_recognition, constraint chk_vehicle_visual_recognition
+migrations/ida-u3-vehicle-photos.sql               table idauto_vehicle_photos, index idx_idauto_vphoto_vehicle
+migrations/ida-u31-scan-photos.sql                 table idauto_scan_photos, index idx_idauto_media_replicas_due
+migrations/ida-u4-archive-vin.sql                  table idauto_media_archive, index idx_idauto_vdoc_history
+migrations/ida-u4b-vin-lookup-index.sql            index idx_idauto_facts_vin_upper
+migrations/ida-u5-carte-grise-sources.sql          column idauto_vehicle_documents.review_status, index idx_idauto_vdoc_sha
+migrations/ida-u6-carte-grise-intake.sql           column idauto_vehicle_documents.intake_status, index idx_idauto_vdoc_intake

@@ -1,0 +1,439 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "IDauto resolution and passport API",
+    "version": "1.0.0",
+    "summary": "The routes other MYTHOS systems are told to use to find a vehicle and read its passport.",
+    "description": "Machine-readable contract for the resolver and passport routes of IDauto (gap IDA-G8). Scope, and why: docs/ID_AUTO_INTEGRATION.md §5 is the integration contract other systems (Fixpert/atelier, CMF reference verification, the status-center probes) are pointed at; of its routes, this document covers the ones that FIND a vehicle or READ its passport — public plate resolution, the public passport, the authenticated passport, vehicle search, identifier resolution after a merge, and the IDA-V12 resolver (docs/VEHICLE_RESOLUTION.md, docs/API.md « Identification »). Not covered: the citizen website helpers under /public/ (VIN box, scans, geo, carte grise deposit — used by IDauto's own pages), the workshop, catalogue, workspace and admin routes, and the write routes of §5 other than /api/resolve/confirm. tests/ida-openapi-contract-test.js keeps this file true against the running server: every operation exists with the documented scope, real responses validate against the schemas below, and no undocumented route exists under the prefixes listed in x-idauto-contract.",
+    "license": { "name": "Apache-2.0", "identifier": "Apache-2.0" }
+  },
+  "servers": [ { "url": "https://idauto.tn", "description": "production" } ],
+  "x-idauto-contract": {
+    "prefixes": ["/public/plates/", "/public/passport/", "/api/resolve/", "/api/passport/"],
+    "prefixes_note": "Every route under these prefixes is documented here; the contract test fails on an undocumented one. /api/search/vehicles and /api/vehicles/{ref}/resolve are single routes inside prefixes (/api/search/, /api/vehicles/) that also hold routes outside this contract.",
+    "phase_gate": "The two /public/ routes exist only while config public_resolution.enabled is true (production: true). With it false they answer the plain 404 of an unknown path, for every method.",
+    "rate_limit": "The two /public/ routes share one per-client bucket (config public_resolution.rate_limit, 30 per 60 s by default) and answer 429 with Retry-After when it is exhausted."
+  },
+  "security": [ { "serviceCredential": [] } ],
+  "paths": {
+    "/public/plates/{plate}": {
+      "get": {
+        "operationId": "resolvePublicPlate",
+        "summary": "Plate to IVID, no credential",
+        "description": "Any accepted spelling (230 TU 8646, 230TU8646, 230 تونس 8646, 8646TU230, RS plates). Follows merges: always the canonical IVID. An unknown plate and a malformed one get the identical 404, so the route confirms nothing.",
+        "security": [],
+        "x-idauto-scope": null,
+        "parameters": [ { "name": "plate", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": {
+          "200": { "description": "the plate is known", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicPlateResolution" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "405": { "$ref": "#/components/responses/MethodNotAllowed" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/public/passport/{ivid}": {
+      "get": {
+        "operationId": "getPublicPassport",
+        "summary": "The public passport of a vehicle, no credential",
+        "description": "Public-scope facts only (no VIN, no plate fact, nothing professional or private). Follows merges: an IVID printed before a merge opens the canonical passport, and qr.payload equals the served vehicle.ivid.",
+        "security": [],
+        "x-idauto-scope": null,
+        "parameters": [ { "$ref": "#/components/parameters/Ivid" } ],
+        "responses": {
+          "200": { "description": "the public passport", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicPassport" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "405": { "$ref": "#/components/responses/MethodNotAllowed" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/api/passport/{ivid}": {
+      "get": {
+        "operationId": "getProfessionalPassport",
+        "summary": "The professional passport of a vehicle",
+        "description": "Public and professional facts and the full plate records. The VIN fact appears only for a caller holding vin:search, and that disclosure is audited. Does NOT follow merges: a merged IVID answers its own record.",
+        "x-idauto-scope": "passport:read",
+        "parameters": [ { "$ref": "#/components/parameters/Ivid" } ],
+        "responses": {
+          "200": { "description": "the professional passport", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProfessionalPassport" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/search/vehicles": {
+      "get": {
+        "operationId": "searchVehicles",
+        "summary": "Find a vehicle by plate, VIN, IVID, internal reference or make/model/year",
+        "description": "At least one criterion. An exact identifier (plate, vin, ivid, internal_ref) is answered on its own; make, model and year combine and are capped at 50 results (capped:true). A miss is 200 with count 0, never 404. Results are canonical records; a hit reached through a merged record carries matched_ref and is_alias. The VIN is never echoed. The vin criterion needs vin:search in addition and is always audited.",
+        "x-idauto-scope": "vehicle:search",
+        "parameters": [
+          { "name": "plate", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
+          { "name": "vin", "in": "query", "description": "needs vin:search", "schema": { "type": "string", "maxLength": 64 } },
+          { "name": "ivid", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
+          { "name": "internal_ref", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
+          { "name": "make", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
+          { "name": "model", "in": "query", "schema": { "type": "string", "maxLength": 64 } },
+          { "name": "year", "in": "query", "schema": { "type": "string", "pattern": "^\\d{4}$" } }
+        ],
+        "responses": {
+          "200": { "description": "the matching vehicles (possibly none)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResult" } } } },
+          "400": { "description": "no criterion, or a malformed year", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchError" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/vehicles/{ref}/resolve": {
+      "get": {
+        "operationId": "resolveVehicleRef",
+        "summary": "What a stored IVID or internal_ref points at today",
+        "description": "The supported way to follow a merge. Call it whenever a stored reference behaves unexpectedly.",
+        "x-idauto-scope": "identity:resolve",
+        "parameters": [ { "$ref": "#/components/parameters/Ref" } ],
+        "responses": {
+          "200": { "description": "the requested and the canonical record", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefResolution" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/resolve/plate": {
+      "post": {
+        "operationId": "resolvePlate",
+        "summary": "Identify a vehicle from a plate (IDA-V12 resolver)",
+        "description": "Cache, then the local database, then the configured providers (none by default). A low OCR confidence (< 0.75) returns needs_confirmation before any lookup unless confirmed is true. Writes nothing.",
+        "x-idauto-scope": "vehicle:resolve",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolvePlateRequest" } } } },
+        "responses": {
+          "200": { "description": "needs_confirmation, resolved, candidate or not_found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Resolution" } } } },
+          "400": { "$ref": "#/components/responses/ResolverError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/resolve/vin": {
+      "post": {
+        "operationId": "resolveVin",
+        "summary": "Identify a vehicle from a VIN (IDA-V12 resolver)",
+        "description": "Needs vin:search in addition to vehicle:resolve; every call is audited before the answer. Writes nothing else.",
+        "x-idauto-scope": "vehicle:resolve",
+        "x-idauto-additional-scope": "vin:search",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolveVinRequest" } } } },
+        "responses": {
+          "200": { "description": "resolved, candidate or not_found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Resolution" } } } },
+          "400": { "$ref": "#/components/responses/ResolverError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/resolve/manual": {
+      "post": {
+        "operationId": "resolveManual",
+        "summary": "Identify a vehicle from make / model / motorisation (IDA-V12 resolver)",
+        "description": "An exact single local match is resolved; otherwise the selection becomes a candidate (with alternatives when several local records match). Writes nothing.",
+        "x-idauto-scope": "vehicle:resolve",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolveManualRequest" } } } },
+        "responses": {
+          "200": { "description": "resolved or candidate", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Resolution" } } } },
+          "400": { "$ref": "#/components/responses/ResolverError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/resolve/confirm": {
+      "post": {
+        "operationId": "confirmIdentification",
+        "summary": "Confirm an identification — the ONLY call that writes one",
+        "description": "With vehicle_ref: updates that vehicle. Without: confirms the vehicle that already holds the plate or VIN, or creates one (IVID issued by the server). Recorded with provenance and an identification-history row.",
+        "x-idauto-scope": "vehicle:write",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConfirmRequest" } } } },
+        "responses": {
+          "200": { "description": "the confirmed vehicle", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Confirmation" } } } },
+          "400": { "$ref": "#/components/responses/ResolverError" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/ResolverError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "serviceCredential": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "One service credential per organisation, provisioned by the IDauto operator (docs/ID_AUTO_INTEGRATION.md §2). Scopes are exact strings (§3); a route needs the scope named in x-idauto-scope."
+      }
+    },
+    "parameters": {
+      "Ivid": { "name": "ivid", "in": "path", "required": true, "description": "ivid:1:<payload>:<check>; percent-encode the colons or not, both are accepted", "schema": { "type": "string" } },
+      "Ref": { "name": "ref", "in": "path", "required": true, "description": "an IVID or an internal_ref", "schema": { "type": "string" } }
+    },
+    "responses": {
+      "NotFound": { "description": "unknown, malformed, or (public routes) phase gate off — one identical body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotFoundError" } } } },
+      "MethodNotAllowed": { "description": "a method other than GET on an existing public route", "headers": { "Allow": { "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlainError" } } } },
+      "RateLimited": { "description": "the public resolution bucket is exhausted", "headers": { "Retry-After": { "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlainError" } } } },
+      "Unauthorized": { "description": "no credential, or one that is not recognised", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UnauthorizedError" } } } },
+      "Forbidden": { "description": "the credential lacks the scope (or the route is not open to organisations)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForbiddenError" } } } },
+      "ResolverError": { "description": "typed resolver error (reference/vehicle/errors.js)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResolverError" } } } }
+    },
+    "schemas": {
+      "Ivid": { "type": "string", "pattern": "^ivid:[0-9]+:[0-9A-HJKMNP-TV-Z]{16,30}:[0-9A-HJKMNP-TV-Z]{2}$" },
+      "DateTime": { "type": "string", "format": "date-time" },
+      "PlainError": { "type": "object", "required": ["error"], "additionalProperties": false, "properties": { "error": { "type": "string" } } },
+      "NotFoundError": { "type": "object", "required": ["error"], "additionalProperties": false, "properties": { "error": { "const": "not found" } } },
+      "UnauthorizedError": {
+        "type": "object", "required": ["error", "reason", "login"], "additionalProperties": false,
+        "properties": { "error": { "type": "string" }, "reason": { "enum": ["no_credentials", "invalid_credentials"] }, "login": { "const": "/login" } }
+      },
+      "ForbiddenError": {
+        "type": "object", "required": ["error"], "additionalProperties": false,
+        "properties": { "error": { "type": "string" }, "required_scope": { "type": "string" } }
+      },
+      "ResolverError": {
+        "type": "object", "required": ["error", "message_fr"], "additionalProperties": false,
+        "properties": {
+          "error": { "enum": ["INVALID_PLATE", "PLATE_AMBIGUOUS", "PLATE_PARTIAL", "INVALID_VIN", "VALIDATION", "FORBIDDEN", "VEHICLE_NOT_FOUND", "NOT_FOUND", "CONFLICT", "OCR_LOW_CONFIDENCE", "PROVIDER_UNAVAILABLE", "NETWORK_FAILURE", "PROVIDER_TIMEOUT", "request_error", "database", "internal"] },
+          "message_fr": { "type": "string" },
+          "details": { "type": "object" }
+        }
+      },
+      "SearchError": {
+        "type": "object", "required": ["error"], "additionalProperties": false,
+        "properties": { "error": { "type": "string" }, "accepted": { "type": "array", "items": { "type": "string" } } }
+      },
+      "PublicPlateResolution": {
+        "type": "object", "required": ["plate_number", "ivid"], "additionalProperties": false,
+        "properties": { "plate_number": { "type": "string", "description": "canonical form, e.g. 230 TUN 8646" }, "ivid": { "$ref": "#/components/schemas/Ivid" } }
+      },
+      "PassportFact": {
+        "description": "A fact as the passport routes serve it today. NOTE: this is not yet protocol/schemas/fact.schema.json (no protocol_version, subject_ivid or is_active; confidence_score and verification_status are flat). The contract documents the served shape; aligning it with the protocol is separate work.",
+        "type": "object", "required": ["id", "fact_key", "fact_value", "verification_status", "provenance"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^fact-[0-9]+$" },
+          "fact_key": { "type": "string" },
+          "fact_value": { "type": "string" },
+          "fact_value_normalized": { "type": ["string", "null"] },
+          "confidence_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "verification_status": { "enum": ["unverified", "pending_review", "verified", "conflict", "rejected"] },
+          "provenance": { "type": "object", "required": ["access_scope"], "additionalProperties": false, "properties": { "access_scope": { "enum": ["public", "professional", "mythos_private"] } } }
+        }
+      },
+      "PublicPlate": {
+        "description": "protocol/schemas/plate.schema.json, narrowed: the public route serves no plate_raw, region_code or valid_to.",
+        "allOf": [ { "$ref": "../../protocol/schemas/plate.schema.json" } ],
+        "required": ["protocol_version", "id", "subject_ivid", "plate_number", "format_code", "valid_from"],
+        "not": { "anyOf": [ { "required": ["plate_raw"] }, { "required": ["region_code"] }, { "required": ["valid_to"] } ] }
+      },
+      "PassportEnvelope": {
+        "description": "protocol/schemas/passport.schema.json with its facts items replaced by PassportFact (see there).",
+        "type": "object",
+        "required": ["protocol_version", "ivid", "generated_at", "scope", "vehicle", "plates", "facts", "trust_summary", "completeness_note", "qr"],
+        "properties": {
+          "protocol_version": { "const": "0.1.0-draft" },
+          "ivid": { "$ref": "#/components/schemas/Ivid" },
+          "generated_at": { "$ref": "#/components/schemas/DateTime" },
+          "vehicle": { "$ref": "../../protocol/schemas/vehicle.schema.json" },
+          "facts": { "type": "array", "items": { "$ref": "#/components/schemas/PassportFact" } },
+          "trust_summary": {
+            "type": "object", "additionalProperties": false, "required": ["T0", "T1", "T2", "T3", "anchored", "conflicts"],
+            "properties": { "T0": { "type": "integer", "minimum": 0 }, "T1": { "type": "integer", "minimum": 0 }, "T2": { "type": "integer", "minimum": 0 }, "T3": { "type": "integer", "minimum": 0 }, "anchored": { "type": "integer", "minimum": 0 }, "conflicts": { "type": "integer", "minimum": 0 } }
+          },
+          "completeness_note": { "type": "string", "minLength": 1 },
+          "qr": {
+            "type": "object", "required": ["payload", "resolves_to_scope"], "additionalProperties": false,
+            "properties": { "payload": { "$ref": "#/components/schemas/Ivid" }, "resolves_to_scope": { "const": "public" } }
+          }
+        }
+      },
+      "PublicPassport": {
+        "allOf": [ { "$ref": "#/components/schemas/PassportEnvelope" } ],
+        "properties": {
+          "scope": { "const": "public" },
+          "plates": { "type": "array", "items": { "$ref": "#/components/schemas/PublicPlate" } },
+          "facts": { "type": "array", "items": { "properties": { "provenance": { "properties": { "access_scope": { "const": "public" } } }, "fact_key": { "not": { "enum": ["vin", "plate_number"] } } } } }
+        },
+        "unevaluatedProperties": false
+      },
+      "ProfessionalPassport": {
+        "allOf": [ { "$ref": "#/components/schemas/PassportEnvelope" } ],
+        "properties": {
+          "scope": { "const": "professional" },
+          "plates": { "type": "array", "items": { "$ref": "../../protocol/schemas/plate.schema.json" } },
+          "facts": { "type": "array", "items": { "properties": { "provenance": { "properties": { "access_scope": { "enum": ["public", "professional"] } } } } } }
+        },
+        "unevaluatedProperties": false
+      },
+      "SearchHit": {
+        "type": "object", "required": ["ivid", "internal_ref", "make", "model", "variant", "year", "body_type", "fuel_type", "colour", "fiche_status"], "additionalProperties": false,
+        "properties": {
+          "ivid": { "type": ["string", "null"], "description": "null only for a record IDauto has not issued an IVID to yet" },
+          "internal_ref": { "type": "string" },
+          "make": { "type": ["string", "null"] }, "model": { "type": ["string", "null"] }, "variant": { "type": ["string", "null"] },
+          "year": { "type": ["integer", "null"] }, "body_type": { "type": ["string", "null"] }, "fuel_type": { "type": ["string", "null"] }, "colour": { "type": ["string", "null"] },
+          "fiche_status": { "enum": ["initial", "pending_review", "verified", "conflict", "merged", "archived"] },
+          "matched_ref": { "type": ["string", "null"], "description": "the IVID of the record actually matched, when it was merged into this one" },
+          "is_alias": { "const": true }
+        }
+      },
+      "SearchResult": {
+        "type": "object", "required": ["criterion", "count", "results"], "additionalProperties": false,
+        "properties": {
+          "criterion": { "enum": ["plate", "vin", "ivid", "internal_ref", "attributes"] },
+          "count": { "type": "integer", "minimum": 0 },
+          "capped": { "type": "boolean", "description": "attribute searches only" },
+          "results": { "type": "array", "maxItems": 50, "items": { "$ref": "#/components/schemas/SearchHit" } }
+        }
+      },
+      "RefRecord": {
+        "type": "object", "required": ["ivid", "internal_ref", "status"], "additionalProperties": false,
+        "properties": { "ivid": { "type": ["string", "null"] }, "internal_ref": { "type": "string" }, "status": { "enum": ["initial", "pending_review", "verified", "conflict", "merged", "archived"] } }
+      },
+      "RefResolution": {
+        "type": "object", "required": ["requested_ref", "is_alias", "requested", "canonical", "merge_hops"], "additionalProperties": false,
+        "properties": {
+          "requested_ref": { "type": "string" },
+          "is_alias": { "type": "boolean" },
+          "requested": { "$ref": "#/components/schemas/RefRecord" },
+          "canonical": { "$ref": "#/components/schemas/RefRecord" },
+          "merge_hops": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ResolvePlateRequest": {
+        "type": "object", "required": ["plate"],
+        "properties": {
+          "plate": { "type": "string" },
+          "ocr_confidence": { "type": "number", "description": "0-1, or 0-100 (normalised)" },
+          "registration_type": { "enum": ["TU", "RS"] },
+          "method": { "enum": ["camera_ocr", "manual"] },
+          "confirmed": { "type": "boolean" }
+        }
+      },
+      "ResolveVinRequest": { "type": "object", "required": ["vin"], "properties": { "vin": { "type": "string" } } },
+      "ResolveManualRequest": {
+        "type": "object", "required": ["manufacturer", "model"],
+        "properties": {
+          "manufacturer": { "type": "string" }, "model": { "type": "string" }, "motorisation": { "type": "string" },
+          "year": { "type": "integer" }, "engine_code": { "type": "string" }, "tecdoc_car_id": { "type": "integer" }
+        }
+      },
+      "ConfirmRequest": {
+        "type": "object", "required": ["candidate", "method"],
+        "properties": {
+          "vehicle_ref": { "type": "string" }, "plate": { "type": "string" }, "registration_type": { "enum": ["TU", "RS"] }, "vin": { "type": "string" },
+          "candidate": { "$ref": "#/components/schemas/Candidate" },
+          "method": { "enum": ["plate_ocr", "plate_manual", "vin", "manual_selection", "provider", "admin", "carte_grise_ocr"] },
+          "source": { "type": "string" }, "confidence": { "type": "number" }, "action": { "const": "edit" }
+        }
+      },
+      "ParsedPlate": {
+        "description": "The plate as the normaliser read it (docs/ANPR.md §2).",
+        "type": "object", "required": ["ok", "canonical", "display", "format_code", "registrationType"],
+        "properties": {
+          "ok": { "const": true }, "country": { "type": "string" }, "registrationType": { "type": "string" },
+          "series": { "type": "string" }, "number": { "type": "string" }, "normalized": { "type": "string" },
+          "canonical": { "type": "string" }, "display": { "type": "string" }, "format_code": { "type": "string" },
+          "confidence": { "type": ["number", "null"] }, "requires_confirmation": { "type": "boolean" },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "VinInfo": {
+        "type": "object", "required": ["ok", "vin"], "additionalProperties": false,
+        "properties": {
+          "ok": { "const": true }, "vin": { "type": "string", "pattern": "^[A-HJ-NPR-Z0-9]{17}$" },
+          "wmi": { "type": "string" }, "vds": { "type": "string" }, "vis": { "type": "string" }, "model_year_code": { "type": "string" },
+          "check_digit_valid": { "type": ["boolean", "null"] }
+        }
+      },
+      "Candidate": {
+        "description": "An unrecorded identification (provider answer or manual selection) awaiting confirm.",
+        "type": "object",
+        "properties": {
+          "manufacturer": { "type": ["string", "null"] }, "model": { "type": ["string", "null"] }, "version": { "type": ["string", "null"] },
+          "motorisation": { "type": ["string", "null"] }, "engine_code": { "type": ["string", "null"] },
+          "year": { "type": ["integer", "null"] }, "year_from": { "type": ["integer", "null"] }, "year_to": { "type": ["integer", "null"] },
+          "fuel_type": { "type": ["string", "null"] }, "tecdoc_car_id": { "type": ["integer", "null"] }, "vin": { "type": ["string", "null"] }
+        }
+      },
+      "VehicleRecord": {
+        "description": "The Vehicle record of the IDA-V12 resolver (reference/vehicle/vehicle-repository.js record()). vin only for a vin:search holder.",
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "internal_ref", "plate", "plate_display", "registration_type", "plates", "vin_present", "manufacturer", "model", "version", "motorisation", "engine_code", "year", "year_from", "year_to", "fuel_type", "engine_cc", "seats", "gross_weight_kg", "category_code", "body_type", "tecdoc_car_id", "source", "source_timestamp", "confidence", "verified", "verified_by", "verified_at", "verification_method", "fiche_status", "created_at", "updated_at"],
+        "properties": {
+          "id": { "anyOf": [ { "$ref": "#/components/schemas/Ivid" }, { "type": "null" } ], "description": "the IVID (null only for a record not issued one yet)" },
+          "internal_ref": { "type": "string" },
+          "plate": { "type": ["string", "null"] }, "plate_display": { "type": ["string", "null"] }, "registration_type": { "type": ["string", "null"] },
+          "plates": { "type": "array", "items": { "type": "object", "required": ["plate", "format_code", "since"], "additionalProperties": false, "properties": { "plate": { "type": "string" }, "format_code": { "type": ["string", "null"] }, "since": { "$ref": "#/components/schemas/DateTime" } } } },
+          "vin_present": { "type": "boolean" }, "vin": { "type": ["string", "null"] },
+          "manufacturer": { "type": ["string", "null"] }, "model": { "type": ["string", "null"] }, "version": { "type": ["string", "null"] },
+          "motorisation": { "type": ["string", "null"] }, "engine_code": { "type": ["string", "null"] },
+          "year": { "type": ["integer", "null"] }, "year_from": { "type": ["integer", "null"] }, "year_to": { "type": ["integer", "null"] },
+          "fuel_type": { "type": ["string", "null"] }, "engine_cc": { "type": ["integer", "null"] }, "seats": { "type": ["integer", "null"] },
+          "gross_weight_kg": { "type": ["integer", "null"] }, "category_code": { "type": ["string", "null"] }, "body_type": { "type": ["string", "null"] },
+          "tecdoc_car_id": { "type": ["integer", "null"] },
+          "source": { "type": ["string", "null"] }, "source_timestamp": { "type": ["string", "null"], "format": "date-time" },
+          "confidence": { "type": ["number", "null"] },
+          "verified": { "type": "boolean" }, "verified_by": { "type": ["string", "null"] }, "verified_at": { "type": ["string", "null"], "format": "date-time" },
+          "verification_method": { "type": ["string", "null"] },
+          "fiche_status": { "enum": ["initial", "pending_review", "verified", "conflict", "merged", "archived"] },
+          "created_at": { "$ref": "#/components/schemas/DateTime" }, "updated_at": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "ProviderError": { "type": "object", "required": ["provider", "error"], "additionalProperties": false, "properties": { "provider": { "type": "string" }, "error": { "type": "string" } } },
+      "Resolution": {
+        "oneOf": [
+          {
+            "title": "needs_confirmation",
+            "type": "object", "required": ["status", "plate"], "additionalProperties": false,
+            "properties": { "status": { "const": "needs_confirmation" }, "plate": { "$ref": "#/components/schemas/ParsedPlate" } }
+          },
+          {
+            "title": "resolved",
+            "type": "object", "required": ["status", "source", "verified", "vehicle", "latency_ms"], "additionalProperties": false,
+            "properties": {
+              "status": { "const": "resolved" }, "source": { "type": "string" }, "confidence": { "type": ["number", "null"] }, "verified": { "type": "boolean" },
+              "vehicle": { "$ref": "#/components/schemas/VehicleRecord" },
+              "latency_ms": { "type": "integer", "minimum": 0 }, "cache": { "enum": ["hit", "miss"] },
+              "provider_errors": { "type": "array", "items": { "$ref": "#/components/schemas/ProviderError" } },
+              "plate": { "$ref": "#/components/schemas/ParsedPlate" }, "vin": { "$ref": "#/components/schemas/VinInfo" }
+            }
+          },
+          {
+            "title": "candidate",
+            "type": "object", "required": ["status", "source", "confidence", "verified", "candidate"], "additionalProperties": false,
+            "properties": {
+              "status": { "const": "candidate" }, "source": { "type": "string" }, "confidence": { "type": ["number", "null"] }, "verified": { "const": false },
+              "candidate": { "$ref": "#/components/schemas/Candidate" },
+              "alternatives": { "type": "array", "items": { "$ref": "#/components/schemas/VehicleRecord" } },
+              "latency_ms": { "type": "integer", "minimum": 0 }, "cache": { "enum": ["hit", "miss"] },
+              "provider_errors": { "type": "array", "items": { "$ref": "#/components/schemas/ProviderError" } },
+              "plate": { "$ref": "#/components/schemas/ParsedPlate" }, "vin": { "$ref": "#/components/schemas/VinInfo" }
+            }
+          },
+          {
+            "title": "not_found",
+            "type": "object", "required": ["status", "source", "latency_ms"], "additionalProperties": false,
+            "properties": {
+              "status": { "const": "not_found" }, "source": { "enum": [null, "cache"] },
+              "latency_ms": { "type": "integer", "minimum": 0 }, "cache": { "enum": ["miss"] },
+              "provider_errors": { "type": "array", "items": { "$ref": "#/components/schemas/ProviderError" } },
+              "plate": { "$ref": "#/components/schemas/ParsedPlate" }, "vin": { "$ref": "#/components/schemas/VinInfo" }
+            }
+          }
+        ]
+      },
+      "Confirmation": {
+        "type": "object", "required": ["status", "vehicle"], "additionalProperties": false,
+        "properties": { "status": { "const": "confirmed" }, "vehicle": { "$ref": "#/components/schemas/VehicleRecord" } }
+      }
+    }
+  }
+}

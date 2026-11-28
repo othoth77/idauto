@@ -1,0 +1,831 @@
+{
+ "schema": "idauto.auto-contract-fixture/1",
+ "note": "Recorded by tests/ida-auto-contract-test.js against the real AUTO and AGENTS at the commits below (only the Haddad worker is a stand-in). Regenerate with IDAUTO_CONTRACT_RECORD=1; never edit by hand.",
+ "provenance": {
+  "auto": {
+   "commit": "f89165d12c4120c955aabf66c8511dd8a99e9ae8",
+   "clean": true
+  },
+  "agents": {
+   "commit": "a5200c80c498a5fb9aa5e7f4e5074c4403253cb4",
+   "clean": true
+  },
+  "contract": "AUTO API v1 + AUTO-AGENTS v1"
+ },
+ "scenarios": {
+  "main": {
+   "exchanges": [
+    {
+     "request": {
+      "body": null,
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "GET",
+      "path": "/api/v1/capabilities"
+     },
+     "response": {
+      "body": {
+       "capabilities": [
+        {
+         "callers": [
+          "idauto"
+         ],
+         "capability": "vision.ingest",
+         "input": {
+          "file_id": {
+           "required": true
+          },
+          "sha256": {
+           "required": true
+          }
+         },
+         "status": [
+          "implemented",
+          "tested",
+          "blocked"
+         ]
+        },
+        {
+         "callers": [
+          "idauto"
+         ],
+         "capability": "data.extract",
+         "input": {
+          "doctype": {
+           "required": false
+          },
+          "file_id": {
+           "required": true
+          },
+          "sha256": {
+           "required": true
+          }
+         },
+         "status": [
+          "implemented",
+          "tested",
+          "blocked"
+         ]
+        }
+       ],
+       "schema_version": "1"
+      },
+      "retry_after": null,
+      "status": 200
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0001",
+       "deadline_s": 600,
+       "idempotency_key": "cg-contract-0001",
+       "input": {
+        "doctype": "carte_grise",
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "agents": {
+        "agent_code": "MY003",
+        "job": "vision.extract",
+        "state": "queued",
+        "task_id": "t-20260101000000-000001"
+       },
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0001",
+       "created_at": "2026-01-01T00:00:00.000Z",
+       "duplicate": false,
+       "error": null,
+       "request_id": "req-796cd419193515057df04c2b32eae4f2",
+       "result": null,
+       "schema_version": "1",
+       "state": "accepted",
+       "updated_at": "2026-01-01T00:00:00.000Z"
+      },
+      "retry_after": null,
+      "status": 201
+     }
+    },
+    {
+     "request": {
+      "body": null,
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "GET",
+      "path": "/api/v1/capability-requests/req-796cd419193515057df04c2b32eae4f2"
+     },
+     "response": {
+      "body": {
+       "agents": {
+        "agent_code": "MY003",
+        "job": "vision.extract",
+        "state": "completed",
+        "task_id": "t-20260101000000-000001"
+       },
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0001",
+       "created_at": "2026-01-01T00:00:00.000Z",
+       "error": null,
+       "request_id": "req-796cd419193515057df04c2b32eae4f2",
+       "result": {
+        "at": "2026-01-01T00:00:00.000Z",
+        "code": "LENS_SUCCEEDED",
+        "data": {
+         "attempts": 1,
+         "deferrals": 0,
+         "error_code": null,
+         "has_result": true,
+         "lens_job_id": "j_0000000000000000000001",
+         "state": "succeeded",
+         "steps": [
+          {
+           "attempt": 1,
+           "name": "ocr",
+           "state": "succeeded"
+          }
+         ],
+         "workflow": "extract_fields"
+        },
+        "summary": "j_0000000000000000000001 succeeded: the result is in LENS"
+       },
+       "schema_version": "1",
+       "state": "completed",
+       "updated_at": "2026-01-01T00:00:00.000Z"
+      },
+      "retry_after": null,
+      "status": 200
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0001",
+       "deadline_s": 600,
+       "idempotency_key": "cg-contract-0001",
+       "input": {
+        "doctype": "carte_grise",
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "agents": {
+        "agent_code": "MY003",
+        "job": "vision.extract",
+        "state": "completed",
+        "task_id": "t-20260101000000-000001"
+       },
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0001",
+       "created_at": "2026-01-01T00:00:00.000Z",
+       "duplicate": true,
+       "error": null,
+       "request_id": "req-796cd419193515057df04c2b32eae4f2",
+       "result": {
+        "at": "2026-01-01T00:00:00.000Z",
+        "code": "LENS_SUCCEEDED",
+        "data": {
+         "attempts": 1,
+         "deferrals": 0,
+         "error_code": null,
+         "has_result": true,
+         "lens_job_id": "j_0000000000000000000001",
+         "state": "succeeded",
+         "steps": [
+          {
+           "attempt": 1,
+           "name": "ocr",
+           "state": "succeeded"
+          }
+         ],
+         "workflow": "extract_fields"
+        },
+        "summary": "j_0000000000000000000001 succeeded: the result is in LENS"
+       },
+       "schema_version": "1",
+       "state": "completed",
+       "updated_at": "2026-01-01T00:00:00.000Z"
+      },
+      "retry_after": null,
+      "status": 200
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0002",
+       "idempotency_key": "cg-contract-0001",
+       "input": {
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "idempotency_key_reused",
+        "message": "this idempotency key was already used for a different request",
+        "request_id": "rq-fixture-0001",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 409
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0003",
+       "idempotency_key": "cg-contract-0002",
+       "input": {
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "not-a-hash"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "validation_failed",
+        "details": [
+         {
+          "field": "input.sha256",
+          "issue": "invalid"
+         }
+        ],
+        "message": "the request is invalid",
+        "request_id": "rq-fixture-0002",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 422
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "capability": "memory.status",
+       "correlation_id": "idauto-contract-0004",
+       "idempotency_key": "cg-contract-0003",
+       "input": {},
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "unknown_capability",
+        "message": "this capability is not registered in AUTO",
+        "request_id": "rq-fixture-0003",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 404
+     }
+    },
+    {
+     "request": {
+      "body": null,
+      "caller": "idauto",
+      "credential": "<wrong-token>",
+      "method": "GET",
+      "path": "/api/v1/capabilities"
+     },
+     "response": {
+      "body": {
+       "capabilities": [
+        {
+         "callers": [
+          "idauto"
+         ],
+         "capability": "vision.ingest",
+         "input": {
+          "file_id": {
+           "required": true
+          },
+          "sha256": {
+           "required": true
+          }
+         },
+         "status": [
+          "implemented",
+          "tested",
+          "blocked"
+         ]
+        },
+        {
+         "callers": [
+          "idauto"
+         ],
+         "capability": "data.extract",
+         "input": {
+          "doctype": {
+           "required": false
+          },
+          "file_id": {
+           "required": true
+          },
+          "sha256": {
+           "required": true
+          }
+         },
+         "status": [
+          "implemented",
+          "tested",
+          "blocked"
+         ]
+        }
+       ],
+       "schema_version": "1"
+      },
+      "retry_after": null,
+      "status": 200
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0005",
+       "idempotency_key": "cg-contract-0004",
+       "input": {
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<wrong-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "unauthenticated",
+        "message": "a valid AUTO application credential is required",
+        "request_id": "rq-fixture-0004",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 401
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "correlation_id": "idauto-run-0001",
+       "idempotency_key": "cg-run-0001",
+       "input": {
+        "doctype": "carte_grise",
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "workflow": "vehicle-document-intake"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs"
+     },
+     "response": {
+      "body": {
+       "correlation_id": "idauto-run-0001",
+       "created_at": "2026-01-01T00:00:00.000Z",
+       "duplicate": false,
+       "finished_at": null,
+       "result": null,
+       "run_id": "run-58edcecbc8740955dc787136e0e1d585",
+       "schema_version": "1",
+       "state": "pending",
+       "steps": [
+        {
+         "attempt": 0,
+         "capability": "vision.ingest",
+         "error": null,
+         "id": "inspect",
+         "state": "pending"
+        },
+        {
+         "attempt": 0,
+         "capability": "data.extract",
+         "error": null,
+         "id": "extract",
+         "state": "pending"
+        }
+       ],
+       "workflow": "vehicle-document-intake"
+      },
+      "retry_after": null,
+      "status": 202
+     }
+    },
+    {
+     "request": {
+      "body": null,
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "GET",
+      "path": "/api/v1/workflow-runs/run-58edcecbc8740955dc787136e0e1d585"
+     },
+     "response": {
+      "body": {
+       "correlation_id": "idauto-run-0001",
+       "created_at": "2026-01-01T00:00:00.000Z",
+       "finished_at": "2026-01-01T00:00:00.000Z",
+       "result": {
+        "cancelled": [],
+        "completed": [
+         "inspect",
+         "extract"
+        ],
+        "failed": [],
+        "outputs": {
+         "extract": {
+          "agents_task_id": "t-20260101000000-000002",
+          "at": "2026-01-01T00:00:00.000Z",
+          "code": "LENS_SUCCEEDED",
+          "data": {
+           "attempts": 1,
+           "deferrals": 0,
+           "error_code": null,
+           "has_result": true,
+           "lens_job_id": "j_0000000000000000000003",
+           "state": "succeeded",
+           "steps": [
+            {
+             "attempt": 1,
+             "name": "ocr",
+             "state": "succeeded"
+            }
+           ],
+           "workflow": "extract_fields"
+          },
+          "request_id": "req-e3bfd3e1a792f561e57919a658d17cd2",
+          "summary": "j_0000000000000000000003 succeeded: the result is in LENS"
+         },
+         "inspect": {
+          "agents_task_id": "t-20260101000000-000003",
+          "at": "2026-01-01T00:00:00.000Z",
+          "code": "LENS_SUCCEEDED",
+          "data": {
+           "attempts": 1,
+           "deferrals": 0,
+           "error_code": null,
+           "has_result": true,
+           "lens_job_id": "j_0000000000000000000002",
+           "state": "succeeded",
+           "steps": [
+            {
+             "attempt": 1,
+             "name": "ocr",
+             "state": "succeeded"
+            }
+           ],
+           "workflow": "inspect"
+          },
+          "request_id": "req-34f6f6ae3bbfcfb68bb524a65e06a1d6",
+          "summary": "j_0000000000000000000002 succeeded: the result is in LENS"
+         }
+        },
+        "partial": false,
+        "skipped": []
+       },
+       "run_id": "run-58edcecbc8740955dc787136e0e1d585",
+       "schema_version": "1",
+       "state": "completed",
+       "steps": [
+        {
+         "attempt": 1,
+         "capability": "vision.ingest",
+         "error": null,
+         "id": "inspect",
+         "state": "completed"
+        },
+        {
+         "attempt": 1,
+         "capability": "data.extract",
+         "error": null,
+         "id": "extract",
+         "state": "completed"
+        }
+       ],
+       "workflow": "vehicle-document-intake"
+      },
+      "retry_after": null,
+      "status": 200
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "correlation_id": "idauto-run-0001",
+       "idempotency_key": "cg-run-0001",
+       "input": {
+        "doctype": "carte_grise",
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "workflow": "vehicle-document-intake"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs"
+     },
+     "response": {
+      "body": {
+       "correlation_id": "idauto-run-0001",
+       "created_at": "2026-01-01T00:00:00.000Z",
+       "duplicate": true,
+       "finished_at": "2026-01-01T00:00:00.000Z",
+       "result": {
+        "cancelled": [],
+        "completed": [
+         "inspect",
+         "extract"
+        ],
+        "failed": [],
+        "outputs": {
+         "extract": {
+          "agents_task_id": "t-20260101000000-000002",
+          "at": "2026-01-01T00:00:00.000Z",
+          "code": "LENS_SUCCEEDED",
+          "data": {
+           "attempts": 1,
+           "deferrals": 0,
+           "error_code": null,
+           "has_result": true,
+           "lens_job_id": "j_0000000000000000000003",
+           "state": "succeeded",
+           "steps": [
+            {
+             "attempt": 1,
+             "name": "ocr",
+             "state": "succeeded"
+            }
+           ],
+           "workflow": "extract_fields"
+          },
+          "request_id": "req-e3bfd3e1a792f561e57919a658d17cd2",
+          "summary": "j_0000000000000000000003 succeeded: the result is in LENS"
+         },
+         "inspect": {
+          "agents_task_id": "t-20260101000000-000003",
+          "at": "2026-01-01T00:00:00.000Z",
+          "code": "LENS_SUCCEEDED",
+          "data": {
+           "attempts": 1,
+           "deferrals": 0,
+           "error_code": null,
+           "has_result": true,
+           "lens_job_id": "j_0000000000000000000002",
+           "state": "succeeded",
+           "steps": [
+            {
+             "attempt": 1,
+             "name": "ocr",
+             "state": "succeeded"
+            }
+           ],
+           "workflow": "inspect"
+          },
+          "request_id": "req-34f6f6ae3bbfcfb68bb524a65e06a1d6",
+          "summary": "j_0000000000000000000002 succeeded: the result is in LENS"
+         }
+        },
+        "partial": false,
+        "skipped": []
+       },
+       "run_id": "run-58edcecbc8740955dc787136e0e1d585",
+       "schema_version": "1",
+       "state": "completed",
+       "steps": [
+        {
+         "attempt": 1,
+         "capability": "vision.ingest",
+         "error": null,
+         "id": "inspect",
+         "state": "completed"
+        },
+        {
+         "attempt": 1,
+         "capability": "data.extract",
+         "error": null,
+         "id": "extract",
+         "state": "completed"
+        }
+       ],
+       "workflow": "vehicle-document-intake"
+      },
+      "retry_after": null,
+      "status": 200
+     }
+    },
+    {
+     "request": {
+      "body": {
+       "correlation_id": "idauto-run-0002",
+       "idempotency_key": "cg-run-0002",
+       "input": {},
+       "workflow": "no-such-flow"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/workflow-runs"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "unknown_workflow",
+        "message": "this workflow is not registered in AUTO",
+        "request_id": "rq-fixture-0005",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 404
+     }
+    }
+   ],
+   "facts": [
+    {
+     "kind": "agents-task",
+     "value": {
+      "caller": "svc:auto",
+      "capability": "data.extract",
+      "correlation_id": "idauto-contract-0001"
+     }
+    },
+    {
+     "kind": "worker-starts",
+     "value": [
+      {
+       "doctype": "carte_grise",
+       "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+       "job": "vision.extract",
+       "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+     ]
+    },
+    {
+     "kind": "worker-starts",
+     "value": [
+      {
+       "doctype": "carte_grise",
+       "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+       "job": "vision.extract",
+       "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+     ]
+    },
+    {
+     "kind": "worker-calls",
+     "value": 2
+    },
+    {
+     "kind": "worker-calls",
+     "value": 2
+    },
+    {
+     "kind": "worker-starts",
+     "value": [
+      {
+       "doctype": "carte_grise",
+       "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+       "job": "vision.extract",
+       "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      {
+       "doctype": null,
+       "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+       "job": "vision.inspect",
+       "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      {
+       "doctype": "carte_grise",
+       "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+       "job": "vision.extract",
+       "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+     ]
+    }
+   ]
+  },
+  "agents-refuses": {
+   "exchanges": [
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0101",
+       "idempotency_key": "cg-contract-0101",
+       "input": {
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "capability_not_granted",
+        "message": "AGENTS did not execute the request (capability_not_granted)",
+        "request_id": "rq-fixture-0001",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 403
+     }
+    }
+   ],
+   "facts": [
+    {
+     "kind": "worker-calls",
+     "value": 0
+    }
+   ]
+  },
+  "no-worker": {
+   "exchanges": [
+    {
+     "request": {
+      "body": {
+       "capability": "data.extract",
+       "correlation_id": "idauto-contract-0201",
+       "idempotency_key": "cg-contract-0201",
+       "input": {
+        "file_id": "f_AAAAAAAAAAAAAAAAAAAAAA",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+       },
+       "schema_version": "1"
+      },
+      "caller": "idauto",
+      "credential": "<idauto-token>",
+      "method": "POST",
+      "path": "/api/v1/capability-requests"
+     },
+     "response": {
+      "body": {
+       "error": {
+        "code": "NOT_DISPATCHABLE",
+        "message": "this job runs on Haddad, and no Haddad worker is configured on this host: nothing was queued",
+        "request_id": "rq-fixture-0001",
+        "retryable": false
+       }
+      },
+      "retry_after": null,
+      "status": 503
+     }
+    }
+   ],
+   "facts": []
+  }
+ }
+}
